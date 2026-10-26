@@ -1,4 +1,4 @@
-<h1 align="center"><a href="https://github.com/ontogr/ontogr-agent-memory">Agent Memory</a></h1>
+<h1 align="center"><a href="https://github.com/ontogr/ontogr-agent-memory">OntoGr Agent Memory</a></h1>
 
 <h3 align="center">Durable, traceable memory for AI agents.</h3>
 <h4 align="center"><a href="https://github.com/ontogr/ontogr-agent-memory#features">Features</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#quickstart">Quickstart</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#core-concepts">Concepts</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#how-data-flows">Data flow</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#service-api">Service API</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#configuration">Configuration</a> · <a href="https://github.com/ontogr/ontogr-agent-memory/blob/main/CONTEXT.md">Vocabulary</a> · <a href="https://github.com/ontogr/ontogr-agent-memory/blob/main/CHANGELOG.md">Changelog</a></h4>
@@ -20,14 +20,16 @@
 
 </div>
 
-Agent Memory is an open source Python library that stores what an agent learned, where it learned it, and when it was true. It ingests source material as episodes, extracts entities and facts, resolves duplicate entities, reconciles facts on two time axes, and returns a budgeted context block that is ready for an answering model.
+OntoGr Agent Memory is an open source Python library that stores what an agent learned, where it learned it, and when it was true. It ingests source material as episodes, extracts entities and facts, resolves duplicate entities, reconciles facts on two time axes, and returns a budgeted context block that is ready for an answering model.
 
 - **Facts with sources:** Every fact keeps the verbatim quote and the episode it came from. A hash-chained ledger records each temporal write, so an edited, inserted, or deleted entry can be found.
-- **Facts that change over time:** Each fact records when it was true and when the system learned it. A new value closes the old version and does not replace it, so a read can ask what was true on a date or what the system believed on that date.
-- **Contradictions are decided, not overwritten:** Rules, an optional model judge, and a person's decision settle which facts conflict, and a failed judge call is never stored as "no conflict".
+- **Facts that change over time:** Each fact has a validity window and a record of when the system learned it. A new value closes the old version, so a read can ask what was true on a date or what the system believed on that date.
+- **Contradictions get a ruling:** Rules, an optional model judge, and a person's decision settle which facts conflict, and a failed judge call is never stored as "no conflict".
 - **Fits your stack:** The graph runs on FalkorDB or Neo4j, vectors live on the graph or in pgvector, and jobs and audit rows live in SQLite or Postgres. Each tenant is a separate partition.
 
-<!-- image: img/hero.svg -->
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/hero.svg" alt="Source items enter the extraction layer as episodes. Extracted facts go to the temporal and consistency engine, which writes fact versions to the storage layer. Retrieval reads the storage layer and returns a budgeted context block." width="860">
+</p>
 
 ## Features
 
@@ -35,7 +37,9 @@ Agent Memory is an open source Python library that stores what an agent learned,
 
 *Episodes become typed entities and grounded facts, and the ontology decides which types are allowed.*
 
-<!-- image: img/extraction-layer.svg -->
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/extraction-layer.svg" alt="A source item becomes an episode. The entity extractor and the fact extractor both read it, and the ontology manager gives each the types it allows. Entity resolution links extracted names to canonical entities in the graph store, and the fact extractor passes facts to the temporal engine." width="860">
+</p>
 
 Ingestion stores each item as an episode with its source and actor. Extraction then reads the episode in two passes, one for entities and one for facts. The ontology sets the allowed types, and resolution links each name to a canonical entity.
 
@@ -76,7 +80,7 @@ Entity extraction and fact extraction are separate passes over the same episode.
 Entity extraction follows these rules:
 
 - **Names must appear in the episode:** Code finds each span, and a name that cannot be found is discarded.
-- **Failures are visible:** A failed model call is recorded as a retryable status, not as an empty result.
+- **Failures are visible:** A failed model call is recorded with a retryable status that differs from an empty result.
 
 #### Fact and statement extractor
 
@@ -84,8 +88,8 @@ Entity extraction follows these rules:
 
 A language model can state things that the text never says. Fact extraction checks each result against the episode and keeps the quote behind each fact, so a reader can verify the fact without trusting the model.
 
-- **Every fact has a quote:** Fact extraction returns a relation, statement, subject, object, polarity, modality, and valid-time window, and each fact needs a verbatim quote from the current episode.
-- **Bad parts are cleared, not the fact:** A bad relation type or a time that cannot be parsed clears that part and keeps the fact, with a reason code. Relative times resolve against the episode's occurrence time, and stated precision is kept.
+- **Every fact has a quote:** Each extracted fact has a subject, a relation, and an object. It also carries a statement, a polarity, a modality, and a valid-time window, and it needs a verbatim quote from the current episode.
+- **A bad part is cleared:** A bad relation type or a time that cannot be parsed clears that part, and the fact stays with a reason code. Relative times resolve against the episode's occurrence time, and stated precision is kept.
 - **Results are reused:** Each episode has a processing status and a stored result. A completed `ok` or `empty` result is reused, and a `parse_failed`, `error`, or `skipped` episode can be processed again.
 
 #### Ontology manager
@@ -94,7 +98,7 @@ A language model can state things that the text never says. Fact extraction chec
 
 Free-form labels drift, so one relation can appear under many names and its facts cannot be compared. A catalog gives each type a stable id, and a change to the catalog goes through review.
 
-Each tenant has a catalog of entity types, relation types, attributes, and aliases. Type ids are stable integers. A type can be deprecated or merged, but old ids remain resolvable. A catalog change is a change set applied by one pure function and committed with a compare-and-swap against the current head, so a stale head fails instead of overwriting another change.
+Each tenant has a catalog of entity types and relation types, plus attributes and aliases. Type ids are stable integers. A type can be deprecated or merged, but old ids remain resolvable. A catalog change is a change set applied by one pure function and committed with a compare-and-swap against the current head, so a stale head fails instead of overwriting another change.
 
 Unknown type labels are handled by mode:
 
@@ -104,10 +108,10 @@ Unknown type labels are handled by mode:
 | `preferred` | The item is dropped, and an unmatched row is recorded for review. |
 | `open` | The label is registered immediately. |
 
-- **Patterns are enforced:** Relation types can declare source and target patterns, and the patterns are enforced, not only shown in a prompt.
+- **Patterns are enforced:** Relation types can declare source and target patterns. The patterns appear in the prompt, and the code also enforces them.
 - **People approve proposals:** A model can draft proposals from labels that appear in enough distinct episodes. A person accepts or rejects each proposal, and a proposal is never applied automatically.
 - **Changes report their reach:** After a catalog change, the ontology reports which episodes may produce a different result so the caller can queue them for extraction again.
-- **A default catalog exists:** A new tenant can start from common person, organization, place, thing, event, and relation types.
+- **A default catalog exists:** A new tenant can start from a default catalog of common types for entities and relations.
 
 #### Entity resolution
 
@@ -115,7 +119,9 @@ Unknown type labels are handled by mode:
 
 Facts connect entities, so a duplicate entity splits what the system knows into pieces. A wrong merge does more harm, because it mixes facts about different things. The ladder below uses the cheapest evidence first and asks a model only about pairs that remain ambiguous, and every merge keeps what it needs to be undone.
 
-<!-- image: img/resolution-ladder.svg -->
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/resolution-ladder.svg" alt="An extracted name goes down four steps: URI match, strict key or alias match, fuzzy match, and a model verdict. The first step that is sure links the name to a canonical entity. The model can also call a pair distinct, which creates a new entity, or leave it uncertain, which creates a provisional one." width="860">
+</p>
 
 Resolution links extracted names to canonical entities through a ladder:
 
@@ -125,19 +131,22 @@ Resolution links extracted names to canonical entities through a ladder:
 4. a model verdict for the remaining ambiguous pairs
 
 - **Ids survive merges:** An entity id is a UUID5 over the first mention, so it survives a merge and a deleted duplicate is not recreated from its name. A type-family policy decides which entities may merge.
+- **Three outcomes:** A name links to an existing entity, becomes a new entity when no candidate remains or the verifier calls every candidate distinct, or becomes a provisional entity that is checked again later.
 - **Merges are reversible:** A merge never deletes the absorbed entity. It keeps a `merged_into` pointer and a snapshot, so an unmerge can restore both sides.
 - **Mentions and aliases are records:** Entity verdicts record same, distinct, or uncertain decisions for later runs.
 - **Model failures never merge:** Deferred deduplication uses blocking and vector candidates, then verifies the pairs that need a decision. An unreadable verdict is not remembered as a decision.
 
 ### Temporal and consistency engine
 
-*Each fact records when it was true and when the system learned it, and conflicts are decided by rules, a judge, or a person.*
+*Facts keep two time axes, and conflicts are settled by rules, a judge, or a person.*
 
 #### Bi-temporal model
 
 *Each fact records when it was true and when the system learned it.*
 
-<!-- image: img/time-axes.svg -->
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/time-axes.svg" alt="Two rows show one slot over time. Valid time shows when each fact was true in the world. System time shows when the system recorded each version. A change writes a closed copy of the old fact and a new fact, and stamps expired_at on the old version, so a read can ask what was true or what was known on a date." width="860">
+</p>
 
 Facts change, and corrections often arrive after the event. Two time axes let a read answer both what is true now and what the system believed at an earlier date. A change writes a new version and replaces nothing, so the history stays available.
 
@@ -165,7 +174,9 @@ Three operations look similar but differ:
 
 *Rules, an optional model judge, and a person's decision settle which facts conflict.*
 
-<!-- image: img/contradiction-handling.svg -->
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/contradiction-handling.svg" alt="Observations in one slot go to the rules when the relation is single-valued. Pairs from other slots go to an optional model judge, which stores its verdicts. The handler reads the rules and the stored verdicts, and a person's decision overrides both. The result is a set of slot directives that the engine commits as fact versions." width="860">
+</p>
 
 When two facts cannot both stand, the handler decides which one is current and keeps the other in the history. A person's decision overrides every rule and every verdict.
 
@@ -179,7 +190,9 @@ When two facts cannot both stand, the handler decides which one is current and k
 
 *Every fact leads back to a quote and an episode, and the ledger makes edits detectable.*
 
-<!-- image: img/provenance.svg -->
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/provenance.svg" alt="A read result traces to a fact version, which carries the ids of its observations. Each observation holds a statement and a verbatim quote, and points to its episode. Separately, every temporal write appends a ledger entry that holds the hash of the entry before it, and verify checks the chain." width="860">
+</p>
 
 Every fact can be traced back to the text that supports it, and every temporal write can be checked afterward.
 
@@ -190,9 +203,11 @@ Every fact can be traced back to the text that supports it, and every temporal w
 
 ### Storage layer
 
-*The graph holds the memory, vectors sit on the graph or in pgvector, and a separate state store holds jobs and audit rows.*
+*The graph holds the memory, vectors have their own store, and a separate state store holds jobs and audit rows.*
 
-<!-- image: img/storage-layer.svg -->
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/storage-layer.svg" alt="Components reach storage through async ports. The graph store holds entities and facts, and it holds episodes with their raw content. The vector store holds embeddings keyed by graph ids, on the graph or in pgvector. The state store holds jobs, operation rows, audit rows, and the erase journal in SQLite or Postgres." width="860">
+</p>
 
 Every component talks to storage through its own async port. A port has domain verbs and no raw query method, so domain code sees only ports.
 
@@ -211,16 +226,16 @@ A deployment that shares state between processes can use FalkorDB for the graph,
 *The graph holds the memory, with one graph per tenant on FalkorDB or Neo4j.*
 
 - **One graph per tenant:** All component labels for a tenant live in one graph. FalkorDB uses one graph named `m_{tenant}` per tenant, and Neo4j uses one shared database with `_tenant` on every node and edge.
-- **Declared schema:** Each component declares the labels, indexes, and constraints it needs, and the graph store combines them when it opens a tenant.
-- **Graph kernel:** The kernel supplies connections, tenancy, schema checks, retries, and a circuit breaker. It also provides a scoped runner for adapter Cypher and a guarded write that writes nothing when its guard fails.
+- **Declared schema:** Each component declares the labels it uses along with their indexes and constraints, and the graph store combines them when it opens a tenant.
+- **Graph kernel:** The kernel supplies connections and tenancy, checks schemas, retries failed calls, and trips a circuit breaker. It also provides a scoped runner for adapter Cypher and a guarded write that writes nothing when its guard fails.
 
 #### Vector store
 
-*Embeddings are keyed by graph ids and live on the graph or in pgvector.*
+*Embeddings are keyed by graph ids and sit beside the graph objects or in Postgres.*
 
 - **What is embedded:** Entity names, fact statements, and episode text, keyed by the ids of the graph objects they describe. With graph-native vectors they are properties on those objects, and pgvector keeps them in Postgres tables with HNSW indexes, an outbox, and a reconciler.
 - **Hash-checked writes:** A vector is replaced only when the hash of its text changes.
-- **Pinned spaces:** A registry pins the model, dimension, and text template for each kind, and a different model on the same tenant raises a space mismatch error.
+- **Pinned spaces:** A registry pins the model for each kind along with its dimension and text template, and a different model on the same tenant raises a space mismatch error.
 - **Honest search:** Every backend returns a normalized cosine score, and a failed search raises instead of returning an empty list.
 
 #### Episode store
@@ -233,7 +248,7 @@ A deployment that shares state between processes can use FalkorDB for the graph,
 
 #### State store
 
-*Jobs, operation rows, audit rows, and the erase journal live in SQLite or Postgres.*
+*Service control data lives apart from memory content, in SQLite or Postgres.*
 
 - **Control data only:** Jobs with their request payloads, operation rows with usage and cost, the hash-chained audit log, and the erase journal live here. Memory content does not.
 - **Callers bring identity:** The service does not store users, API keys, or grants. The caller passes a principal with its grants on each call.
@@ -242,6 +257,10 @@ A deployment that shares state between processes can use FalkorDB for the graph,
 ### Four-lane retrieval and prompt context
 
 *Four lanes search the same tenant, and one budgeted context block comes back.*
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/retrieval.svg" alt="A query is embedded once. The vector, keyword, and entity lanes run at the same time, and the graph lane walks outward from seed entities that those lanes supply. Reciprocal rank fusion merges the lane results, an optional reranker rescores a shortlist of passages, and the result becomes a budgeted, escaped context block." width="860">
+</p>
 
 No single search method finds everything. Vector search finds paraphrases, keyword search finds exact terms, the entity lane finds named things, and the graph lane finds connected facts. Running all four and fusing their ranks removes the need to choose a strategy for each query.
 
@@ -254,7 +273,7 @@ Retrieval runs four fixed lanes. There is no query planner and no strategy choic
 | Entity | Explicit mentions, alias text, and entity vectors | Uses strict and loose resolver keys. |
 | Graph | A bounded walk from seed entities | Seeded by the other lanes or by the request. |
 
-Lanes fuse by reciprocal rank fusion. The top fact in one result scores 1.0, and scores are relative to that result, not comparable across queries. An optional reranker scores a shortlist of passages and blends its scores after fusion.
+Lanes fuse by reciprocal rank fusion. The top fact in one result scores 1.0, and scores are relative to that result, so they cannot be compared across queries. An optional reranker scores a shortlist of passages and blends its scores after fusion.
 
 - **Time filters apply in every lane:** `valid_at`, `known_at`, overlap windows, and `include_history` shape all results the same way.
 - **Requests can narrow the search:** A request can limit results to one session, flag or exclude disputed facts, and search several tenants the caller may read.
@@ -274,6 +293,10 @@ A lane reports one of four statuses:
 ### Consolidation
 
 *A background run keeps one tenant's memory tidy over time.*
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/consolidation.svg" alt="One consolidation run takes a per-tenant lease and runs nine stages in order. A failure in the first stage stops the run. A watermark is stored for a stage only when it finishes without failure, and a run can request another pass while it holds the lease." width="860">
+</p>
 
 Writes arrive one episode at a time, so duplicate entities, stale summaries, and low-value items build up between runs. Consolidation handles that work in one ordered pass that runs as its own job, apart from the write path.
 
@@ -300,6 +323,10 @@ Consolidation runs nine stages in order for one tenant:
 
 *Grants per tenant decide who can read, write, forget, or export.*
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/access-control.svg" alt="Each call passes a rate limit, opens an operation row, and checks the principal's grant for the tenant. The check writes an audit row for the decision. A held grant runs the verb, and a missing grant returns the same not_found error whether the tenant, the object, or the grant is missing." width="860">
+</p>
+
 Memory can hold private details. Every call is checked against the caller's grant for the tenant, and every decision is recorded in the audit log.
 
 A principal holds grants per tenant:
@@ -321,6 +348,10 @@ A principal holds grants per tenant:
 ### Forget, erase, and export
 
 *Removal is previewed, confirmed, and resumable after a crash.*
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/forget.svg" alt="A hard forget starts with a preview that returns a confirmation token. The confirmed call writes a journal row first, runs the removal steps in order while it updates the row after each one, scans for residue, closes the row as completed or failed, and writes an audit row. Startup resumes any row that is still running." width="860">
+</p>
 
 A removal that stops halfway leaves content in some stores and not in others. A hard forget therefore writes a journal row first and records each finished step, and startup resumes any unfinished row. The preview and confirmation token prevent removing the wrong target.
 
@@ -670,7 +701,7 @@ Settings classes use `pydantic-settings`. They read the repo-root `.env` and use
 | `MEMORY_FORGET_` | Forget confirmation secret. |
 | `MEMORY_` | Local stdio principal id, tenant, and grants. |
 
-Nested settings use a double underscore, for example `MEMORY_FALKORDB_RESILIENCE__MAX_ATTEMPTS`. See [.env.example](https://github.com/ontogr/ontogr-agent-memory/blob/main/.env.example) for the test-service values.
+Nested settings join their names with `__`, for example `MEMORY_FALKORDB_RESILIENCE__MAX_ATTEMPTS`. See [.env.example](https://github.com/ontogr/ontogr-agent-memory/blob/main/.env.example) for the test-service values.
 
 ## Development
 
@@ -705,4 +736,4 @@ We welcome bug fixes, new features, documentation improvements, and other contri
 
 ## License
 
-Agent Memory is licensed under the [Apache License 2.0](https://github.com/ontogr/ontogr-agent-memory/blob/main/LICENSE).
+OntoGr Agent Memory is licensed under the [Apache License 2.0](https://github.com/ontogr/ontogr-agent-memory/blob/main/LICENSE).

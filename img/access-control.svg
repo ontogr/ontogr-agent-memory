@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 960 376" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="access-control-title access-control-desc" id="access-control-root">
+<title id="access-control-title">Access control</title>
+<desc id="access-control-desc">Each call passes a rate limit, opens an operation row, and checks the principal's grant for the tenant. The check writes an audit row for the decision. A held grant runs the verb, and a missing grant returns the same not_found error whether the tenant, the object, or the grant is missing.</desc>
+<defs>
+      <style>#access-control-root { --color-paper:#f5f5f5; --color-ink:#2d3142; --color-muted:#4f5d75; --color-accent:#bf4520; --font-sans:'Geist', system-ui, sans-serif; --font-serif:'Instrument Serif', serif; --font-mono:'Geist Mono', ui-monospace, monospace; }
+      #access-control-root { font-family: var(--font-sans); color: var(--color-ink); }
+      #access-control-root .diagram-container { width: 100%; overflow-x: auto; }
+      #access-control-root .diagram-container { overflow-x: visible; }
+      #access-control-root .n-name { font:600 12px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #access-control-root .n-name-sm { font:500 11px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #access-control-root .n-sub { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#5a6580 }
+      #access-control-root .ey { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.18em;fill:#5a6580 }
+      #access-control-root .al { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#4f5d75 }
+      #access-control-root .al-accent { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#bf4520 }
+      #access-control-root .callout { font:italic 400 14px 'Instrument Serif', serif;fill:#4f5d75 }
+      #access-control-root .tag-t { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.08em;fill:#4f5d75 }
+      #access-control-root .k-backend { fill:#ffffff;stroke:#2d3142;stroke-width:1 }
+      #access-control-root .k-store { fill:rgba(45,49,66,0.05);stroke:#4f5d75;stroke-width:1 }
+      #access-control-root .k-focal { fill:rgba(191,69,32,0.08);stroke:#bf4520;stroke-width:1.2 }
+      #access-control-root .k-input { fill:rgba(79,93,117,0.10);stroke:#5a6580;stroke-width:1 }
+      #access-control-root .k-external { fill:rgba(45,49,66,0.03);stroke:rgba(45,49,66,0.30);stroke-width:1 }
+      #access-control-root .k-optional { fill:rgba(45,49,66,0.02);stroke:rgba(45,49,66,0.20);stroke-width:1;stroke-dasharray:4 3 }
+      #access-control-root .k-security { fill:rgba(191,69,32,0.05);stroke:rgba(191,69,32,0.50);stroke-width:1;stroke-dasharray:4 4 }
+      #access-control-root .zone { fill:rgba(45,49,66,0.03);stroke:#bfc0c0;stroke-width:1 }
+      #access-control-root .zone-dash { fill:none;stroke:#bfc0c0;stroke-width:1;stroke-dasharray:4 4 }
+      #access-control-root .row { fill:#ffffff;stroke:rgba(45,49,66,0.12);stroke-width:1 }
+      #access-control-root .tag { fill:rgba(45,49,66,0.04);stroke:rgba(45,49,66,0.30);stroke-width:0.8 }
+      #access-control-root .e { fill:none;stroke:#4f5d75;stroke-width:1 }
+      #access-control-root .e-accent { fill:none;stroke:#bf4520;stroke-width:1.2 }
+      #access-control-root .e-link { fill:none;stroke:#2e5aa8;stroke-width:1 }
+      #access-control-root .e-dash { fill:none;stroke:#4f5d75;stroke-width:1;stroke-dasharray:5 4 }
+      #access-control-root .e-dash-accent { fill:none;stroke:#bf4520;stroke-width:1.2;stroke-dasharray:5 4 }
+      #access-control-root .guide { fill:none;stroke:#2e5aa8;stroke-width:1;stroke-dasharray:2 4 }
+      #access-control-root .tick { fill:none;stroke:#bf4520;stroke-width:2 }
+      #access-control-root .mask { fill:#f5f5f5 }
+      #access-control-root .dot { fill:#2d3142 }
+      #access-control-root .n-sub-accent { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#bf4520 }</style><marker id="access-control-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker><marker id="access-control-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker><marker id="access-control-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<rect width="100%" height="100%" fill="#f5f5f5"/>
+<path class="e" d="M152 104L176 104" marker-end="url(#access-control-arrow)"/>
+<path class="e" d="M304 104L336 104" marker-end="url(#access-control-arrow)"/>
+<path class="e" d="M464 104L496 104" marker-end="url(#access-control-arrow)"/>
+<path class="e" d="M632 104L664 104" marker-end="url(#access-control-arrow)"/>
+<path class="e" d="M784 104L816 104" marker-end="url(#access-control-arrow)"/>
+<g><rect class="mask" x="787.75" y="85" width="24.5" height="12"/><text class="al" x="800" y="94" text-anchor="middle">YES</text></g>
+<path class="e-accent" d="M724 152L724 216" marker-end="url(#access-control-arrow-accent)"/>
+<text class="al-accent" x="732" y="188" text-anchor="start">NO</text>
+<path class="e-dash" d="M564 136L564 216" marker-end="url(#access-control-arrow)"/>
+<text class="al" x="572" y="180" text-anchor="start">RECORDS</text>
+<g><rect class="k-input" x="24" y="72" width="128" height="64" rx="20"/><text class="n-name" x="36" y="102">Call</text><text class="n-sub" x="36" y="116">principal and verb</text></g>
+<g><rect class="k-backend" x="176" y="72" width="128" height="64" rx="6"/><text class="n-name" x="188" y="102">Rate limit</text><text class="n-sub" x="188" y="116">per caller bucket</text></g>
+<g><rect class="k-store" x="336" y="72" width="128" height="64" rx="6"/><text class="n-name" x="348" y="102">Operation row</text><text class="n-sub" x="348" y="116">opened per call</text></g>
+<g><rect class="k-backend" x="496" y="72" width="136" height="64" rx="6"/><text class="n-name" x="508" y="102">Grant check</text><text class="n-sub" x="508" y="116">writes an audit row</text></g>
+<g><polygon class="k-backend" points="724,56 784,104 724,152 664,104"/><text class="n-name-sm" x="724" y="108" text-anchor="middle">Grant held?</text></g>
+<g><rect class="k-backend" x="816" y="72" width="120" height="64" rx="6"/><text class="n-name" x="828" y="102">Run the verb</text><text class="n-sub" x="828" y="116">result returned</text></g>
+<g><rect class="k-security" x="644" y="216" width="160" height="64" rx="6"/><text class="n-name" x="656" y="246">not_found</text><text class="n-sub" x="656" y="260">same error for any miss</text></g>
+<g><rect class="k-store" x="464" y="216" width="136" height="64" rx="6"/><text class="n-name" x="476" y="246">Audit log</text><text class="n-sub" x="476" y="260">hash-chained rows</text></g>
+<text class="callout" x="24" y="328" text-anchor="start">Every decision is audited, allowed or denied.</text>
+<text class="callout" x="24" y="348" text-anchor="start">A refusal is always not_found, so a caller cannot probe tenant ids.</text>
+</svg>

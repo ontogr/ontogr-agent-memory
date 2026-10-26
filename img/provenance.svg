@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 960 368" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="provenance-title provenance-desc" id="provenance-root">
+<title id="provenance-title">Provenance</title>
+<desc id="provenance-desc">A read result traces to a fact version, which carries the ids of its observations. Each observation holds a statement and a verbatim quote, and points to its episode. Separately, every temporal write appends a ledger entry that holds the hash of the entry before it, and verify checks the chain.</desc>
+<defs>
+      <style>#provenance-root { --color-paper:#f5f5f5; --color-ink:#2d3142; --color-muted:#4f5d75; --color-accent:#bf4520; --font-sans:'Geist', system-ui, sans-serif; --font-serif:'Instrument Serif', serif; --font-mono:'Geist Mono', ui-monospace, monospace; }
+      #provenance-root { font-family: var(--font-sans); color: var(--color-ink); }
+      #provenance-root .diagram-container { width: 100%; overflow-x: auto; }
+      #provenance-root .diagram-container { overflow-x: visible; }
+      #provenance-root .n-name { font:600 12px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #provenance-root .n-name-sm { font:500 11px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #provenance-root .n-sub { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#5a6580 }
+      #provenance-root .ey { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.18em;fill:#5a6580 }
+      #provenance-root .al { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#4f5d75 }
+      #provenance-root .al-accent { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#bf4520 }
+      #provenance-root .callout { font:italic 400 14px 'Instrument Serif', serif;fill:#4f5d75 }
+      #provenance-root .tag-t { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.08em;fill:#4f5d75 }
+      #provenance-root .k-backend { fill:#ffffff;stroke:#2d3142;stroke-width:1 }
+      #provenance-root .k-store { fill:rgba(45,49,66,0.05);stroke:#4f5d75;stroke-width:1 }
+      #provenance-root .k-focal { fill:rgba(191,69,32,0.08);stroke:#bf4520;stroke-width:1.2 }
+      #provenance-root .k-input { fill:rgba(79,93,117,0.10);stroke:#5a6580;stroke-width:1 }
+      #provenance-root .k-external { fill:rgba(45,49,66,0.03);stroke:rgba(45,49,66,0.30);stroke-width:1 }
+      #provenance-root .k-optional { fill:rgba(45,49,66,0.02);stroke:rgba(45,49,66,0.20);stroke-width:1;stroke-dasharray:4 3 }
+      #provenance-root .k-security { fill:rgba(191,69,32,0.05);stroke:rgba(191,69,32,0.50);stroke-width:1;stroke-dasharray:4 4 }
+      #provenance-root .zone { fill:rgba(45,49,66,0.03);stroke:#bfc0c0;stroke-width:1 }
+      #provenance-root .zone-dash { fill:none;stroke:#bfc0c0;stroke-width:1;stroke-dasharray:4 4 }
+      #provenance-root .row { fill:#ffffff;stroke:rgba(45,49,66,0.12);stroke-width:1 }
+      #provenance-root .tag { fill:rgba(45,49,66,0.04);stroke:rgba(45,49,66,0.30);stroke-width:0.8 }
+      #provenance-root .e { fill:none;stroke:#4f5d75;stroke-width:1 }
+      #provenance-root .e-accent { fill:none;stroke:#bf4520;stroke-width:1.2 }
+      #provenance-root .e-link { fill:none;stroke:#2e5aa8;stroke-width:1 }
+      #provenance-root .e-dash { fill:none;stroke:#4f5d75;stroke-width:1;stroke-dasharray:5 4 }
+      #provenance-root .e-dash-accent { fill:none;stroke:#bf4520;stroke-width:1.2;stroke-dasharray:5 4 }
+      #provenance-root .guide { fill:none;stroke:#2e5aa8;stroke-width:1;stroke-dasharray:2 4 }
+      #provenance-root .tick { fill:none;stroke:#bf4520;stroke-width:2 }
+      #provenance-root .mask { fill:#f5f5f5 }
+      #provenance-root .dot { fill:#2d3142 }
+      #provenance-root .n-sub-accent { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#bf4520 }</style><marker id="provenance-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker><marker id="provenance-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker><marker id="provenance-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<rect width="100%" height="100%" fill="#f5f5f5"/>
+<path class="e" d="M208 100L280 100" marker-end="url(#provenance-arrow)"/>
+<g><rect class="mask" x="215.25" y="81" width="57.5" height="12"/><text class="al" x="244" y="90" text-anchor="middle">TRACES TO</text></g>
+<path class="e" d="M464 100L536 100" marker-end="url(#provenance-arrow)"/>
+<g><rect class="mask" x="471.25" y="81" width="57.5" height="12"/><text class="al" x="500" y="90" text-anchor="middle">TRACES TO</text></g>
+<path class="e" d="M720 100L792 100" marker-end="url(#provenance-arrow)"/>
+<g><rect class="mask" x="727.25" y="81" width="57.5" height="12"/><text class="al" x="756" y="90" text-anchor="middle">TRACES TO</text></g>
+<path class="e-dash" d="M372 136L372 248" marker-end="url(#provenance-arrow)"/>
+<text class="al" x="380" y="184" text-anchor="start">APPENDS</text>
+<path class="e" d="M520 280L456 280" marker-end="url(#provenance-arrow)"/>
+<g><rect class="mask" x="459.25" y="261" width="57.5" height="12"/><text class="al" x="488" y="270" text-anchor="middle">PREV HASH</text></g>
+<path class="e" d="M752 280L688 280" marker-end="url(#provenance-arrow)"/>
+<g><rect class="mask" x="691.25" y="261" width="57.5" height="12"/><text class="al" x="720" y="270" text-anchor="middle">PREV HASH</text></g>
+<path class="e-dash" d="M208 280L264 280" marker-end="url(#provenance-arrow)"/>
+<g><rect class="mask" x="215.5" y="261" width="41" height="12"/><text class="al" x="236" y="270" text-anchor="middle">CHECKS</text></g>
+<g><rect class="k-backend" x="24" y="64" width="184" height="72" rx="6"/><text class="n-name" x="36" y="98">Read result</text><text class="n-sub" x="36" y="112">fact, quote, episode id</text></g>
+<g><rect class="k-focal" x="280" y="64" width="184" height="72" rx="6"/><text class="n-name" x="292" y="91">Fact version</text><text class="n-sub" x="292" y="105">observation ids</text><text class="n-sub" x="292" y="119">validity window</text></g>
+<g><rect class="k-backend" x="536" y="64" width="184" height="72" rx="6"/><text class="n-name" x="548" y="91">Observation</text><text class="n-sub" x="548" y="105">statement</text><text class="n-sub" x="548" y="119">verbatim quote</text></g>
+<g><rect class="k-backend" x="792" y="64" width="144" height="72" rx="6"/><text class="n-name" x="804" y="91">Episode</text><text class="n-sub" x="804" y="105">source, actor</text><text class="n-sub" x="804" y="119">content hash</text></g>
+<g><rect class="zone-dash" x="264" y="200" width="672" height="136" rx="8"/><text class="ey" x="276" y="220">HASH CHAIN</text></g>
+<g><rect class="k-store" x="288" y="248" width="168" height="64" rx="6"/><text class="n-name" x="300" y="278">Entry 1</text><text class="n-sub" x="300" y="292">payload hash</text></g>
+<g><rect class="k-store" x="520" y="248" width="168" height="64" rx="6"/><text class="n-name" x="532" y="278">Entry 2</text><text class="n-sub" x="532" y="292">holds hash of entry 1</text></g>
+<g><rect class="k-store" x="752" y="248" width="168" height="64" rx="6"/><text class="n-name" x="764" y="278">Entry 3</text><text class="n-sub" x="764" y="292">holds hash of entry 2</text></g>
+<g><rect class="k-backend" x="24" y="248" width="184" height="64" rx="6"/><text class="n-name" x="36" y="271">verify()</text><text class="n-sub" x="36" y="285">finds an edited, inserted,</text><text class="n-sub" x="36" y="299">or deleted entry</text></g>
+</svg>

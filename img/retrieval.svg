@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 960 440" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="retrieval-title retrieval-desc" id="retrieval-root">
+<title id="retrieval-title">Retrieval</title>
+<desc id="retrieval-desc">A query is embedded once. The vector, keyword, and entity lanes run at the same time, and the graph lane walks outward from seed entities that those lanes supply. Reciprocal rank fusion merges the lane results, an optional reranker rescores a shortlist of passages, and the result becomes a budgeted, escaped context block.</desc>
+<defs>
+      <style>#retrieval-root { --color-paper:#f5f5f5; --color-ink:#2d3142; --color-muted:#4f5d75; --color-accent:#bf4520; --font-sans:'Geist', system-ui, sans-serif; --font-serif:'Instrument Serif', serif; --font-mono:'Geist Mono', ui-monospace, monospace; }
+      #retrieval-root { font-family: var(--font-sans); color: var(--color-ink); }
+      #retrieval-root .diagram-container { width: 100%; overflow-x: auto; }
+      #retrieval-root .diagram-container { overflow-x: visible; }
+      #retrieval-root .n-name { font:600 12px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #retrieval-root .n-name-sm { font:500 11px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #retrieval-root .n-sub { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#5a6580 }
+      #retrieval-root .ey { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.18em;fill:#5a6580 }
+      #retrieval-root .al { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#4f5d75 }
+      #retrieval-root .al-accent { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#bf4520 }
+      #retrieval-root .callout { font:italic 400 14px 'Instrument Serif', serif;fill:#4f5d75 }
+      #retrieval-root .tag-t { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.08em;fill:#4f5d75 }
+      #retrieval-root .k-backend { fill:#ffffff;stroke:#2d3142;stroke-width:1 }
+      #retrieval-root .k-store { fill:rgba(45,49,66,0.05);stroke:#4f5d75;stroke-width:1 }
+      #retrieval-root .k-focal { fill:rgba(191,69,32,0.08);stroke:#bf4520;stroke-width:1.2 }
+      #retrieval-root .k-input { fill:rgba(79,93,117,0.10);stroke:#5a6580;stroke-width:1 }
+      #retrieval-root .k-external { fill:rgba(45,49,66,0.03);stroke:rgba(45,49,66,0.30);stroke-width:1 }
+      #retrieval-root .k-optional { fill:rgba(45,49,66,0.02);stroke:rgba(45,49,66,0.20);stroke-width:1;stroke-dasharray:4 3 }
+      #retrieval-root .k-security { fill:rgba(191,69,32,0.05);stroke:rgba(191,69,32,0.50);stroke-width:1;stroke-dasharray:4 4 }
+      #retrieval-root .zone { fill:rgba(45,49,66,0.03);stroke:#bfc0c0;stroke-width:1 }
+      #retrieval-root .zone-dash { fill:none;stroke:#bfc0c0;stroke-width:1;stroke-dasharray:4 4 }
+      #retrieval-root .row { fill:#ffffff;stroke:rgba(45,49,66,0.12);stroke-width:1 }
+      #retrieval-root .tag { fill:rgba(45,49,66,0.04);stroke:rgba(45,49,66,0.30);stroke-width:0.8 }
+      #retrieval-root .e { fill:none;stroke:#4f5d75;stroke-width:1 }
+      #retrieval-root .e-accent { fill:none;stroke:#bf4520;stroke-width:1.2 }
+      #retrieval-root .e-link { fill:none;stroke:#2e5aa8;stroke-width:1 }
+      #retrieval-root .e-dash { fill:none;stroke:#4f5d75;stroke-width:1;stroke-dasharray:5 4 }
+      #retrieval-root .e-dash-accent { fill:none;stroke:#bf4520;stroke-width:1.2;stroke-dasharray:5 4 }
+      #retrieval-root .guide { fill:none;stroke:#2e5aa8;stroke-width:1;stroke-dasharray:2 4 }
+      #retrieval-root .tick { fill:none;stroke:#bf4520;stroke-width:2 }
+      #retrieval-root .mask { fill:#f5f5f5 }
+      #retrieval-root .dot { fill:#2d3142 }
+      #retrieval-root .n-sub-accent { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#bf4520 }</style><marker id="retrieval-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker><marker id="retrieval-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker><marker id="retrieval-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<rect width="100%" height="100%" fill="#f5f5f5"/>
+<path class="e" d="M112 180L144 180" marker-end="url(#retrieval-arrow)"/>
+<path class="e" d="M256 180L296 180" marker-end="url(#retrieval-arrow)"/>
+<path class="e" d="M528 96L592 96" marker-end="url(#retrieval-arrow)"/>
+<g><rect class="mask" x="542.25" y="77" width="35.5" height="12"/><text class="al" x="560" y="86" text-anchor="middle">SEEDS</text></g>
+<path class="e" d="M528 248L592 248" marker-end="url(#retrieval-arrow)"/>
+<g><rect class="mask" x="542.25" y="229" width="35.5" height="12"/><text class="al" x="560" y="238" text-anchor="middle">RANKS</text></g>
+<path class="e" d="M672 128L672 216" marker-end="url(#retrieval-arrow)"/>
+<text class="al" x="680" y="176" text-anchor="start">RANKS</text>
+<path class="e-dash" d="M752 248L800 248" marker-end="url(#retrieval-arrow)"/>
+<path class="e" d="M868 280L868 344" marker-end="url(#retrieval-arrow)"/>
+<g><rect class="k-input" x="24" y="156" width="88" height="48" rx="24"/><text class="n-name" x="68" y="184" text-anchor="middle">Query</text></g>
+<g><rect class="k-backend" x="144" y="148" width="112" height="64" rx="6"/><text class="n-name" x="156" y="178">Embed once</text><text class="n-sub" x="156" y="192">one query vector</text></g>
+<g><rect class="zone" x="296" y="56" width="232" height="248" rx="8"/><text class="ey" x="308" y="76">RUN AT THE SAME TIME</text></g>
+<g><rect class="k-backend" x="312" y="88" width="200" height="56" rx="6"/><text class="n-name" x="324" y="114">Vector lane</text><text class="n-sub" x="324" y="128">fact and episode vectors</text></g>
+<g><rect class="k-backend" x="312" y="152" width="200" height="56" rx="6"/><text class="n-name" x="324" y="178">Keyword lane</text><text class="n-sub" x="324" y="192">statements and episode text</text></g>
+<g><rect class="k-backend" x="312" y="216" width="200" height="56" rx="6"/><text class="n-name" x="324" y="242">Entity lane</text><text class="n-sub" x="324" y="256">mentions, aliases, vectors</text></g>
+<g><rect class="k-backend" x="592" y="64" width="160" height="64" rx="6"/><text class="n-name" x="604" y="87">Graph lane</text><text class="n-sub" x="604" y="101">bounded walk from</text><text class="n-sub" x="604" y="115">seed entities</text></g>
+<g><rect class="k-backend" x="592" y="216" width="160" height="64" rx="6"/><text class="n-name" x="604" y="246">Rank fusion</text><text class="n-sub" x="604" y="260">reciprocal rank fusion</text></g>
+<g><rect class="k-optional" x="800" y="216" width="136" height="64" rx="6"/><text class="n-name" x="812" y="246">Reranker</text><text class="n-sub" x="812" y="260">optional, passages</text></g>
+<g><rect class="k-focal" x="752" y="344" width="184" height="72" rx="6"/><text class="n-name" x="764" y="378">Context block</text><text class="n-sub" x="764" y="392">budgeted and escaped</text></g>
+<text class="callout" x="24" y="372" text-anchor="start">Each lane reports ok, empty, failed, or skipped.</text>
+<text class="callout" x="24" y="392" text-anchor="start">A failed lane degrades the result and the other lanes still answer.</text>
+</svg>
