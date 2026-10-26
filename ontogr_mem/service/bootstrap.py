@@ -181,6 +181,7 @@ async def open_service(
     *,
     state_settings: StateSettings | None = None,
     stores_factory: StoresFactory | None = None,
+    drop_graph: Callable[[str], Awaitable[None]] | None = None,
     clock: Clock | None = None,
     llm: LLMClient | None = None,
     embedder: Embedder,
@@ -197,7 +198,10 @@ async def open_service(
     Args:
         settings: Tenant graph backend.
         state_settings: Durable job and erase-journal configuration.
-        stores_factory: Optional tenant-store factory override.
+        stores_factory: Optional tenant-store factory override. When set, the
+            caller must also pass ``drop_graph``.
+        drop_graph: Graph cleanup callback for ``stores_factory``. Ignored
+            when the configured backend opens the stores.
         clock: Shared time source; defaults to the system clock.
         llm: Optional client for text extraction and model-backed operations.
         embedder: Client used by tenant vector stores.
@@ -212,6 +216,9 @@ async def open_service(
     Yields:
         A service runtime. The runtime and its stores are closed
         when the context exits.
+
+    Raises:
+        ValueError: If ``stores_factory`` is given without ``drop_graph``.
     """
     service_settings = settings or ServiceSettings()
     selected_state = state_settings or StateSettings()
@@ -222,7 +229,6 @@ async def open_service(
         resources.push_async_callback(state.close)
 
         selected_stores_factory = stores_factory
-        drop_graph: Callable[[str], Awaitable[None]] | None = None
         if selected_stores_factory is None:
             graph_store, selected_stores_factory = _BACKENDS[service_settings.backend]()
             resources.push_async_callback(graph_store.close)
