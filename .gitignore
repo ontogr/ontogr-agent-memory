@@ -230,4 +230,3 @@ pytest-integration-results.xml
 /reports/
 coverage-data-*
 pytest-integration-results-*.xml
-
