@@ -1,12 +1,12 @@
 <h1 align="center"><a href="https://github.com/ontogr/ontogr-agent-memory">Agent Memory</a></h1>
 
 <h3 align="center">Durable, traceable memory for AI agents.</h3>
-<h4 align="center"><a href="#quickstart">Quickstart</a> · <a href="#core-concepts">Concepts</a> · <a href="#how-data-flows">Data flow</a> · <a href="#features">Features</a> · <a href="#service-api">Service API</a> · <a href="#configuration">Configuration</a> · <a href="CONTEXT.md">Vocabulary</a> · <a href="CHANGELOG.md">Changelog</a></h4>
+<h4 align="center"><a href="https://github.com/ontogr/ontogr-agent-memory#quickstart">Quickstart</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#core-concepts">Concepts</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#how-data-flows">Data flow</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#features">Features</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#service-api">Service API</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#configuration">Configuration</a> · <a href="https://github.com/ontogr/ontogr-agent-memory/blob/main/CONTEXT.md">Vocabulary</a> · <a href="https://github.com/ontogr/ontogr-agent-memory/blob/main/CHANGELOG.md">Changelog</a></h4>
 
 <div align="center">
 
-[![PyPI](https://img.shields.io/pypi/v/agent-memory.svg)](https://pypi.org/project/agent-memory/)
-[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://pypi.org/project/agent-memory/)
+[![PyPI](https://img.shields.io/pypi/v/ontogr-mem.svg)](https://pypi.org/project/ontogr-mem/)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://pypi.org/project/ontogr-mem/)
 [![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/ontogr/ontogr-agent-memory)
 [![License](https://img.shields.io/github/license/ontogr/ontogr-agent-memory?color=green)](https://github.com/ontogr/ontogr-agent-memory/blob/main/LICENSE)
 
@@ -15,6 +15,7 @@
 <div align="center">
 
 [![CI](https://img.shields.io/github/actions/workflow/status/ontogr/ontogr-agent-memory/ci.yml?branch=main&label=CI&logo=githubactions)](https://github.com/ontogr/ontogr-agent-memory/actions/workflows/ci.yml)
+[![Integration tests](https://img.shields.io/github/actions/workflow/status/ontogr/ontogr-agent-memory/integration.yml?branch=main&label=integration%20tests&logo=pytest)](https://github.com/ontogr/ontogr-agent-memory/actions/workflows/integration.yml)
 [![Codecov](https://codecov.io/gh/ontogr/ontogr-agent-memory/branch/main/graph/badge.svg)](https://codecov.io/gh/ontogr/ontogr-agent-memory)
 
 </div>
@@ -47,21 +48,23 @@ In this example you store one structured fact and read it back. It uses the in-m
 
 ### 1. Install
 
+The package installs as `ontogr-mem` and imports as `ontogr_mem`.
+
 ```bash
-uv add agent-memory
+uv add ontogr-mem
 ```
 
 The core package has no database driver. Add the extra for your backend:
 
 ```bash
-uv add "agent-memory[falkordb]"
-uv add "agent-memory[neo4j]"
-uv add "agent-memory[pgvector]"
-uv add "agent-memory[postgres]"
-uv add "agent-memory[otel]"
+uv add "ontogr-mem[falkordb]"
+uv add "ontogr-mem[neo4j]"
+uv add "ontogr-mem[pgvector]"
+uv add "ontogr-mem[postgres]"
+uv add "ontogr-mem[otel]"
 ```
 
-Optional extraction extras are `gliner` and `spacy`. The full set is in [pyproject.toml](pyproject.toml).
+Optional extraction extras are `gliner` and `spacy`. The full set is in [pyproject.toml](https://github.com/ontogr/ontogr-agent-memory/blob/main/pyproject.toml).
 
 ### 2. Run the example
 
@@ -152,7 +155,7 @@ export MEMORY_FALKORDB_HOST=localhost
 export MEMORY_FALKORDB_PORT=6379
 ```
 
-The service refuses the in-memory backend unless you set `MEMORY_SERVICE_ALLOW_EPHEMERAL=true`. The state store has its own gate, `MEMORY_STATE_ALLOW_EPHEMERAL=true`. See [Configuration](#configuration) and [.env.example](.env.example) for more settings.
+The service refuses the in-memory backend unless you set `MEMORY_SERVICE_ALLOW_EPHEMERAL=true`. The state store has its own gate, `MEMORY_STATE_ALLOW_EPHEMERAL=true`. See [Configuration](#configuration) and [.env.example](https://github.com/ontogr/ontogr-agent-memory/blob/main/.env.example) for more settings.
 
 ## Core concepts
 
@@ -594,7 +597,7 @@ Settings classes use `pydantic-settings`. They read the repo-root `.env` and use
 | `MEMORY_FORGET_` | Forget confirmation secret. |
 | `MEMORY_` | Local stdio principal id, tenant, and grants. |
 
-Nested settings use a double underscore, for example `MEMORY_FALKORDB_RESILIENCE__MAX_ATTEMPTS`. See [.env.example](.env.example) for the test-service values.
+Nested settings use a double underscore, for example `MEMORY_FALKORDB_RESILIENCE__MAX_ATTEMPTS`. See [.env.example](https://github.com/ontogr/ontogr-agent-memory/blob/main/.env.example) for the test-service values.
 
 ## Development
 
@@ -610,23 +613,23 @@ make test
 | --- | --- |
 | `make sync` | Install all dependencies. |
 | `make test` | Run unit tests with coverage. |
-| `make test-integration` | Run integration tests against external services. |
+| `make test-integration` | Run integration tests against the test services. `INTEGRATION_PATHS=<paths>` picks modules and `INTEGRATION_WORKERS=<n>` sets the number of workers. |
 | `make test-all` | Run unit and integration tests. |
 | `make lint-check` | Check formatting and lint without modifying files. |
 | `make lint-typing` | Type check with `ty`. |
 | `make lint-all` | Format, apply lint fixes, type check, check typos, and audit workflows. |
 | `make security` | Run Bandit and a dependency audit. |
-| `make services-up` | Start the FalkorDB and Neo4j test services. |
+| `make services-up` | Start the FalkorDB, Neo4j, pgvector, and Postgres test services. `SERVICES=<names>` starts only those. |
 | `make services-down` | Stop the test services and remove their volumes. |
 | `make build` | Build the sdist and wheel. |
 | `make wheel-test` | Build the wheel and import it in a clean environment. |
 
-Unit tests do not touch the network. Integration tests use real services and can read real environment variables or `.env`.
+Unit tests do not touch the network. Integration tests use real services and can read real environment variables or `.env`. Run `make services-up` first. A test fails, and is not skipped, when a service it needs is not running.
 
 ## Contributing
 
-We welcome bug fixes, new features, documentation improvements, and other contributions. Please read the [Contributing guide](CONTRIBUTING.md) before you submit a pull request. Rules for coding agents are in [AGENTS.md](AGENTS.md).
+We welcome bug fixes, new features, documentation improvements, and other contributions. Please read the [Contributing guide](https://github.com/ontogr/ontogr-agent-memory/blob/main/CONTRIBUTING.md) before you submit a pull request. Rules for coding agents are in [AGENTS.md](https://github.com/ontogr/ontogr-agent-memory/blob/main/AGENTS.md).
 
 ## License
 
-Agent Memory is licensed under the [Apache License 2.0](LICENSE).
+Agent Memory is licensed under the [Apache License 2.0](https://github.com/ontogr/ontogr-agent-memory/blob/main/LICENSE).
