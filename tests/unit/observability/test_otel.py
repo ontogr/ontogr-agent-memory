@@ -48,7 +48,7 @@ class TestOpenTelemetryTracer:
         monkeypatch.delitem(sys.modules, "opentelemetry.trace", raising=False)
         monkeypatch.setitem(sys.modules, "opentelemetry", None)
 
-        with pytest.raises(MissingExtraError, match=r"agent-memory\[otel\]"):
+        with pytest.raises(MissingExtraError, match=r"ontogr-mem\[otel\]"):
             opentelemetry_tracer()
 
     def test_span_names_and_attributes_are_forwarded_safely(self):

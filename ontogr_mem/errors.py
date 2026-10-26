@@ -41,7 +41,6 @@ class MissingExtraError(AgentMemoryError):
             extra: Name of the extra to install.
         """
         super().__init__(
-            f'this feature needs the "{extra}" extra: '
-            f'pip install "agent-memory[{extra}]"'
+            f'this feature needs the "{extra}" extra: pip install "ontogr-mem[{extra}]"'
         )
         self.extra = extra

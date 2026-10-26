@@ -43,7 +43,7 @@ class TestMissingExtraError:
         """The message tells the user how to install the extra."""
         error = MissingExtraError("falkordb")
 
-        assert 'pip install "agent-memory[falkordb]"' in str(error)
+        assert 'pip install "ontogr-mem[falkordb]"' in str(error)
         assert error.extra == "falkordb"
 
 
