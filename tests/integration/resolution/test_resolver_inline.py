@@ -490,7 +490,7 @@ async def test_candidate_cap_and_verifier_order_follow_rank_key(
     store, vector_store = await _ranked_store(graph_backend)
     seen: list[str] = []
 
-    def record(graph_backend: GraphBackend, name_a: str, name_b: str) -> bool:
+    def record(name_a: str, name_b: str) -> bool:
         seen.append(name_b)
         return False
 
