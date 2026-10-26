@@ -1,6 +1,9 @@
 services:
   falkordb:
     image: falkordb/falkordb:v4.22.2
+    # The image starts a web browser UI next to the server by default. Tests do not use it.
+    environment:
+      BROWSER: "0"
     ports: ["127.0.0.1:16379:6379"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]

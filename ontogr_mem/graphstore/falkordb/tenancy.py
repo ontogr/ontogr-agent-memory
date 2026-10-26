@@ -24,7 +24,9 @@ class TenantGraphs:
         self._pool = pool
         self.schema = SchemaManager(pool.runner)
         self._provisioned: dict[str, SchemaPart] = {}
-        self._locks: dict[str, asyncio.Lock] = {}
+        # One lock for every graph. FalkorDB v4.22 can crash with a segmentation
+        # fault when many graphs create their indexes at the same moment.
+        self._provision_lock = asyncio.Lock()
 
     async def open(
         self, tenant: str, parts: Sequence[SchemaPart] | None = None
@@ -37,8 +39,7 @@ class TenantGraphs:
         )
         if self._provisioned.get(handle.graph) == wanted:
             return handle
-        lock = self._locks.setdefault(handle.graph, asyncio.Lock())
-        async with lock:
+        async with self._provision_lock:
             if self._provisioned.get(handle.graph) != wanted:
                 await self.schema.provision(handle.graph, wanted)
                 self._provisioned[handle.graph] = wanted
@@ -50,7 +51,8 @@ class TenantGraphs:
 
     async def reprovision(self, handle: GraphHandle) -> None:
         """Create any missing index or constraint of the handle's schema."""
-        await self.schema.provision(handle.graph, self.schema_of(handle))
+        async with self._provision_lock:
+            await self.schema.provision(handle.graph, self.schema_of(handle))
 
     async def erase(self, tenant: str) -> None:
         """Delete the tenant's graph."""

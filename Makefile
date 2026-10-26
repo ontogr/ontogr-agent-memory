@@ -6,8 +6,8 @@ help:
 	@echo "Available make targets:"
 	@echo "  make sync             - Sync project and install dependencies"
 	@echo "  make test             - Run unit tests with coverage"
-	@echo "  make test-integration - Run integration tests (requires external services)"
-	@echo "  make services-up      - Start the FalkorDB, Neo4j and Postgres test services"
+	@echo "  make test-integration - Run integration tests (requires external services; INTEGRATION_PATHS=<paths> picks modules)"
+	@echo "  make services-up      - Start the FalkorDB, Neo4j and Postgres test services (SERVICES=<names> starts only those)"
 	@echo "  make services-down    - Stop the test services and remove their volumes"
 	@echo "  make test-all         - Run unit and integration tests in order"
 	@echo "  make cov-report       - Generate coverage reports (html)"
@@ -37,13 +37,21 @@ test:
 		--cov-report=xml \
 		--junitxml=pytest-results.xml
 
+# INTEGRATION_PATHS narrows the run to some modules. CI runs one module per job.
+INTEGRATION_PATHS ?= tests/integration
+INTEGRATION_WORKERS ?= auto
+
 test-integration:
-	uv run pytest tests/integration -v -n auto --dist loadscope \
+	uv run pytest $(INTEGRATION_PATHS) -v --maxfail=1 -n $(INTEGRATION_WORKERS) --dist loadscope \
 		-o "addopts=--strict-markers --strict-config --disable-socket --allow-unix-socket -ra" \
 		--junitxml=pytest-integration-results.xml
 
+# SERVICES names the compose services to start: falkordb, neo4j, pgvector and
+# relational. It starts all of them when empty.
+SERVICES ?=
+
 services-up:
-	docker compose -f tests/integration/compose.yaml up -d --wait
+	docker compose -f tests/integration/compose.yaml up -d --wait $(SERVICES)
 
 services-down:
 	docker compose -f tests/integration/compose.yaml down -v
