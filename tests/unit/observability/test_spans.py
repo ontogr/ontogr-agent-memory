@@ -122,9 +122,8 @@ class TestOpenSpan:
         tracer = _Tracer(fail_error=True)
         original = ValueError("body failed")
 
-        with pytest.raises(ValueError) as excinfo:
-            with open_span(tracer, SpanName.WRITE):
-                raise original
+        with pytest.raises(ValueError) as excinfo, open_span(tracer, SpanName.WRITE):
+            raise original
 
         assert excinfo.value is original
         assert "WARNING" in caplog.text
@@ -144,9 +143,8 @@ class TestOpenSpan:
         tracer = _Tracer(fail_exit=True)
         original = ValueError("body failed")
 
-        with pytest.raises(ValueError) as excinfo:
-            with open_span(tracer, SpanName.WRITE):
-                raise original
+        with pytest.raises(ValueError) as excinfo, open_span(tracer, SpanName.WRITE):
+            raise original
 
         assert excinfo.value is original
 
@@ -154,9 +152,8 @@ class TestOpenSpan:
         """Cancellation raised by the body always propagates to the caller."""
         tracer = _Tracer(suppress=True)
 
-        with pytest.raises(asyncio.CancelledError):
-            with open_span(tracer, SpanName.WRITE):
-                raise asyncio.CancelledError
+        with pytest.raises(asyncio.CancelledError), open_span(tracer, SpanName.WRITE):
+            raise asyncio.CancelledError
 
     def test_attributes_are_redacted_and_capped_before_the_tracer_sees_them(self):
         """The tracer receives safe initial attributes and safe later updates."""

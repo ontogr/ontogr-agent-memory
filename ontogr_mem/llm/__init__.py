@@ -2,8 +2,8 @@
 
 from ontogr_mem.llm.base import LLMClient, LLMRequest, LLMResponse, ModelSize
 from ontogr_mem.llm.errors import (
-    CircuitOpen,
-    DeadlineExceeded,
+    CircuitOpenError,
+    DeadlineExceededError,
     InputTooLargeError,
     LLMCallError,
     LLMError,
@@ -17,8 +17,8 @@ from ontogr_mem.llm.settings import LLMSettings
 
 __all__ = [
     "BatchItem",
-    "CircuitOpen",
-    "DeadlineExceeded",
+    "CircuitOpenError",
+    "DeadlineExceededError",
     "InputTooLargeError",
     "LLMCallError",
     "LLMClient",

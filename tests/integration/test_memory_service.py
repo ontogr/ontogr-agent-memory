@@ -225,8 +225,7 @@ class TestMemoryService:
         assert historical.facts and historical.facts[0].fact_id == fact_id
         assert current.facts == []
         assert any(
-            fact.valid_to == datetime(2025, 9, 1, tzinfo=UTC)
-            for fact in history.facts
+            fact.valid_to == datetime(2025, 9, 1, tzinfo=UTC) for fact in history.facts
         )
 
     async def test_update_refuses_a_closed_fact(self):

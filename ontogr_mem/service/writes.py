@@ -135,7 +135,7 @@ async def _prepare_fact(
         principal_id,
         Kind.EVENT,
         occurred_at,
-        {
+        content={
             "subject": request.subject,
             "relation": relation.label,
             "object": request.object,
@@ -201,7 +201,7 @@ async def _prepare_text(
     occurred_at = request.reference_time or job.created_at
     episode = await _ingest_draft(
         tenant,
-        _draft(job, request, principal_id, kind, occurred_at, request.content),
+        _draft(job, request, principal_id, kind, occurred_at, content=request.content),
     )
     projection = await tenant.ontology.extraction_view()
     entities = await EntityExtraction(
@@ -226,7 +226,8 @@ async def _prepare_text(
     return episode, fact_result.facts
 
 
-async def update_memory(
+# The update's steps run in order and share one episode, so the flow stays whole.
+async def update_memory(  # noqa: PLR0915
     tenant: TenantRuntime, job: Job, payload: Mapping[str, Any]
 ) -> dict[str, Any]:
     """Close a current fact and assert its replacement in one episode."""
@@ -268,7 +269,7 @@ async def update_memory(
         str(payload["principal_id"]),
         Kind.EVENT,
         effective,
-        {"op": "update", "fact_id": request.fact_id, "object": object_name},
+        content={"op": "update", "fact_id": request.fact_id, "object": object_name},
     )
     episode = await _ingest_draft(tenant, draft)
     projection = await tenant.ontology.extraction_view()
@@ -292,7 +293,7 @@ async def update_memory(
         ("s", "o"),
         relation_type,
         effective,
-        Polarity.NEGATED,
+        polarity=Polarity.NEGATED,
     )
     assertion = _fact_for_update(
         episode,
@@ -300,7 +301,7 @@ async def update_memory(
         ("s", "n"),
         relation_type,
         effective,
-        Polarity.AFFIRMED,
+        polarity=Polarity.AFFIRMED,
     )
     facts = assign_ids(episode.id, [end, assertion])
     stabilized = await stabilize_facts(
@@ -349,7 +350,7 @@ async def invalidate_memory(
         principal_id,
         Kind.EVENT,
         applied_end,
-        {
+        content={
             "op": "invalidate",
             "fact_ids": [request.fact_id],
             "reason": request.reason,
@@ -435,6 +436,7 @@ def _fact_for_update(
     refs: tuple[str, str],
     relation_type: int,
     effective: datetime,
+    *,
     polarity: Polarity,
 ) -> ExtractedFact:
     """Build one stated-end or assertion fact for an update."""
@@ -502,6 +504,7 @@ def _draft(
     principal_id: str,
     kind: Kind,
     occurred_at: datetime,
+    *,
     content: str | dict[str, Any],
 ) -> EpisodeDraft:
     """Build the episode envelope for a service write."""

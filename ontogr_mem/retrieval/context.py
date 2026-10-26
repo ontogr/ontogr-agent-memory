@@ -178,6 +178,7 @@ def assemble(
     budget_tokens: int,
     settings: RetrievalSettings,
     count_tokens: Callable[[str], int] = estimate_tokens,
+    *,
     relation_label: Callable[[int], str] | None = None,
 ) -> ContextBlock:
     """Assemble ranked result parts into an escaped, budgeted context block.
@@ -188,6 +189,8 @@ def assemble(
         budget_tokens: Maximum token count for the returned text.
         settings: Section shares and episode passage limit.
         count_tokens: Counter used for every budget decision and final count.
+        relation_label: Returns a human-readable label for a relation type id.
+            Omit it to show facts without a relation name.
 
     Returns:
         The context text, placed item identities, dropped item count and token

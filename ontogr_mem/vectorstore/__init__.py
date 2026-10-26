@@ -6,7 +6,7 @@ from ontogr_mem.vectorstore.episode_vectors import write_episode_vectors
 from ontogr_mem.vectorstore.errors import (
     CapabilityError,
     EmbeddingError,
-    EmbeddingFailed,
+    EmbeddingFailedError,
     EmbeddingTimeoutError,
     IndexDriftError,
     InvalidVectorError,
@@ -48,7 +48,7 @@ __all__ = [
     "EmbedItem",
     "Embedder",
     "EmbeddingError",
-    "EmbeddingFailed",
+    "EmbeddingFailedError",
     "EmbeddingGateway",
     "EmbeddingTimeoutError",
     "FactVectorObserver",

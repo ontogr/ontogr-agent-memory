@@ -123,7 +123,7 @@ class TestRecordFacts:
         assert (f.valid_from, f.time_basis) == (T0, TimeBasis.REFERENCE)
 
     def test_bad_record_time_is_cleared_and_recorded(self) -> None:
-        """An unparseable time field clears the time and keeps the fact."""
+        """An unparsable time field clears the time and keeps the fact."""
         result = mapper().map(
             record_episode(ORDER | {"paid_on": "soon"}), [ANA, PG], None
         )

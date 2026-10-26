@@ -15,11 +15,11 @@ class InputTooLargeError(LLMError):
     """A prompt exceeds the hard input-token cap."""
 
 
-class CircuitOpen(LLMError):
+class CircuitOpenError(LLMError):
     """The model breaker refused a call while the provider is unavailable."""
 
 
-class DeadlineExceeded(LLMError):
+class DeadlineExceededError(LLMError):
     """The request latency budget expired before the model call completed."""
 
 
