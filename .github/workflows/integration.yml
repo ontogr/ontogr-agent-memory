@@ -22,9 +22,59 @@ env:
 
 jobs:
   integration:
-    name: Integration tests
+    name: Integration (${{ matrix.suite.name }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.suite.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Each entry is one module and runs as its own job on its own runner
+        # with its own ephemeral services, so the entries run in parallel and
+        # no two share a database. services lists the compose services the
+        # module uses: falkordb, neo4j, pgvector and relational. A test that
+        # needs a service that is not running fails, so keep the list exact.
+        # The small access, llm and observability modules share one job
+        # because a runner costs more to start than they take to run.
+        suite:
+          - name: graphstore
+            paths: tests/integration/graphstore
+            services: falkordb neo4j
+            timeout: 15
+          - name: vectorstore
+            paths: tests/integration/vectorstore
+            services: falkordb neo4j pgvector
+            timeout: 15
+          - name: temporal
+            paths: tests/integration/temporal
+            services: falkordb neo4j
+            timeout: 15
+          - name: consolidation
+            paths: tests/integration/consolidation
+            services: falkordb neo4j
+            timeout: 15
+          - name: relational-store
+            paths: tests/integration/relational_store
+            services: relational
+            timeout: 15
+          - name: access-llm-observability
+            paths: tests/integration/access tests/integration/llm tests/integration/observability
+            services: ""
+            timeout: 10
+          # Everything the entries above do not claim: the service and pipeline
+          # tests at the top of tests/integration, and any module added later.
+          - name: service
+            paths: >-
+              tests/integration
+              --ignore=tests/integration/graphstore
+              --ignore=tests/integration/vectorstore
+              --ignore=tests/integration/temporal
+              --ignore=tests/integration/consolidation
+              --ignore=tests/integration/relational_store
+              --ignore=tests/integration/access
+              --ignore=tests/integration/llm
+              --ignore=tests/integration/observability
+            services: falkordb neo4j
+            timeout: 20
     env:
       UV_PYTHON: "3.12"
       # Throwaway values for the databases that tests/integration/compose.yaml
@@ -35,6 +85,8 @@ jobs:
       MEMORY_NEO4J_USERNAME: neo4j
       MEMORY_NEO4J_PASSWORD: memorytest123
       MEMORY_PGVECTOR_DSN: postgresql://memory:memorytest123@localhost:15432/memory
+      SERVICES: ${{ matrix.suite.services }}
+      INTEGRATION_PATHS: ${{ matrix.suite.paths }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -49,16 +101,17 @@ jobs:
           python-version: "3.12"
       - run: make sync
       - name: Start the test services
-        run: make services-up
+        if: matrix.suite.services != ''
+        run: make services-up SERVICES="$SERVICES"
       - name: Run integration tests
-        run: make test-integration
+        run: make test-integration INTEGRATION_PATHS="$INTEGRATION_PATHS"
       - name: Show service logs
-        if: failure()
+        if: failure() && matrix.suite.services != ''
         run: docker compose -f tests/integration/compose.yaml logs --no-color --tail 200
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: pytest-integration-results
+          name: pytest-integration-results-${{ matrix.suite.name }}
           path: pytest-integration-results.xml
           retention-days: 30
