@@ -3,7 +3,7 @@
 ## Project
 
 **`ontogr_mem`** — durable, traceable memory for AI agents.
-Published to PyPI as `agent-memory`; imported as `ontogr_mem`.
+Published to PyPI as `ontogr-mem`; imported as `ontogr_mem`.
 The repo is hosted at `ontogr/ontogr-agent-memory`.
 
 **Layout**: flat. The package is `ontogr_mem/` at the repo root and everything outside

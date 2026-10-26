@@ -5,7 +5,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 # Source checkouts may have no installed package metadata.
 try:
-    __version__ = version("agent-memory")
+    __version__ = version("ontogr-mem")
 except PackageNotFoundError:  # pragma: no cover
     __version__ = "0.0.0.dev0"
 

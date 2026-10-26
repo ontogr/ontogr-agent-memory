@@ -9,104 +9,6 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "agent-memory"
-version = "0.0.1"
-source = { editable = "." }
-dependencies = [
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "python-dotenv" },
-]
-
-[package.optional-dependencies]
-falkordb = [
-    { name = "falkordb" },
-    { name = "redis" },
-]
-gliner = [
-    { name = "gliner" },
-    { name = "torch", version = "2.14.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
-    { name = "torch", version = "2.14.1+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-]
-neo4j = [
-    { name = "neo4j" },
-]
-otel = [
-    { name = "opentelemetry-api" },
-]
-pgvector = [
-    { name = "asyncpg" },
-]
-postgres = [
-    { name = "asyncpg" },
-]
-rdf = [
-    { name = "rdflib" },
-]
-spacy = [
-    { name = "spacy" },
-]
-yaml = [
-    { name = "pyyaml" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "bandit" },
-    { name = "coverage", extra = ["toml"] },
-    { name = "opentelemetry-sdk" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "pytest-mock" },
-    { name = "pytest-rerunfailures" },
-    { name = "pytest-socket" },
-    { name = "pytest-xdist" },
-    { name = "ruff" },
-    { name = "ty" },
-    { name = "typos" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "asyncpg", marker = "extra == 'pgvector'", specifier = ">=0.30" },
-    { name = "asyncpg", marker = "extra == 'postgres'", specifier = ">=0.30" },
-    { name = "falkordb", marker = "extra == 'falkordb'", specifier = ">=1.2" },
-    { name = "gliner", marker = "extra == 'gliner'", specifier = ">=0.2" },
-    { name = "neo4j", marker = "extra == 'neo4j'", specifier = ">=6" },
-    { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.30" },
-    { name = "pydantic", specifier = ">=2.0" },
-    { name = "pydantic-settings", specifier = ">=2.0" },
-    { name = "python-dotenv", specifier = ">=1.0" },
-    { name = "pyyaml", marker = "extra == 'yaml'", specifier = ">=6" },
-    { name = "rdflib", marker = "extra == 'rdf'", specifier = ">=7" },
-    { name = "redis", marker = "extra == 'falkordb'", specifier = ">=5.0.1" },
-    { name = "spacy", marker = "extra == 'spacy'", specifier = ">=3.7" },
-    { name = "torch", marker = "(sys_platform == 'linux' and extra == 'gliner') or (sys_platform == 'win32' and extra == 'gliner')", index = "https://download.pytorch.org/whl/cpu" },
-    { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'gliner'" },
-]
-provides-extras = ["falkordb", "neo4j", "pgvector", "postgres", "rdf", "gliner", "spacy", "yaml", "otel"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "bandit", specifier = ">=1.9.4" },
-    { name = "coverage", extras = ["toml"], specifier = ">=7.13.0" },
-    { name = "opentelemetry-sdk", specifier = ">=1.30" },
-    { name = "pre-commit", specifier = ">=4.5.1" },
-    { name = "pytest", specifier = ">=9.0.2" },
-    { name = "pytest-asyncio", specifier = ">=1.3.0" },
-    { name = "pytest-cov", specifier = ">=7.0.0" },
-    { name = "pytest-mock", specifier = ">=3.15.1" },
-    { name = "pytest-rerunfailures", specifier = ">=16.2" },
-    { name = "pytest-socket", specifier = ">=0.7.0" },
-    { name = "pytest-xdist", specifier = ">=3.8.0" },
-    { name = "ruff", specifier = ">=0.16.10" },
-    { name = "ty", specifier = ">=0.0.32" },
-    { name = "typos", specifier = ">=1.51.1" },
-]
-
-[[package]]
 name = "annotated-doc"
 version = "0.0.5"
 source = { registry = "https://pypi.org/simple" }
@@ -1266,6 +1168,104 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/b5/4da41c328788f575838f97a098fe8ca691ebc6f6fd73ad4a262ee40b184d/numpy-2.5.4-cp315-cp315t-win32.whl", hash = "sha256:ad62a416ddcf863bf44bba76fbf6b53366ab0692e294f51cae4b5fbe0d246788", size = 6335804, upload-time = "2026-10-10T20:05:19.921Z" },
     { url = "https://files.pythonhosted.org/packages/98/94/6482ddfa3d312490cb9358f375bf2ad56427dbea8769187158e94d653753/numpy-2.5.4-cp315-cp315t-win_amd64.whl", hash = "sha256:38f47be9f74ab870d2633b5456ae519c43758a8d1fd05342f0ce4ecc034396ee", size = 12890095, upload-time = "2026-10-10T20:05:21.875Z" },
     { url = "https://files.pythonhosted.org/packages/48/7f/c2d1b436b6e7cfebac140c2579a298344b85f2991a2ce5c3615cefb29400/numpy-2.5.4-cp315-cp315t-win_arm64.whl", hash = "sha256:7a14a461d9340f1b46b8648578aed9cdb8b3b018a8fac6c1dde2c9192a01a87f", size = 10883718, upload-time = "2026-10-10T20:05:28.547Z" },
+]
+
+[[package]]
+name = "ontogr-mem"
+version = "0.0.1"
+source = { editable = "." }
+dependencies = [
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "python-dotenv" },
+]
+
+[package.optional-dependencies]
+falkordb = [
+    { name = "falkordb" },
+    { name = "redis" },
+]
+gliner = [
+    { name = "gliner" },
+    { name = "torch", version = "2.14.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
+    { name = "torch", version = "2.14.1+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+neo4j = [
+    { name = "neo4j" },
+]
+otel = [
+    { name = "opentelemetry-api" },
+]
+pgvector = [
+    { name = "asyncpg" },
+]
+postgres = [
+    { name = "asyncpg" },
+]
+rdf = [
+    { name = "rdflib" },
+]
+spacy = [
+    { name = "spacy" },
+]
+yaml = [
+    { name = "pyyaml" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "bandit" },
+    { name = "coverage", extra = ["toml"] },
+    { name = "opentelemetry-sdk" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-mock" },
+    { name = "pytest-rerunfailures" },
+    { name = "pytest-socket" },
+    { name = "pytest-xdist" },
+    { name = "ruff" },
+    { name = "ty" },
+    { name = "typos" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "asyncpg", marker = "extra == 'pgvector'", specifier = ">=0.30" },
+    { name = "asyncpg", marker = "extra == 'postgres'", specifier = ">=0.30" },
+    { name = "falkordb", marker = "extra == 'falkordb'", specifier = ">=1.2" },
+    { name = "gliner", marker = "extra == 'gliner'", specifier = ">=0.2" },
+    { name = "neo4j", marker = "extra == 'neo4j'", specifier = ">=6" },
+    { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.30" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pydantic-settings", specifier = ">=2.0" },
+    { name = "python-dotenv", specifier = ">=1.0" },
+    { name = "pyyaml", marker = "extra == 'yaml'", specifier = ">=6" },
+    { name = "rdflib", marker = "extra == 'rdf'", specifier = ">=7" },
+    { name = "redis", marker = "extra == 'falkordb'", specifier = ">=5.0.1" },
+    { name = "spacy", marker = "extra == 'spacy'", specifier = ">=3.7" },
+    { name = "torch", marker = "(sys_platform == 'linux' and extra == 'gliner') or (sys_platform == 'win32' and extra == 'gliner')", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'gliner'" },
+]
+provides-extras = ["falkordb", "neo4j", "pgvector", "postgres", "rdf", "gliner", "spacy", "yaml", "otel"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "bandit", specifier = ">=1.9.4" },
+    { name = "coverage", extras = ["toml"], specifier = ">=7.13.0" },
+    { name = "opentelemetry-sdk", specifier = ">=1.30" },
+    { name = "pre-commit", specifier = ">=4.5.1" },
+    { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-asyncio", specifier = ">=1.3.0" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "pytest-mock", specifier = ">=3.15.1" },
+    { name = "pytest-rerunfailures", specifier = ">=16.2" },
+    { name = "pytest-socket", specifier = ">=0.7.0" },
+    { name = "pytest-xdist", specifier = ">=3.8.0" },
+    { name = "ruff", specifier = ">=0.16.10" },
+    { name = "ty", specifier = ">=0.0.32" },
+    { name = "typos", specifier = ">=1.51.1" },
 ]
 
 [[package]]

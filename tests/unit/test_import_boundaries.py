@@ -302,4 +302,4 @@ class TestBackendImports:
         )
 
         assert result.returncode == 0, result.stdout + result.stderr
-        assert 'pip install "agent-memory[falkordb]"' in result.stdout
+        assert 'pip install "ontogr-mem[falkordb]"' in result.stdout
