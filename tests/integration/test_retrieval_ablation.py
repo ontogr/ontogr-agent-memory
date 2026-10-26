@@ -58,10 +58,11 @@ class TestRetrievalAblation:
             for name in ("vector_only", "keyword_only", "entity_graph")
         )
 
+        # FalkorDB's fulltext stemmer also matches "work" to "works".
         assert fused == {
             "hit_at_1": 0.6471,
-            "recall_at_5": 0.8824,
-            "mrr": 0.7717,
+            "recall_at_5": 0.9412 if graph_backend.name == "falkordb" else 0.8824,
+            "mrr": 0.7829 if graph_backend.name == "falkordb" else 0.7717,
             "queries": 17,
         }
         assert fused["mrr"] >= best_single, (
