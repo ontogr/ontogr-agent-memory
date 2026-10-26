@@ -13,7 +13,6 @@ from ontogr_mem.llm import LLMClient
 from ontogr_mem.llm.cache.port import ResponseCache
 from ontogr_mem.observability import NoOpTracer, Tracer
 from ontogr_mem.relational_store import (
-    EphemeralStateError,
     MemoryOperationStore,
     OperationStore,
     SqliteOperationStore,
@@ -59,23 +58,13 @@ class ServiceRuntime:
     service: MemoryService
 
 
-@dataclass(frozen=True, slots=True)
-class Wiring:
-    """Backend lifecycle policy and lazy tenant-store construction."""
-
-    ephemeral: bool
-    open_stores: Callable[[], tuple[GraphStore | None, StoresFactory]]
-
-
 class ServiceSettings(BaseSettings):
-    """Configure the service backend and its ephemeral-storage policy.
+    """Configure the service graph backend.
 
     Environment variables use the ``MEMORY_SERVICE_`` prefix.
 
     Attributes:
-        backend: Tenant storage backend. Env: ``MEMORY_SERVICE_BACKEND``.
-        allow_ephemeral: Permit in-memory storage. Env:
-            ``MEMORY_SERVICE_ALLOW_EPHEMERAL``.
+        backend: Tenant graph backend. Env: ``MEMORY_SERVICE_BACKEND``.
     """
 
     model_config = SettingsConfigDict(
@@ -85,8 +74,7 @@ class ServiceSettings(BaseSettings):
         frozen=True,
     )
 
-    backend: Literal["falkordb", "neo4j", "memory"] = "falkordb"
-    allow_ephemeral: bool = False
+    backend: Literal["falkordb", "neo4j"] = "falkordb"
 
 
 async def build_service(
@@ -112,13 +100,12 @@ async def build_service(
 ) -> MemoryService:
     """Build the service from settings and caller-owned dependencies.
 
-    The memory backend is refused unless the caller explicitly allows
-    ephemeral storage. The caller must inject ``authorizer`` and ``operations``.
-    The service needs access checks and operation records, and transient
-    defaults for them here could discard state.
+    The caller must inject ``authorizer`` and ``operations``. The service needs
+    access checks and operation records, and transient defaults for them here
+    could discard state.
 
     Args:
-        settings: Tenant backend and ephemeral-storage policy.
+        settings: Tenant graph backend.
         state: Shared job and erase state store.
         stores_factory: Opens the configured backend's stores for each Tenant.
         authorizer: Checks grants and records access decisions.
@@ -134,25 +121,17 @@ async def build_service(
         tracer: Optional tracer for service and Tenant spans.
         audit_log: Optional audit chain for service operations.
         confirm_tokens: Optional signer for forget confirmation tokens.
-        drop_graph: Graph cleanup callback. May be omitted for memory storage.
+        drop_graph: Graph cleanup callback that erases one Tenant's graph.
         erase_cache: Optional cache to clean during erase operations.
 
     Returns:
         The configured memory service.
 
     Raises:
-        EphemeralStateError: If memory storage is not explicitly permitted.
-        ValueError: If persistent storage has no graph cleanup callback.
+        ValueError: If no graph cleanup callback is given.
     """
-    wiring = _BACKENDS[settings.backend]
-    if wiring.ephemeral and not settings.allow_ephemeral:
-        raise EphemeralStateError(
-            "memory backend requires MEMORY_SERVICE_ALLOW_EPHEMERAL=true"
-        )
     if drop_graph is None:
-        if not wiring.ephemeral:
-            raise ValueError("persistent backend requires a graph cleanup callback")
-        drop_graph = _noop_graph_drop
+        raise ValueError("a graph cleanup callback is required")
 
     selected_tracer = tracer or NoOpTracer()
 
@@ -216,7 +195,7 @@ async def open_service(
     """Open, start, and own the service resources for one process lifetime.
 
     Args:
-        settings: Tenant graph backend and ephemeral-storage policy.
+        settings: Tenant graph backend.
         state_settings: Durable job and erase-journal configuration.
         stores_factory: Optional tenant-store factory override.
         clock: Shared time source; defaults to the system clock.
@@ -242,17 +221,12 @@ async def open_service(
         state = await open_state_store(selected_state)
         resources.push_async_callback(state.close)
 
-        graph_store: GraphStore | None = None
-        wiring = _BACKENDS[service_settings.backend]
         selected_stores_factory = stores_factory
-        drop_graph: Callable[[str], Awaitable[None]] | None = (
-            _noop_graph_drop if wiring.ephemeral else None
-        )
+        drop_graph: Callable[[str], Awaitable[None]] | None = None
         if selected_stores_factory is None:
-            graph_store, selected_stores_factory = wiring.open_stores()
-            if graph_store is not None:
-                resources.push_async_callback(graph_store.close)
-                drop_graph = graph_store.erase_tenant
+            graph_store, selected_stores_factory = _BACKENDS[service_settings.backend]()
+            resources.push_async_callback(graph_store.close)
+            drop_graph = graph_store.erase_tenant
 
         operations, audit_log, audit_sink = await _STATE_AUDITS[selected_state.backend](
             selected_state, resources, selected_clock
@@ -309,17 +283,6 @@ def _graph_stores_factory(
     return store, create_stores
 
 
-async def _noop_graph_drop(tenant_id: str) -> None:
-    """Skip graph cleanup for the in-memory backend, which has no graph."""
-
-
-def _memory_stores() -> tuple[None, StoresFactory]:
-    """Use isolated in-memory tenant stores without a process graph driver."""
-    from ontogr_mem.graphstore.memory.tenant_stacks import memory_stores
-
-    return None, memory_stores
-
-
 def _falkordb_stores() -> tuple[GraphStore, StoresFactory]:
     """Open the FalkorDB adapter with one graph per tenant."""
     from ontogr_mem.graphstore.falkordb import FalkorDBGraphStore
@@ -335,9 +298,8 @@ def _neo4j_stores() -> tuple[GraphStore, StoresFactory]:
 
 
 _BACKENDS = {
-    "memory": Wiring(True, _memory_stores),
-    "falkordb": Wiring(False, _falkordb_stores),
-    "neo4j": Wiring(False, _neo4j_stores),
+    "falkordb": _falkordb_stores,
+    "neo4j": _neo4j_stores,
 }
 
 

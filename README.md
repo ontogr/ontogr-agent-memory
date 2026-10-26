@@ -217,9 +217,9 @@ Every component talks to storage through its own async port. A port has domain v
 | Vector store | Embeddings of entity names, fact statements, and episode text, each with a hash of the embedded text. | Graph-native (default) or pgvector |
 | State store | Jobs with their request payloads, operation rows, audit rows, and the erase journal. | SQLite (default) or Postgres |
 
-A deployment that shares state between processes can use FalkorDB for the graph, pgvector for vectors, and Postgres for the state store. An in-memory backend exists for every layer. It is for tests and local runs, and it requires `allow_ephemeral`.
+A deployment that shares state between processes can use FalkorDB for the graph, pgvector for vectors, and Postgres for the state store. The state store and the vector store also have in-memory backends for tests and local runs. The state store requires `allow_ephemeral` to use one.
 
-- **Contract tests:** Each port has one contract suite. It runs against the in-memory implementation and against the live database adapter, and concurrent tenants and queries are tested on live servers.
+- **Contract tests:** Each port has one contract suite. It runs against each live database adapter, and concurrent tenants and queries are tested on live servers.
 
 #### Graph store
 
@@ -371,7 +371,7 @@ Forget has four modes:
 
 ## Quickstart
 
-In this example you store one structured fact and read it back. It uses the in-memory backend, so it needs no database and no language model.
+In this example you store one structured fact and read it back. It uses FalkorDB for the graph and SQLite for state, so it needs a running FalkorDB server but no language model.
 
 ### 1. Install
 
@@ -427,8 +427,8 @@ class HashingEmbedder:
 
 
 async def main() -> None:
-    settings = ServiceSettings(backend="memory", allow_ephemeral=True)
-    state = StateSettings(backend="memory", allow_ephemeral=True)
+    settings = ServiceSettings(backend="falkordb")
+    state = StateSettings(backend="sqlite")
 
     async with open_service(
         settings,
@@ -474,7 +474,7 @@ A free-text or message write needs an injected `LLMClient`, because the text mus
 
 ### 3. Move to durable storage
 
-Replace the in-memory settings with a durable backend. A minimal FalkorDB setup:
+The example above already uses FalkorDB for the graph and SQLite for state. The matching environment variables are:
 
 ```bash
 export MEMORY_SERVICE_BACKEND=falkordb
@@ -483,7 +483,7 @@ export MEMORY_FALKORDB_HOST=localhost
 export MEMORY_FALKORDB_PORT=6379
 ```
 
-The service refuses the in-memory backend unless you set `MEMORY_SERVICE_ALLOW_EPHEMERAL=true`. The state store has its own gate, `MEMORY_STATE_ALLOW_EPHEMERAL=true`. See [Configuration](https://github.com/ontogr/ontogr-agent-memory#configuration) and [.env.example](https://github.com/ontogr/ontogr-agent-memory/blob/main/.env.example) for more settings.
+The state store refuses its in-memory backend unless you set `MEMORY_STATE_ALLOW_EPHEMERAL=true`. See [Configuration](https://github.com/ontogr/ontogr-agent-memory#configuration) and [.env.example](https://github.com/ontogr/ontogr-agent-memory/blob/main/.env.example) for more settings.
 
 ## Core concepts
 
@@ -682,7 +682,7 @@ Settings classes use `pydantic-settings`. They read the repo-root `.env` and use
 
 | Prefix | Area |
 | --- | --- |
-| `MEMORY_SERVICE_` | Service backend and ephemeral-storage policy. |
+| `MEMORY_SERVICE_` | Service graph backend. |
 | `MEMORY_STATE_` | Job, operation, and audit state backend. |
 | `MEMORY_FALKORDB_` | FalkorDB connection and resilience. |
 | `MEMORY_NEO4J_` | Neo4j connection and resilience. |
