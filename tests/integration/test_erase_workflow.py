@@ -2,7 +2,6 @@
 
 import pytest
 
-from ontogr_mem.data_models import FactStatus
 from ontogr_mem.llm.cache import CacheEntry, MemoryResponseCache
 from ontogr_mem.relational_store.jobs.erase_journal import ErasureStatus
 from ontogr_mem.service.contracts import ForgetMode
@@ -14,7 +13,7 @@ from tests.support.graph_backend import GraphBackend
 
 
 class TestEraseWorkflow:
-    """Exercise Erase through memory-backed stores and their public ports."""
+    """Exercise Erase through live graph stores and their public ports."""
 
     async def test_erase_reports_effects_and_prunes_surviving_entity(
         self, graph_backend: GraphBackend
@@ -26,6 +25,9 @@ class TestEraseWorkflow:
         before_vector = await world.runtime.stores.vectors.fetch_vectors(
             VectorKind.NODE, ["person"]
         )
+        assert await world.runtime.stores.vectors.exists(
+            VectorKind.NODE, ["organization"]
+        ) == {"organization"}
         await world.cache.put(
             "tagged-entry",
             CacheEntry(
@@ -75,9 +77,9 @@ class TestEraseWorkflow:
         assert await stores.episodes.get_episode("e1") is None
         assert await stores.temporal_store.observations_of_episode("e1") == []
         facts = await stores.temporal_store.facts_by_ids(world.plan.fact_ids)
-        assert len(facts) == 2
-        assert facts[-1].status is FactStatus.WITHDRAWN
+        assert facts == []
         assert await stores.resolver_store.has_entity("organization") is False
+        assert await stores.vectors.exists(VectorKind.NODE, ["organization"]) == set()
         person_rows = await stores.resolver_store.get_entities(["person"])
         assert len(person_rows) == 1
         person = person_rows[0]
