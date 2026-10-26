@@ -23,8 +23,6 @@ Agent Memory is an open source Python library that stores what an agent learned,
 
 Every fact points back to the quote and episode it came from. Retrieval searches four lanes, fuses them into one ranked result, and returns a budgeted, escaped context block that is ready for an answering model. Each tenant is a separate partition, and you choose the storage backends behind it.
 
-The project is pre-1.0, so APIs may change between releases. The package is published to PyPI as `agent-memory` and imported as `ontogr_mem`. It requires Python 3.11 or newer.
-
 ## Storage backends
 
 Use FalkorDB or Neo4j for the graph. Vectors can live on the graph or in pgvector. Jobs, operation rows, and audit rows use a separate state store. Every component talks to storage through its own async port. A port has domain verbs and no raw query method, so domain code sees only ports.
