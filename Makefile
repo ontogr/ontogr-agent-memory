@@ -39,9 +39,10 @@ test:
 
 # INTEGRATION_PATHS narrows the run to some modules. CI runs one module per job.
 INTEGRATION_PATHS ?= tests/integration
+INTEGRATION_WORKERS ?= auto
 
 test-integration:
-	uv run pytest $(INTEGRATION_PATHS) -v -n auto --dist loadscope \
+	uv run pytest $(INTEGRATION_PATHS) -v -n $(INTEGRATION_WORKERS) --dist loadscope \
 		-o "addopts=--strict-markers --strict-config --disable-socket --allow-unix-socket -ra" \
 		--junitxml=pytest-integration-results.xml
 
