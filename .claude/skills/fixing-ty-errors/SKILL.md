@@ -1,6 +1,6 @@
 ---
 name: fixing-ty-errors
-description: Fix ty type-check failures. Use when make lint-typing or uv run ty check reports errors, or when annotating code to satisfy ty.
+description: Fix ty type-check failures. Use when uv run ty check reports errors, or when annotating code to satisfy ty.
 ---
 
 # Add Or Fix Type Checking - ty type checker
@@ -8,17 +8,15 @@ description: Fix ty type-check failures. Use when make lint-typing or uv run ty 
 ## Input
 
 - `<target>`: module or directory to type-check (if known).
-- Optional `make lint-typing`, `uv run ty check ...`, or CI output showing
-  typing failures.
+- Optional `uv run ty check ...` or CI output showing typing failures.
 
 ## Workflow
 
 1. **Identify scope from the failing run**:
-   - If you already have `make lint-typing`, `uv run ty check ...`, or CI
-     output, extract the failing file/module paths.
+   - If you already have `uv run ty check ...` or CI output, extract the failing file/module paths.
    - If not, run:
      ```bash
-     make lint-typing
+     uv run ty check ontogr_mem/ tests
      ```
    - Choose the narrowest target that covers the failures.
 
@@ -212,6 +210,7 @@ description: Fix ty type-check failures. Use when make lint-typing or uv run ty 
 
 7. **Verify and close the PR loop**:
    - Re-run `uv run ty check <target>` on the same target.
-   - Re-run `make lint-typing` to confirm the repository typing target passes.
-   - If working toward merge readiness, run `make lint-all` and relevant tests.
+   - Re-run `uv run ty check ontogr_mem/ tests` to confirm the whole repository passes.
+   - If working toward merge readiness, also run `uv run ruff check .`,
+     `uv run ruff format --check .`, and the relevant tests.
    - Ensure runtime behavior did not change and run relevant tests
