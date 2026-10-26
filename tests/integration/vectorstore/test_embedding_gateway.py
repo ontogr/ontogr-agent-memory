@@ -13,7 +13,7 @@ from ontogr_mem.relational_store import (
 from ontogr_mem.request_context import RequestContext, bind_context
 from ontogr_mem.vectorstore import (
     EmbeddingError,
-    EmbeddingFailed,
+    EmbeddingFailedError,
     EmbeddingGateway,
     EmbeddingTimeoutError,
     FailReason,
@@ -207,7 +207,7 @@ class TestEmbeddingGateway:
         """The strict helper reports the first outcome without a vector."""
         gateway = make_gateway(MockEmbedder())
 
-        with pytest.raises(EmbeddingFailed) as error:
+        with pytest.raises(EmbeddingFailedError) as error:
             await gateway.embed_all(["a", "", "b"])
 
         assert error.value.index == 1

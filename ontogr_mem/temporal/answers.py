@@ -1,8 +1,9 @@
 """The answers the model returns and how they are read.
 
-Ids must be exactly ``P1..Pn`` as asked. An invented or out-of-range id is
-counted and dropped, so the model cannot answer for a pair it was not given. An
-answer that does not fill the shape the prompt asked for is missing: it is
+Ids must be exactly the pair ids, ``P1`` onward, as asked. An invented or
+out-of-range id is counted and dropped, so the model cannot answer for a pair it
+was not given. An answer that does not fill the shape the prompt asked for is
+missing: it is
 dropped, and the pair is asked again later.
 """
 
@@ -19,7 +20,7 @@ class RawAnswer(TypedDict, total=False):
     """One answer as the model sends it.
 
     Attributes:
-        id: The pair the answer is for, ``P1``..``Pn``.
+        id: The pair the answer is for, one of the ids from ``P1`` onward.
         verdict: The answer, one of the verdict names.
         confidence: How sure the model was, from 0 to 1.
         kind: Kind of disagreement the model named.
@@ -130,9 +131,10 @@ def _raw_answer(item: Mapping[str, object]) -> RawAnswer | None:
 def parse_answers(text: str, count: int) -> tuple[dict[int, Answer], int, bool]:
     """Return the answers by 0-based pair index, the invalid-id count and parse ok.
 
-    Ids must be exactly ``P1..Pn`` as asked. An invented or out-of-range id is
-    counted and dropped, so the model cannot answer for a pair it was not given.
-    An answer that does not fill the shape the prompt asked for is dropped
+    Ids must be exactly the pair ids, ``P1`` onward, as asked. An invented or
+    out-of-range id is counted and dropped, so the model cannot answer for a pair
+    it was not given. An answer that does not fill the shape the prompt asked for
+    is dropped
     without a verdict.
     """
     try:

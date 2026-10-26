@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 

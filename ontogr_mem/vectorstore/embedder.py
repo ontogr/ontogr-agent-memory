@@ -19,7 +19,7 @@ from ontogr_mem.resilience import (
 )
 from ontogr_mem.vectorstore.errors import (
     EmbeddingError,
-    EmbeddingFailed,
+    EmbeddingFailedError,
     EmbeddingTimeoutError,
     PermanentEmbeddingError,
     TransientEmbeddingError,
@@ -193,7 +193,7 @@ class EmbeddingGateway:
         """Return vectors for every text or raise on the first failed outcome.
 
         Raises:
-            EmbeddingFailed: If any input text has no vector.
+            EmbeddingFailedError: If any input text has no vector.
         """
         outcomes = await self.embed(texts)
         vectors: list[tuple[float, ...]] = []
@@ -202,7 +202,7 @@ class EmbeddingGateway:
                 detail = outcome.detail or (
                     outcome.reason.value if outcome.reason is not None else "unknown"
                 )
-                raise EmbeddingFailed(index, detail)
+                raise EmbeddingFailedError(index, detail)
             vectors.append(outcome.vector)
         return vectors
 
@@ -244,7 +244,8 @@ class EmbeddingGateway:
             rng=self._rng,
         )
 
-    async def _embed_batch(
+    # Breaker probe and split retries share local state, so the flow stays whole.
+    async def _embed_batch(  # noqa: PLR0912
         self,
         batch: list[_Segment],
         deadline: float,
@@ -277,7 +278,12 @@ class EmbeddingGateway:
                 return _fail(batch, FailReason.EMBED_FAILED, f"permanent: {exc}")
             except TransientEmbeddingError as exc:
                 return await self._retry(
-                    batch, deadline, attempt, exc, breaker_checked, owns_probe
+                    batch,
+                    deadline,
+                    attempt,
+                    exc,
+                    breaker_checked,
+                    owns_probe=owns_probe,
                 )
             if self._breaker is not None:
                 self._breaker.record_success()
@@ -298,6 +304,7 @@ class EmbeddingGateway:
         attempt: int,
         error: TransientEmbeddingError,
         breaker_checked: bool,
+        *,
         owns_probe: bool,
     ) -> list[EmbedOutcome]:
         if len(batch) == 1 and attempt + 1 >= self.settings.max_attempts:

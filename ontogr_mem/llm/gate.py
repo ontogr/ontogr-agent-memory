@@ -12,8 +12,8 @@ from pydantic import BaseModel, ValidationError
 from ontogr_mem.llm.base import LLMClient, LLMRequest, LLMResponse, ModelSize
 from ontogr_mem.llm.cache import CacheEntry, ResponseCache, cache_key
 from ontogr_mem.llm.errors import (
-    CircuitOpen,
-    DeadlineExceeded,
+    CircuitOpenError,
+    DeadlineExceededError,
     InputTooLargeError,
     LLMCallError,
     LLMError,
@@ -303,7 +303,7 @@ class LLMGate:
             context = current_context()
             self._remaining(context)
             if self._breaker is not None and not self._breaker.allow_request():
-                raise CircuitOpen("circuit breaker is open")
+                raise CircuitOpenError("circuit breaker is open")
             try:
                 return await call_with_breaker(
                     partial(self._attempt, request, context),
@@ -324,7 +324,7 @@ class LLMGate:
                 )
                 remaining = self._remaining(current_context())
                 if remaining is not None and delay > remaining:
-                    raise DeadlineExceeded("request deadline exceeded")
+                    raise DeadlineExceededError("request deadline exceeded")
                 await self._wait_with_deadline(self._sleep(delay), current_context())
 
         msg = f"LLM call failed after {self.settings.max_attempts} attempts"
@@ -358,7 +358,7 @@ class LLMGate:
                     and remaining is not None
                     and remaining <= self._timeout_s
                 ):
-                    raise DeadlineExceeded("request deadline exceeded") from exc
+                    raise DeadlineExceededError("request deadline exceeded") from exc
                 raise
         finally:
             if acquired:
@@ -369,7 +369,7 @@ class LLMGate:
         """Return a request's remaining time or refuse an expired request."""
         remaining = None if context is None else context.remaining_seconds()
         if remaining is not None and remaining <= 0:
-            raise DeadlineExceeded("request deadline exceeded")
+            raise DeadlineExceededError("request deadline exceeded")
         return remaining
 
     async def _wait_with_deadline(
@@ -385,7 +385,7 @@ class LLMGate:
                 return await awaitable
         except TimeoutError as exc:
             if timeout_scope.expired():
-                raise DeadlineExceeded("request deadline exceeded") from exc
+                raise DeadlineExceededError("request deadline exceeded") from exc
             raise
 
 
