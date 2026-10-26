@@ -1,0 +1,87 @@
+fail_fast: true
+
+# Test fixtures under any tests/**/fixtures/ directory hold deliberately
+# non-UTF-8 bytes (latin-1, UTF-16 with BOM, CRLF line endings) that exercise
+# decode edge cases. Every hook here, including typos, must leave them alone.
+exclude: '^tests/.*/fixtures/'
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-ast # checks Python syntax
+      - id: check-json # checks JSON syntax
+      - id: check-merge-conflict # checks for no merge conflict strings
+      - id: check-shebang-scripts-are-executable # checks all shell scripts have executable permissions
+      - id: check-toml # checks TOML syntax
+      - id: check-yaml # checks YAML syntax
+      - id: end-of-file-fixer # checks there is a newline at the end of the file
+      - id: mixed-line-ending # normalizes line endings
+      - id: trailing-whitespace # trims trailing whitespace
+        args: [--markdown-linebreak-ext=md]
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.10
+    hooks:
+      - id: ruff-check
+        args: [--fix, --unsafe-fixes, --exit-non-zero-on-fix]
+        types_or: [python, jupyter]
+      - id: ruff-format
+        types_or: [python, jupyter]
+
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.12.23
+    hooks:
+      - id: uv-lock
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: "1.9.4"
+    hooks:
+      - id: bandit
+        args:
+          [
+            "-c",
+            "pyproject.toml",
+            "-r",
+            "--severity-level",
+            "high",
+            "--confidence-level",
+            "high",
+            "ontogr_mem/",
+          ]
+        additional_dependencies: ["bandit[toml]"]
+
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.51.1
+    hooks:
+      - id: typos
+        args: [--force-exclude]
+        require_serial: true
+
+  - repo: local
+    hooks:
+      - id: ty
+        name: ty
+        entry: uv run --locked ty check ontogr_mem/ tests
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: pytest
+        name: pytest
+        entry: uv run --locked pytest tests -m "not integration"
+        language: system
+        types: [python]
+        pass_filenames: false
+
+ci:
+  autofix_prs: true
+  autofix_commit_msg: "ci: Auto fixes from pre-commit"
+  autofix_prs_limit: 5
+  autoupdate_schedule: monthly
+  autoupdate_commit_msg: "ci: Pre-commit autoupdate"
+  skip: [ty, pytest]

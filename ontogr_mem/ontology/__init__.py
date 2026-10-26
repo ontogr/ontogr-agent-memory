@@ -1,0 +1,141 @@
+"""Per-tenant, versioned ontology with changesets and proposals.
+
+The catalog is a versioned model of the types a tenant knows: entity types,
+relation types, the attributes they carry and the patterns a relation may follow.
+A change set is the only way to change it, and ``apply_changeset`` is the only
+commit path::
+
+    from ontogr_mem.ontology import AddEntity, ChangeSet, apply_changeset
+
+    change_set = ChangeSet(base_version=head.version, ops=[AddEntity(label="Gadget")])
+    new = apply_changeset(head, change_set)
+
+``OntologyManager`` owns the catalog of a tenant, its history and its proposal
+queue; ``validate`` checks one episode's extraction against the catalog.
+"""
+
+from ontogr_mem.ontology.apply import apply_changeset, check_catalog
+from ontogr_mem.ontology.errors import (
+    DenseIdError,
+    InvalidChange,
+    MissingVersionError,
+    OntologyError,
+    ProposalDecidedError,
+    VersionConflict,
+)
+from ontogr_mem.ontology.manager import OntologyManager
+from ontogr_mem.ontology.models import (
+    AddAlias,
+    AddAttribute,
+    AddEntity,
+    AddPattern,
+    AddRelation,
+    AddTable,
+    Attribute,
+    ChangeSet,
+    Channel,
+    DeprecateAttribute,
+    DeprecatePattern,
+    DeprecateType,
+    Entity,
+    Kind,
+    MergeInto,
+    Mode,
+    Ontology,
+    Op,
+    Origin,
+    Owner,
+    Pattern,
+    PatternSpec,
+    Proposal,
+    ProposalSource,
+    ProposalStatus,
+    Reactivate,
+    Reason,
+    Ref,
+    Relation,
+    Rename,
+    RenderedView,
+    SetDescription,
+    SetExclusive,
+    SetModes,
+    Status,
+    TableMapping,
+    UnknownEdges,
+    Unmatched,
+    UnmatchedKind,
+    ValueType,
+)
+from ontogr_mem.ontology.validate import (
+    AttributeValue,
+    Context,
+    EntityItem,
+    EntityValidation,
+    ExtractedItems,
+    RelationItem,
+    RelationValidation,
+    ValidationReport,
+    validate,
+)
+
+
+__all__ = [
+    "AddAlias",
+    "AddAttribute",
+    "AddEntity",
+    "AddPattern",
+    "AddRelation",
+    "AddTable",
+    "Attribute",
+    "AttributeValue",
+    "ChangeSet",
+    "Channel",
+    "Context",
+    "DenseIdError",
+    "DeprecateAttribute",
+    "DeprecatePattern",
+    "DeprecateType",
+    "Entity",
+    "EntityItem",
+    "EntityValidation",
+    "ExtractedItems",
+    "InvalidChange",
+    "Kind",
+    "MergeInto",
+    "MissingVersionError",
+    "Mode",
+    "Ontology",
+    "OntologyError",
+    "OntologyManager",
+    "Op",
+    "Origin",
+    "Owner",
+    "Pattern",
+    "PatternSpec",
+    "Proposal",
+    "ProposalDecidedError",
+    "ProposalSource",
+    "ProposalStatus",
+    "Reactivate",
+    "Reason",
+    "Ref",
+    "Relation",
+    "RelationItem",
+    "RelationValidation",
+    "Rename",
+    "RenderedView",
+    "SetDescription",
+    "SetExclusive",
+    "SetModes",
+    "Status",
+    "TableMapping",
+    "UnknownEdges",
+    "Unmatched",
+    "UnmatchedKind",
+    "ValidationReport",
+    "ValueType",
+    "VersionConflict",
+    "apply_changeset",
+    "check_catalog",
+    "validate",
+]

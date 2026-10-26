@@ -1,0 +1,13 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Exclude generated output, local tooling data, and result-record hashes."
+paths = [
+    '''benchmarks/results/.*/record\.json''',
+    '''(^|/)(\.venv|\.wheelenv|venv)/''',
+    '''^(\./)?(build|dist)/''',
+    '''^(\./)?docs/(node_modules|build|\.docusaurus)/''',
+    '''(^|/)(__pycache__|\.pytest_cache|\.ruff_cache|\.cache|\.deepeval)/''',
+    '''(^|/)\.amp/in/''',
+]

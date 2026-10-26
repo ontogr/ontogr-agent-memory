@@ -1,0 +1,43 @@
+services:
+  falkordb:
+    image: falkordb/falkordb:v4.22.2
+    ports: ["127.0.0.1:16379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  neo4j:
+    image: neo4j:2026.10.0
+    ports: ["127.0.0.1:17687:7687", "127.0.0.1:17474:7474"]
+    environment:
+      NEO4J_AUTH: neo4j/${MEMORY_NEO4J_PASSWORD:-memorytest123}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 >/dev/null || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  pgvector:
+    image: pgvector/pgvector:0.8.1-pg17
+    ports: ["127.0.0.1:15432:5432"]
+    environment:
+      POSTGRES_USER: memory
+      POSTGRES_PASSWORD: ${MEMORY_PGVECTOR_PASSWORD:-memorytest123}
+      POSTGRES_DB: memory
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memory -d memory"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  relational:
+    image: postgres:17-alpine
+    ports: ["127.0.0.1:15433:5432"]
+    environment:
+      POSTGRES_USER: memory
+      POSTGRES_PASSWORD: ${MEMORY_RELATIONAL_PASSWORD:-memorytest123}
+      POSTGRES_DB: memory
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memory -d memory"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
