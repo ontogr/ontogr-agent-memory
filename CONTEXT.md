@@ -1,4 +1,4 @@
-# Agent Memory
+# OntoGr Agent Memory
 
 Vocabulary for this project's domain. Add one entry per term, in the form below, and link terms with `[[Term]]`.
 

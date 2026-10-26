@@ -1,4 +1,4 @@
-# Contributing to Agent Memory
+# Contributing to OntoGr Agent Memory
 
 ## Getting started
 

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 960 416" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="extraction-layer-title extraction-layer-desc" id="extraction-layer-root">
+<title id="extraction-layer-title">Extraction layer</title>
+<desc id="extraction-layer-desc">A source item becomes an episode. The entity extractor and the fact extractor both read it, and the ontology manager gives each the types it allows. Entity resolution links extracted names to canonical entities in the graph store, and the fact extractor passes facts to the temporal engine.</desc>
+<defs>
+      <style>#extraction-layer-root { --color-paper:#f5f5f5; --color-ink:#2d3142; --color-muted:#4f5d75; --color-accent:#bf4520; --font-sans:'Geist', system-ui, sans-serif; --font-serif:'Instrument Serif', serif; --font-mono:'Geist Mono', ui-monospace, monospace; }
+      #extraction-layer-root { font-family: var(--font-sans); color: var(--color-ink); }
+      #extraction-layer-root .diagram-container { width: 100%; overflow-x: auto; }
+      #extraction-layer-root .diagram-container { overflow-x: visible; }
+      #extraction-layer-root .n-name { font:600 12px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #extraction-layer-root .n-name-sm { font:500 11px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #extraction-layer-root .n-sub { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#5a6580 }
+      #extraction-layer-root .ey { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.18em;fill:#5a6580 }
+      #extraction-layer-root .al { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#4f5d75 }
+      #extraction-layer-root .al-accent { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#bf4520 }
+      #extraction-layer-root .callout { font:italic 400 14px 'Instrument Serif', serif;fill:#4f5d75 }
+      #extraction-layer-root .tag-t { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.08em;fill:#4f5d75 }
+      #extraction-layer-root .k-backend { fill:#ffffff;stroke:#2d3142;stroke-width:1 }
+      #extraction-layer-root .k-store { fill:rgba(45,49,66,0.05);stroke:#4f5d75;stroke-width:1 }
+      #extraction-layer-root .k-focal { fill:rgba(191,69,32,0.08);stroke:#bf4520;stroke-width:1.2 }
+      #extraction-layer-root .k-input { fill:rgba(79,93,117,0.10);stroke:#5a6580;stroke-width:1 }
+      #extraction-layer-root .k-external { fill:rgba(45,49,66,0.03);stroke:rgba(45,49,66,0.30);stroke-width:1 }
+      #extraction-layer-root .k-optional { fill:rgba(45,49,66,0.02);stroke:rgba(45,49,66,0.20);stroke-width:1;stroke-dasharray:4 3 }
+      #extraction-layer-root .k-security { fill:rgba(191,69,32,0.05);stroke:rgba(191,69,32,0.50);stroke-width:1;stroke-dasharray:4 4 }
+      #extraction-layer-root .zone { fill:rgba(45,49,66,0.03);stroke:#bfc0c0;stroke-width:1 }
+      #extraction-layer-root .zone-dash { fill:none;stroke:#bfc0c0;stroke-width:1;stroke-dasharray:4 4 }
+      #extraction-layer-root .row { fill:#ffffff;stroke:rgba(45,49,66,0.12);stroke-width:1 }
+      #extraction-layer-root .tag { fill:rgba(45,49,66,0.04);stroke:rgba(45,49,66,0.30);stroke-width:0.8 }
+      #extraction-layer-root .e { fill:none;stroke:#4f5d75;stroke-width:1 }
+      #extraction-layer-root .e-accent { fill:none;stroke:#bf4520;stroke-width:1.2 }
+      #extraction-layer-root .e-link { fill:none;stroke:#2e5aa8;stroke-width:1 }
+      #extraction-layer-root .e-dash { fill:none;stroke:#4f5d75;stroke-width:1;stroke-dasharray:5 4 }
+      #extraction-layer-root .e-dash-accent { fill:none;stroke:#bf4520;stroke-width:1.2;stroke-dasharray:5 4 }
+      #extraction-layer-root .guide { fill:none;stroke:#2e5aa8;stroke-width:1;stroke-dasharray:2 4 }
+      #extraction-layer-root .tick { fill:none;stroke:#bf4520;stroke-width:2 }
+      #extraction-layer-root .mask { fill:#f5f5f5 }
+      #extraction-layer-root .dot { fill:#2d3142 }
+      #extraction-layer-root .n-sub-accent { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#bf4520 }</style><marker id="extraction-layer-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker><marker id="extraction-layer-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker><marker id="extraction-layer-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<rect width="100%" height="100%" fill="#f5f5f5"/>
+<path class="e" d="M120 208L152 208" marker-end="url(#extraction-layer-arrow)"/>
+<path class="e" d="M304 196L320 196Q328 196 328 188L328 88Q328 80 336 80L368 80" marker-end="url(#extraction-layer-arrow)"/>
+<path class="e" d="M304 220L336 220Q344 220 344 228L344 328Q344 336 352 336L368 336" marker-end="url(#extraction-layer-arrow)"/>
+<path class="e" d="M456 176L456 112" marker-end="url(#extraction-layer-arrow)"/>
+<path class="e" d="M456 240L456 304" marker-end="url(#extraction-layer-arrow)"/>
+<text class="al" x="464" y="148" text-anchor="start">ENTITY TYPES</text>
+<text class="al" x="464" y="276" text-anchor="start">RELATION TYPES</text>
+<path class="e" d="M544 80L592 80" marker-end="url(#extraction-layer-arrow)"/>
+<g><rect class="mask" x="550.25" y="61" width="35.5" height="12"/><text class="al" x="568" y="70" text-anchor="middle">NAMES</text></g>
+<path class="e" d="M752 80L804 80" marker-end="url(#extraction-layer-arrow)"/>
+<g><rect class="mask" x="760.25" y="61" width="35.5" height="12"/><text class="al" x="778" y="70" text-anchor="middle">LINKS</text></g>
+<path class="e" d="M544 336L752 336" marker-end="url(#extraction-layer-arrow)"/>
+<g><rect class="mask" x="630.25" y="317" width="35.5" height="12"/><text class="al" x="648" y="326" text-anchor="middle">FACTS</text></g>
+<g><rect class="k-input" x="24" y="184" width="96" height="48" rx="24"/><text class="n-name" x="72" y="212" text-anchor="middle">Source item</text></g>
+<g><rect class="k-backend" x="152" y="176" width="152" height="64" rx="6"/><text class="n-name" x="164" y="199">Episode ingestion</text><text class="n-sub" x="164" y="213">source and actor</text><text class="n-sub" x="164" y="227">content hash</text></g>
+<g><rect class="k-backend" x="368" y="48" width="176" height="64" rx="6"/><text class="n-name" x="380" y="71">Entity extractor</text><text class="n-sub" x="380" y="85">LLM, GLiNER, spaCy</text><text class="n-sub" x="380" y="99">names must be in the text</text></g>
+<g><rect class="k-focal" x="368" y="176" width="176" height="64" rx="6"/><text class="n-name" x="380" y="199">Ontology manager</text><text class="n-sub" x="380" y="213">versioned type catalog</text><text class="n-sub" x="380" y="227">strict, preferred, open</text></g>
+<g><rect class="k-backend" x="368" y="304" width="176" height="64" rx="6"/><text class="n-name" x="380" y="327">Fact extractor</text><text class="n-sub" x="380" y="341">statement and quote</text><text class="n-sub" x="380" y="355">valid-time window</text></g>
+<g><rect class="k-backend" x="592" y="48" width="160" height="64" rx="6"/><text class="n-name" x="604" y="71">Entity resolution</text><text class="n-sub" x="604" y="85">cheapest check first</text><text class="n-sub" x="604" y="99">merges can be undone</text></g>
+<g><rect class="k-store" x="804" y="48" width="132" height="64" rx="6"/><text class="n-name" x="816" y="71">Graph store</text><text class="n-sub" x="816" y="85">canonical entities</text><text class="n-sub" x="816" y="99">mentions, aliases</text></g>
+<g><rect class="k-external" x="752" y="304" width="184" height="64" rx="6"/><text class="n-name" x="764" y="327">Temporal engine</text><text class="n-sub" x="764" y="341">observations to</text><text class="n-sub" x="764" y="355">fact versions</text></g>
+</svg>

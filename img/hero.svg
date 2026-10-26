@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 960 424" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="hero-title hero-desc" id="hero-root">
+<title id="hero-title">OntoGr Agent Memory layers</title>
+<desc id="hero-desc">Source items enter the extraction layer as episodes. Extracted facts go to the temporal and consistency engine, which writes fact versions to the storage layer. Retrieval reads the storage layer and returns a budgeted context block.</desc>
+<defs>
+      <style>#hero-root { --color-paper:#f5f5f5; --color-ink:#2d3142; --color-muted:#4f5d75; --color-accent:#bf4520; --font-sans:'Geist', system-ui, sans-serif; --font-serif:'Instrument Serif', serif; --font-mono:'Geist Mono', ui-monospace, monospace; }
+      #hero-root { font-family: var(--font-sans); color: var(--color-ink); }
+      #hero-root .diagram-container { width: 100%; overflow-x: auto; }
+      #hero-root .diagram-container { overflow-x: visible; }
+      #hero-root .n-name { font:600 12px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #hero-root .n-name-sm { font:500 11px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #hero-root .n-sub { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#5a6580 }
+      #hero-root .ey { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.18em;fill:#5a6580 }
+      #hero-root .al { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#4f5d75 }
+      #hero-root .al-accent { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#bf4520 }
+      #hero-root .callout { font:italic 400 14px 'Instrument Serif', serif;fill:#4f5d75 }
+      #hero-root .tag-t { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.08em;fill:#4f5d75 }
+      #hero-root .k-backend { fill:#ffffff;stroke:#2d3142;stroke-width:1 }
+      #hero-root .k-store { fill:rgba(45,49,66,0.05);stroke:#4f5d75;stroke-width:1 }
+      #hero-root .k-focal { fill:rgba(191,69,32,0.08);stroke:#bf4520;stroke-width:1.2 }
+      #hero-root .k-input { fill:rgba(79,93,117,0.10);stroke:#5a6580;stroke-width:1 }
+      #hero-root .k-external { fill:rgba(45,49,66,0.03);stroke:rgba(45,49,66,0.30);stroke-width:1 }
+      #hero-root .k-optional { fill:rgba(45,49,66,0.02);stroke:rgba(45,49,66,0.20);stroke-width:1;stroke-dasharray:4 3 }
+      #hero-root .k-security { fill:rgba(191,69,32,0.05);stroke:rgba(191,69,32,0.50);stroke-width:1;stroke-dasharray:4 4 }
+      #hero-root .zone { fill:rgba(45,49,66,0.03);stroke:#bfc0c0;stroke-width:1 }
+      #hero-root .zone-dash { fill:none;stroke:#bfc0c0;stroke-width:1;stroke-dasharray:4 4 }
+      #hero-root .row { fill:#ffffff;stroke:rgba(45,49,66,0.12);stroke-width:1 }
+      #hero-root .tag { fill:rgba(45,49,66,0.04);stroke:rgba(45,49,66,0.30);stroke-width:0.8 }
+      #hero-root .e { fill:none;stroke:#4f5d75;stroke-width:1 }
+      #hero-root .e-accent { fill:none;stroke:#bf4520;stroke-width:1.2 }
+      #hero-root .e-link { fill:none;stroke:#2e5aa8;stroke-width:1 }
+      #hero-root .e-dash { fill:none;stroke:#4f5d75;stroke-width:1;stroke-dasharray:5 4 }
+      #hero-root .e-dash-accent { fill:none;stroke:#bf4520;stroke-width:1.2;stroke-dasharray:5 4 }
+      #hero-root .guide { fill:none;stroke:#2e5aa8;stroke-width:1;stroke-dasharray:2 4 }
+      #hero-root .tick { fill:none;stroke:#bf4520;stroke-width:2 }
+      #hero-root .mask { fill:#f5f5f5 }
+      #hero-root .dot { fill:#2d3142 }
+      #hero-root .n-sub-accent { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#bf4520 }</style><marker id="hero-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker><marker id="hero-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker><marker id="hero-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<rect width="100%" height="100%" fill="#f5f5f5"/>
+<path class="e" d="M124 148L156 148" marker-end="url(#hero-arrow)"/>
+<path class="e" d="M388 148L448 148" marker-end="url(#hero-arrow)"/>
+<path class="e" d="M648 148L704 148" marker-end="url(#hero-arrow)"/>
+<g><rect class="mask" x="400.25" y="129" width="35.5" height="12"/><text class="al" x="418" y="138" text-anchor="middle">FACTS</text></g>
+<g><rect class="mask" x="655.5" y="129" width="41" height="12"/><text class="al" x="676" y="138" text-anchor="middle">WRITES</text></g>
+<path class="e-dash" d="M272 248L272 272Q272 280 280 280L764 280Q772 280 772 272L772 248" marker-end="url(#hero-arrow)"/>
+<g><rect class="mask" x="496" y="291" width="52" height="12"/><text class="al" x="522" y="300" text-anchor="middle">EPISODES</text></g>
+<path class="e" d="M840 248L840 320" marker-end="url(#hero-arrow)"/>
+<text class="al" x="848" y="288" text-anchor="start">READS</text>
+<path class="e" d="M780 344L688 344" marker-end="url(#hero-arrow)"/>
+<g><rect class="k-input" x="24" y="124" width="100" height="48" rx="24"/><text class="n-name" x="74" y="152" text-anchor="middle">Source items</text></g>
+<g><rect class="k-backend" x="156" y="48" width="232" height="200" rx="6"/><text class="n-name" x="168" y="72">Extraction layer</text></g>
+<g><rect class="row" x="168" y="92" width="208" height="28" rx="4"/><text class="n-name-sm" x="178" y="110">Entity extractor</text></g>
+<g><rect class="row" x="168" y="128" width="208" height="28" rx="4"/><text class="n-name-sm" x="178" y="146">Fact extractor</text></g>
+<g><rect class="row" x="168" y="164" width="208" height="28" rx="4"/><text class="n-name-sm" x="178" y="182">Ontology manager</text></g>
+<g><rect class="row" x="168" y="200" width="208" height="28" rx="4"/><text class="n-name-sm" x="178" y="218">Entity resolution</text></g>
+<g><rect class="k-focal" x="448" y="48" width="200" height="200" rx="6"/><text class="n-name" x="460" y="72">Temporal engine</text></g>
+<g><rect class="row" x="460" y="92" width="176" height="28" rx="4"/><text class="n-name-sm" x="470" y="110">Bi-temporal model</text></g>
+<g><rect class="row" x="460" y="128" width="176" height="28" rx="4"/><text class="n-name-sm" x="470" y="146">Contradiction handler</text></g>
+<g><rect class="row" x="460" y="164" width="176" height="28" rx="4"/><text class="n-name-sm" x="470" y="182">Provenance tracking</text></g>
+<g><rect class="k-backend" x="704" y="48" width="200" height="200" rx="6"/><text class="n-name" x="716" y="72">Storage layer</text></g>
+<g><rect class="row" x="716" y="92" width="176" height="28" rx="4"/><text class="n-name-sm" x="726" y="110">Graph store</text></g>
+<g><rect class="row" x="716" y="128" width="176" height="28" rx="4"/><text class="n-name-sm" x="726" y="146">Vector store</text></g>
+<g><rect class="row" x="716" y="164" width="176" height="28" rx="4"/><text class="n-name-sm" x="726" y="182">Episode store</text></g>
+<g><rect class="row" x="716" y="200" width="176" height="28" rx="4"/><text class="n-name-sm" x="726" y="218">State store</text></g>
+<g><rect class="k-backend" x="780" y="320" width="124" height="48" rx="6"/><text class="n-name" x="842" y="348" text-anchor="middle">Retrieval</text></g>
+<g><rect class="k-store" x="548" y="320" width="140" height="48" rx="6"/><text class="n-name" x="618" y="348" text-anchor="middle">Context block</text></g>
+<text class="callout" x="24" y="404" text-anchor="start">Writes run left to right across the top. Reads come back along the bottom.</text>
+</svg>
