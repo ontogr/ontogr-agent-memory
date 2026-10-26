@@ -42,7 +42,7 @@ INTEGRATION_PATHS ?= tests/integration
 INTEGRATION_WORKERS ?= auto
 
 test-integration:
-	uv run pytest $(INTEGRATION_PATHS) -v -n $(INTEGRATION_WORKERS) --dist loadscope \
+	uv run pytest $(INTEGRATION_PATHS) -v --maxfail=1 -n $(INTEGRATION_WORKERS) --dist loadscope \
 		-o "addopts=--strict-markers --strict-config --disable-socket --allow-unix-socket -ra" \
 		--junitxml=pytest-integration-results.xml
 

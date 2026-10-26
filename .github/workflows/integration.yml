@@ -39,6 +39,7 @@ jobs:
           - name: graphstore
             paths: tests/integration/graphstore
             services: falkordb neo4j
+            workers: "2"
             timeout: 15
           - name: vectorstore
             paths: tests/integration/vectorstore
@@ -114,7 +115,12 @@ jobs:
         run: make test-integration INTEGRATION_PATHS="$INTEGRATION_PATHS" INTEGRATION_WORKERS="$INTEGRATION_WORKERS"
       - name: Show service logs
         if: failure() && matrix.suite.services != ''
-        run: docker compose -f tests/integration/compose.yaml logs --no-color --tail 200
+        run: |
+          docker compose -f tests/integration/compose.yaml ps -a
+          docker inspect --format '{{.Name}} oom={{.State.OOMKilled}} exit={{.State.ExitCode}} restarts={{.RestartCount}}' $(docker compose -f tests/integration/compose.yaml ps -aq)
+          free -m
+          docker compose -f tests/integration/compose.yaml logs --no-color falkordb | grep -A45 'BUG REPORT START' || true
+          docker compose -f tests/integration/compose.yaml logs --no-color --tail 100
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
