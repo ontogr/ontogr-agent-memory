@@ -183,9 +183,7 @@ class TestTenantStats:
             valid_from=at(2025),
             statement="Ana works at Globex.",
         )
-        archived = entity("globex").model_copy(
-            update={"status": EntityStatus.ARCHIVED}
-        )
+        archived = entity("globex").model_copy(update={"status": EntityStatus.ARCHIVED})
         await resolver.save_entity(archived)
         await episodes.write_episodes(
             [make_episode(f"extra-{index:03}") for index in range(99)]

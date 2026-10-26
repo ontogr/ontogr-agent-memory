@@ -98,6 +98,8 @@ class Retriever:
                 loaded from the environment.
             reranker: Optional passage scorer. Typed failures retain fused ranks.
             count_tokens: Counter used for context admission and final usage.
+            relation_label: Returns a human-readable label for a relation type id.
+                Omit it to show facts without a relation name.
         """
         self._vectors = vectors
         self._keywords = keywords
@@ -178,7 +180,7 @@ class Retriever:
                 request.budget_tokens,
                 self._settings,
                 self._count_tokens,
-                self._relation_label,
+                relation_label=self._relation_label,
             ),
         )
 

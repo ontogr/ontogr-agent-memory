@@ -27,9 +27,7 @@ class TestTenantExport:
                         "merged_into": "ana",
                     }
                 ),
-                entity("archived").model_copy(
-                    update={"status": EntityStatus.ARCHIVED}
-                ),
+                entity("archived").model_copy(update={"status": EntityStatus.ARCHIVED}),
             ],
             [
                 alias("ana", "Ana A", "alias-2"),

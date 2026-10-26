@@ -124,6 +124,10 @@ ignore = [
 "ontogr_mem/vectorstore/graph/**" = ["TID251"]
 "ontogr_mem/vectorstore/pgvector/**" = ["TID251"]
 "ontogr_mem/relational_store/**" = ["TID251", "PLC0415"]
+# Composes the graph adapters on purpose and loads each driver only when selected.
+"ontogr_mem/service/bootstrap.py" = ["TID251", "PLC0415"]
+# Defines graph schema parts that the graph-backed vector stores consume.
+"ontogr_mem/vectorstore/schema.py" = ["TID251"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "falkordb".msg = "Import falkordb only inside ontogr_mem/graphstore/falkordb."
@@ -199,3 +203,11 @@ extend-exclude = [
   "tests/**/fixtures/**",
   "thoughts/**",
 ]
+
+[tool.typos.default.extend-words]
+# Person name used in labelled evaluation data.
+Ned = "Ned"
+# Deliberately misspelled status passed to Validity to show the rejection.
+activ = "activ"
+# Unmatched label input in a resolution test; changing it changes the result.
+nknown = "nknown"

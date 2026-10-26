@@ -47,7 +47,7 @@ class EmbeddingTimeoutError(EmbeddingError):
     """A provider call exceeded its time limit. It is never retried."""
 
 
-class EmbeddingFailed(EmbeddingError):
+class EmbeddingFailedError(EmbeddingError):
     """A strict embedding request failed for one of its input texts.
 
     Attributes:

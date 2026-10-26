@@ -12,7 +12,8 @@ from ontogr_mem.temporal.query import TemporalQuery
 from ontogr_mem.vectorstore.models import VectorKind
 
 
-async def scan_residue(
+# Each residue source is checked in turn, so the scan stays one unit.
+async def scan_residue(  # noqa: C901, PLR0912
     runtime: TenantRuntime,
     plan: ForgetPlan,
     *,

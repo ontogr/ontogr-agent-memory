@@ -6,7 +6,7 @@ import pytest
 from pydantic import BaseModel
 
 from ontogr_mem.llm import (
-    DeadlineExceeded,
+    DeadlineExceededError,
     LLMGate,
     LLMRequest,
     LLMResponse,
@@ -145,7 +145,7 @@ class TestLLMGateCache:
 
         with (
             bind_context(RequestContext("owner", "tenant-a", latency_budget_s=0.0)),
-            pytest.raises(DeadlineExceeded),
+            pytest.raises(DeadlineExceededError),
         ):
             await model_gate.complete(request())
 
@@ -165,7 +165,7 @@ class TestLLMGateCache:
         model_gate = gate(client, SlowCache())
         context = RequestContext("owner", "tenant-a", latency_budget_s=0.05)
 
-        with bind_context(context), pytest.raises(DeadlineExceeded):
+        with bind_context(context), pytest.raises(DeadlineExceededError):
             await model_gate.complete(request())
 
         assert client.requests == []

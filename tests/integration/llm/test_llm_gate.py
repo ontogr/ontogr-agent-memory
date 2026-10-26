@@ -6,8 +6,8 @@ import pytest
 from pydantic import BaseModel
 
 from ontogr_mem.llm import (
-    CircuitOpen,
-    DeadlineExceeded,
+    CircuitOpenError,
+    DeadlineExceededError,
     InputTooLargeError,
     LLMCallError,
     LLMGate,
@@ -17,6 +17,7 @@ from ontogr_mem.llm import (
     StructuredOutputError,
 )
 from ontogr_mem.llm.settings import LLMSettings
+from ontogr_mem.request_context import RequestContext, bind_context
 from ontogr_mem.resilience import CircuitBreaker
 from tests.support.llm import ScriptedLLM
 
@@ -154,7 +155,7 @@ class TestLLMGate:
 
         with pytest.raises(LLMCallError):
             await gate.complete(make_request())
-        with pytest.raises(CircuitOpen):
+        with pytest.raises(CircuitOpenError):
             await gate.complete(make_request())
         assert len(client.requests) == 2
 
@@ -204,20 +205,17 @@ class TestLLMGate:
 
     async def test_zero_request_budget_refuses_before_calling_client(self) -> None:
         """An exhausted request budget stops the provider call."""
-        from ontogr_mem.request_context import RequestContext, bind_context
-
         client = ScriptedLLM(["unused"])
         gate = make_gate(client)
         context = RequestContext("owner", "tenant-a", latency_budget_s=0.0)
 
-        with bind_context(context), pytest.raises(DeadlineExceeded):
+        with bind_context(context), pytest.raises(DeadlineExceededError):
             await gate.complete(make_request())
 
         assert client.requests == []
 
     async def test_request_deadline_timeout_raises_deadline_error(self) -> None:
         """A shorter request budget is distinguished from the call timeout."""
-        from ontogr_mem.request_context import RequestContext, bind_context
 
         class SlowClient:
             """Takes longer than the request budget."""
@@ -235,7 +233,7 @@ class TestLLMGate:
         )
         context = RequestContext("owner", "tenant-a", latency_budget_s=0.05)
 
-        with bind_context(context), pytest.raises(DeadlineExceeded):
+        with bind_context(context), pytest.raises(DeadlineExceededError):
             await gate.complete(make_request())
 
     async def test_complete_many_keeps_results_and_failures_in_request_order(

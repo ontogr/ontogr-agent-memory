@@ -135,7 +135,7 @@ async def test_still_missing_after_the_reask_stays_unmerged_and_is_not_remembere
 
 
 async def test_garbage_reply_is_parse_failed_and_never_a_verdict():
-    """An unparseable reply is not a NO."""
+    """An unparsable reply is not a NO."""
     out, _ = await run(OracleLLM(lambda a, b: True, garbage=True), [pair("A", "B")])
     assert out[0].verdict is None and out[0].status is VerifyStatus.PARSE_FAILED
 

@@ -25,11 +25,13 @@ class PlanningEpisodes:
     """Episode read port with a small metadata-backed fixture."""
 
     async def get_episodes(self, ids):
+        """Return episode stubs for the requested ids that the fixture holds."""
         return [
             SimpleNamespace(id=value) for value in sorted(set(ids)) if value == "e2"
         ]
 
     async def episode_ids_by_subject(self, subject_ref):
+        """Return the fixture episode ids that mention the subject."""
         return ["e2"] if subject_ref == "ana" else []
 
 
@@ -37,6 +39,7 @@ class PlanningTemporal:
     """Temporal read port with one updated slot."""
 
     def __init__(self):
+        """Build a fixture slot with a closed prior fact, a target, and a neighbor."""
         self.observation = ObservationRow("o2", "e2", "slot")
         self.prior = SimpleNamespace(
             fact_id="f1",
@@ -65,24 +68,31 @@ class PlanningTemporal:
         )
 
     async def facts_by_ids(self, ids):
+        """Return the target fact when its id is requested."""
         return [self.target] if "f2" in ids else []
 
     async def facts_touching(self, ids):
+        """Return no facts, since the fixture has no touching facts."""
         return []
 
     async def observations_by_ids(self, ids):
+        """Return the target observation when its id is requested."""
         return [self.observation] if "o2" in ids else []
 
     async def observations_of_episode(self, episode_id):
+        """Return the target observation for episode e2."""
         return [self.observation] if episode_id == "e2" else []
 
     async def load_slot(self, slot_key):
+        """Return the fixture slot with its prior, target, and neighbor facts."""
         return SlotState(slot_key, facts=(self.prior, self.target, self.neighbor))
 
     async def supersessions_of_slot(self, slot_key):
+        """Return one supersession that replaces f1 from episode e2."""
         return [SimpleNamespace(source_episode_id="e2", old_fact_id="f1")]
 
     async def episodes_matching(self, selector: SourceSelector):
+        """Return episode e2 for mail selectors."""
         return ["e2"] if selector.system == "mail" else []
 
 
@@ -94,12 +104,15 @@ class PlanningResolver:
         self.merge_protected = merge_protected or set()
 
     async def mentions_of_episode(self, episode_id):
+        """Return the entity mention recorded in episode e2."""
         return [SimpleNamespace(entity_id="person")] if episode_id == "e2" else []
 
     async def mentions_of(self, entity_id):
+        """Return episode e2 when asked about the fixture entity."""
         return [SimpleNamespace(episode_id="e2")] if entity_id == "person" else []
 
     async def has_merge_record(self, entity_id):
+        """Return whether the entity is protected by a merge record."""
         return entity_id in self.merge_protected
 
 

@@ -22,12 +22,12 @@ from ontogr_mem.ontology.models import (
     RenderedView,
     Unmatched,
 )
+from ontogr_mem.ontology.ontology_store import OntologyStore
 from ontogr_mem.ontology.projection import Projection, project
 from ontogr_mem.ontology.proposals import aggregate
 from ontogr_mem.ontology.resolve import How, TypeResolver
 from ontogr_mem.ontology.settings import OntologySettings
 from ontogr_mem.ontology.stale import stale_episodes
-from ontogr_mem.ontology.ontology_store import OntologyStore
 from ontogr_mem.ontology.validate import (
     Context,
     ExtractedItems,

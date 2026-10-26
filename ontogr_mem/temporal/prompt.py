@@ -52,7 +52,7 @@ def _side(name: str, fact: JudgeFact) -> str:
 
 
 def build_prompt(pairs: Sequence[PairInput]) -> str:
-    """Return the user message: one block per pair, with ids ``P1..Pn``."""
+    """Return the user message: one block per pair, with ids from ``P1`` onward."""
     return "\n".join(
         f'<pair id="P{n}">\n{_side("a", p.a)}\n{_side("b", p.b)}\n</pair>'
         for n, p in enumerate(pairs, start=1)

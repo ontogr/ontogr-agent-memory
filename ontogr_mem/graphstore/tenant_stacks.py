@@ -1,6 +1,11 @@
 """Build graph-backed storage ports for one Tenant."""
 
+from ontogr_mem.graphstore.cons_store import GraphConsStore
+from ontogr_mem.graphstore.episode_store import GraphEpisodeStore
+from ontogr_mem.graphstore.keyword_search import GraphKeywordSearch
+from ontogr_mem.graphstore.ontology_store import GraphOntologyStore
 from ontogr_mem.graphstore.protocol import GraphStore
+from ontogr_mem.graphstore.resolver_store import GraphResolverStore
 from ontogr_mem.graphstore.schemas import (
     CONSOLIDATION,
     EPISODES,
@@ -10,9 +15,12 @@ from ontogr_mem.graphstore.schemas import (
     TEMPORAL,
     VECTOR,
 )
+from ontogr_mem.graphstore.temporal.store import GraphTemporalStore
 from ontogr_mem.observability import Tracer
 from ontogr_mem.tenant_stores import TenantStores
 from ontogr_mem.vectorstore import Embedder, EmbeddingGateway, VectorStore
+from ontogr_mem.vectorstore.graph.falkordb import FalkorDBVectorBackend
+from ontogr_mem.vectorstore.graph.neo4j import Neo4jVectorBackend
 
 
 async def graph_stores(
@@ -24,20 +32,11 @@ async def graph_stores(
     tracer: Tracer | None = None,
 ) -> TenantStores:
     """Open the tenant schema and bind all graph adapters to its runner."""
-    from ontogr_mem.graphstore.cons_store import GraphConsStore
-    from ontogr_mem.graphstore.episode_store import GraphEpisodeStore
-    from ontogr_mem.graphstore.keyword_search import GraphKeywordSearch
-    from ontogr_mem.graphstore.ontology_store import GraphOntologyStore
-    from ontogr_mem.graphstore.resolver_store import GraphResolverStore
-    from ontogr_mem.graphstore.temporal.store import GraphTemporalStore
-
     handle = await store.open(
         tenant_id,
         [EPISODES, ONTOLOGY, RESOLUTION, TEMPORAL, CONSOLIDATION, KEYWORD, VECTOR],
     )
     runner = store.runner(handle)
-    from ontogr_mem.vectorstore.graph.falkordb import FalkorDBVectorBackend
-    from ontogr_mem.vectorstore.graph.neo4j import Neo4jVectorBackend
 
     vector_backend = (
         Neo4jVectorBackend(store, handle)
