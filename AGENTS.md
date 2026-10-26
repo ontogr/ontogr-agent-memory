@@ -40,7 +40,6 @@ support can open `.claude/skills/<name>/SKILL.md` directly.
 | Drafting or revising prose, including replies, instruction files, docs, comments, docstrings, commits, and PRs | `writing-plain` plus the relevant task skill |
 | Adding or changing tests | `writing-tests` |
 | Adding or updating docstrings or comments | `writing-docstrings` |
-| Writing user-facing docs, README sections, or Markdown guides | `writing-diataxis-docs` |
 | Fixing type-check failures from `ty` | `fixing-ty-errors` |
 
 For setup, contribution, PR, or broader project commands, read @CONTRIBUTING.md.
@@ -373,7 +372,7 @@ Use judgment based on scope, but default to these artifacts.
 
 ### Documentation-only changes
 
-- Follow `writing-plain` for prose and instruction files. Also use `writing-diataxis-docs` for user-facing documentation pages.
+- Follow `writing-plain` for prose and instruction files.
 - Be concrete and concise. Include examples, command invocations, data formats,
   or short flows when they make behavior easier to understand.
 - Explain the why behind non-obvious design decisions and tradeoffs.
