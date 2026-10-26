@@ -39,18 +39,22 @@ jobs:
           - name: graphstore
             paths: tests/integration/graphstore
             services: falkordb neo4j
+            workers: "0"
             timeout: 15
           - name: vectorstore
             paths: tests/integration/vectorstore
             services: falkordb neo4j pgvector
+            workers: "0"
             timeout: 15
           - name: temporal
             paths: tests/integration/temporal
             services: falkordb neo4j
+            workers: "0"
             timeout: 15
           - name: consolidation
             paths: tests/integration/consolidation
             services: falkordb neo4j
+            workers: "0"
             timeout: 15
           - name: relational-store
             paths: tests/integration/relational_store
@@ -75,6 +79,7 @@ jobs:
               --ignore=tests/integration/llm
               --ignore=tests/integration/observability
             services: falkordb neo4j
+            workers: "0"
             timeout: 20
     env:
       UV_PYTHON: "3.12"
@@ -88,8 +93,10 @@ jobs:
       MEMORY_PGVECTOR_DSN: postgresql://memory:memorytest123@localhost:15432/memory
       SERVICES: ${{ matrix.suite.services }}
       INTEGRATION_PATHS: ${{ matrix.suite.paths }}
-      # pytest-xdist workers. The default is one per core. The Postgres tests
-      # truncate shared tables, so that module runs in one process.
+      # pytest-xdist workers. The default is one per core, and 0 runs in one
+      # process. FalkorDB v4.22 can crash with a segmentation fault when two
+      # clients create indexes at the same moment, and the Postgres tests
+      # truncate shared tables, so those modules run in one process.
       INTEGRATION_WORKERS: ${{ matrix.suite.workers || 'auto' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
