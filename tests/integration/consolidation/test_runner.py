@@ -12,8 +12,9 @@ from ontogr_mem.consolidation.models import (
 )
 from ontogr_mem.consolidation.runner import ConsolidationRunner
 from ontogr_mem.consolidation.stage import Stage, StageContext
-from ontogr_mem.graphstore.memory import MemoryConsStore
+from ontogr_mem.consolidation.store import ConsStore
 from tests.support.consolidation import ManualClock
+from tests.support.graph_backend import GraphBackend
 
 
 class FakeStage:
@@ -56,19 +57,25 @@ class FakeStage:
         )
 
 
-def make_runner(
-    stages: list[Stage], clock: ManualClock, store: MemoryConsStore | None = None
-) -> tuple[ConsolidationRunner, MemoryConsStore]:
-    """Build a runner over scripted stages, with a fresh store unless given."""
-    store = store or MemoryConsStore()
+async def make_runner(
+    backend: GraphBackend,
+    stages: list[Stage],
+    clock: ManualClock,
+    store: ConsStore | None = None,
+) -> tuple[ConsolidationRunner, ConsStore]:
+    """Build a runner over scripted stages, with a fresh tenant store unless given."""
+    store = store or (await backend.open_stores()).cons_store
     runner = ConsolidationRunner(stages, store, clock, ConsolidationSettings())
     return runner, store
 
 
-async def test_the_registry_takes_any_number_of_fatal_stages() -> None:
+async def test_the_registry_takes_any_number_of_fatal_stages(
+    graph_backend: GraphBackend,
+) -> None:
     """The registry does not police fatal stages; a failing one still aborts."""
     after = FakeStage("after")
-    runner, _ = make_runner(
+    runner, _ = await make_runner(
+        graph_backend,
         [
             FakeStage("one", fatal=True, raises=RuntimeError("boom")),
             FakeStage("two", fatal=True),
@@ -85,15 +92,18 @@ async def test_the_registry_takes_any_number_of_fatal_stages() -> None:
     assert result.stage("after").status is StageStatus.SKIPPED
 
 
-def test_registry_refuses_duplicate_names() -> None:
+async def test_registry_refuses_duplicate_names(graph_backend: GraphBackend) -> None:
     """Duplicate stage names are refused."""
     with pytest.raises(RegistryError):
-        make_runner([FakeStage("a", fatal=True), FakeStage("a")], ManualClock())
+        await make_runner(
+            graph_backend, [FakeStage("a", fatal=True), FakeStage("a")], ManualClock()
+        )
 
 
-async def test_stages_run_in_order_and_report_each() -> None:
+async def test_stages_run_in_order_and_report_each(graph_backend: GraphBackend) -> None:
     """Stages run in order and each reports a result."""
-    runner, _ = make_runner(
+    runner, _ = await make_runner(
+        graph_backend,
         [FakeStage("one", fatal=True), FakeStage("two"), FakeStage("three")],
         ManualClock(),
     )
@@ -104,10 +114,14 @@ async def test_stages_run_in_order_and_report_each() -> None:
     assert result.status is RunStatus.OK
 
 
-async def test_gated_stage_is_skipped_without_running() -> None:
+async def test_gated_stage_is_skipped_without_running(
+    graph_backend: GraphBackend,
+) -> None:
     """A gated stage is skipped, with its reason as the note."""
     quiet = FakeStage("quiet", gate_reason="nothing new")
-    runner, _ = make_runner([FakeStage("a", fatal=True), quiet], ManualClock())
+    runner, _ = await make_runner(
+        graph_backend, [FakeStage("a", fatal=True), quiet], ManualClock()
+    )
 
     result = await runner.run()
 
@@ -116,11 +130,15 @@ async def test_gated_stage_is_skipped_without_running() -> None:
     assert result.stage("quiet").notes == ["nothing new"]
 
 
-async def test_gate_exception_fails_the_stage_not_the_run() -> None:
+async def test_gate_exception_fails_the_stage_not_the_run(
+    graph_backend: GraphBackend,
+) -> None:
     """An exception in a gate fails that stage and the run goes on."""
     after = FakeStage("after")
     broken = FakeStage("broken", gate_raises=ValueError("bad gate"))
-    runner, _ = make_runner([FakeStage("a", fatal=True), broken, after], ManualClock())
+    runner, _ = await make_runner(
+        graph_backend, [FakeStage("a", fatal=True), broken, after], ManualClock()
+    )
 
     result = await runner.run()
 
@@ -131,10 +149,13 @@ async def test_gate_exception_fails_the_stage_not_the_run() -> None:
     assert result.status is RunStatus.PARTIAL
 
 
-async def test_non_fatal_failure_does_not_stop_later_stages() -> None:
+async def test_non_fatal_failure_does_not_stop_later_stages(
+    graph_backend: GraphBackend,
+) -> None:
     """A non-fatal failure is reported and later stages still run."""
     after = FakeStage("after")
-    runner, _ = make_runner(
+    runner, _ = await make_runner(
+        graph_backend,
         [
             FakeStage("a", fatal=True),
             FakeStage("bad", raises=ValueError("boom")),
@@ -151,10 +172,11 @@ async def test_non_fatal_failure_does_not_stop_later_stages() -> None:
     assert result.status is RunStatus.PARTIAL
 
 
-async def test_fatal_failure_aborts_the_rest() -> None:
+async def test_fatal_failure_aborts_the_rest(graph_backend: GraphBackend) -> None:
     """A fatal failure skips every stage after it."""
     after = FakeStage("after")
-    runner, _ = make_runner(
+    runner, _ = await make_runner(
+        graph_backend,
         [FakeStage("core", fatal=True, raises=RuntimeError("x")), after],
         ManualClock(),
     )
@@ -166,11 +188,13 @@ async def test_fatal_failure_aborts_the_rest() -> None:
     assert result.stage("after").status is StageStatus.SKIPPED
 
 
-async def test_watermark_is_stored_only_when_a_stage_is_ok() -> None:
+async def test_watermark_is_stored_only_when_a_stage_is_ok(
+    graph_backend: GraphBackend,
+) -> None:
     """A watermark is stored only for a stage that finished OK."""
     good = FakeStage("good", fatal=True, watermark="7")
     half = FakeStage("half", status=StageStatus.PARTIAL, watermark="9")
-    runner, store = make_runner([good, half], ManualClock())
+    runner, store = await make_runner(graph_backend, [good, half], ManualClock())
 
     await runner.run()
 
@@ -179,20 +203,24 @@ async def test_watermark_is_stored_only_when_a_stage_is_ok() -> None:
     assert await store.get(Watermark, "half") is None
 
 
-async def test_a_second_runner_is_locked_and_its_rerun_is_honored_once() -> None:
+async def test_a_second_runner_is_locked_and_its_rerun_is_honored_once(
+    graph_backend: GraphBackend,
+) -> None:
     """A second runner is locked while the first runs, and its request reruns once."""
     clock = ManualClock()
-    store = MemoryConsStore()
+    store = (await graph_backend.open_stores()).cons_store
 
     class Rival(FakeStage):
         async def run(self, ctx: StageContext) -> StageResult:
             if self.runs == 0:
-                rival, _ = make_runner([FakeStage("x", fatal=True)], clock, store)
+                rival, _ = await make_runner(
+                    graph_backend, [FakeStage("x", fatal=True)], clock, store
+                )
                 locked = await rival.run()
                 assert locked.status is RunStatus.LOCKED
             return await super().run(ctx)
 
-    runner, _ = make_runner([Rival("a", fatal=True)], clock, store)
+    runner, _ = await make_runner(graph_backend, [Rival("a", fatal=True)], clock, store)
 
     result = await runner.run()
 
@@ -200,10 +228,12 @@ async def test_a_second_runner_is_locked_and_its_rerun_is_honored_once() -> None
     assert result.reruns == 1
 
 
-async def test_expired_lease_can_be_taken() -> None:
+async def test_expired_lease_can_be_taken(graph_backend: GraphBackend) -> None:
     """A run takes over a lease that has expired."""
     clock = ManualClock()
-    runner, store = make_runner([FakeStage("a", fatal=True)], clock)
+    runner, store = await make_runner(
+        graph_backend, [FakeStage("a", fatal=True)], clock
+    )
     await store.acquire("dead-worker", clock(), 10)
     clock.advance(seconds=11)
 
@@ -212,7 +242,9 @@ async def test_expired_lease_can_be_taken() -> None:
     assert result.status is RunStatus.OK
 
 
-async def test_rerun_requested_during_a_run_is_claimed_after_release() -> None:
+async def test_rerun_requested_during_a_run_is_claimed_after_release(
+    graph_backend: GraphBackend,
+) -> None:
     """A rerun requested during a pass runs one more pass."""
 
     class AskingStage(FakeStage):
@@ -222,7 +254,7 @@ async def test_rerun_requested_during_a_run_is_claimed_after_release() -> None:
             return await super().run(ctx)
 
     stage = AskingStage("a", fatal=True)
-    runner, _ = make_runner([stage], ManualClock())
+    runner, _ = await make_runner(graph_backend, [stage], ManualClock())
 
     result = await runner.run()
 
@@ -230,7 +262,7 @@ async def test_rerun_requested_during_a_run_is_claimed_after_release() -> None:
     assert result.reruns == 1
 
 
-async def test_reruns_are_capped() -> None:
+async def test_reruns_are_capped(graph_backend: GraphBackend) -> None:
     """Reruns stop at the configured maximum."""
 
     class AlwaysAsking(FakeStage):
@@ -239,7 +271,7 @@ async def test_reruns_are_capped() -> None:
             return await super().run(ctx)
 
     stage = AlwaysAsking("a", fatal=True)
-    runner, _ = make_runner([stage], ManualClock())
+    runner, _ = await make_runner(graph_backend, [stage], ManualClock())
 
     result = await runner.run()
 
@@ -247,17 +279,21 @@ async def test_reruns_are_capped() -> None:
     assert result.reruns == 3
 
 
-async def test_lease_is_released_after_a_run() -> None:
+async def test_lease_is_released_after_a_run(graph_backend: GraphBackend) -> None:
     """The lease is released when a run ends."""
     clock = ManualClock()
-    runner, store = make_runner([FakeStage("a", fatal=True)], clock)
+    runner, store = await make_runner(
+        graph_backend, [FakeStage("a", fatal=True)], clock
+    )
 
     await runner.run()
 
     assert await store.acquire("next", clock(), 60)
 
 
-async def test_a_rerun_request_at_the_cap_is_kept_for_the_next_run() -> None:
+async def test_a_rerun_request_at_the_cap_is_kept_for_the_next_run(
+    graph_backend: GraphBackend,
+) -> None:
     """A rerun request left at the cap is kept for the next holder."""
 
     class AlwaysAsking(FakeStage):
@@ -266,7 +302,9 @@ async def test_a_rerun_request_at_the_cap_is_kept_for_the_next_run() -> None:
             return await super().run(ctx)
 
     clock = ManualClock()
-    runner, store = make_runner([AlwaysAsking("a", fatal=True)], clock)
+    runner, store = await make_runner(
+        graph_backend, [AlwaysAsking("a", fatal=True)], clock
+    )
 
     result = await runner.run()
 
@@ -276,9 +314,13 @@ async def test_a_rerun_request_at_the_cap_is_kept_for_the_next_run() -> None:
     assert await store.release("next") is True
 
 
-async def test_no_pending_flag_when_nothing_was_asked() -> None:
+async def test_no_pending_flag_when_nothing_was_asked(
+    graph_backend: GraphBackend,
+) -> None:
     """No rerun is pending when none was requested."""
-    runner, _ = make_runner([FakeStage("a", fatal=True)], ManualClock())
+    runner, _ = await make_runner(
+        graph_backend, [FakeStage("a", fatal=True)], ManualClock()
+    )
 
     result = await runner.run()
 
@@ -286,7 +328,9 @@ async def test_no_pending_flag_when_nothing_was_asked() -> None:
     assert result.reruns == 0
 
 
-async def test_the_lease_is_renewed_between_stages_of_a_long_run() -> None:
+async def test_the_lease_is_renewed_between_stages_of_a_long_run(
+    graph_backend: GraphBackend,
+) -> None:
     """The lease is renewed before each stage, so a rival cannot take it mid-run."""
     clock = ManualClock()
     seen: list[bool] = []
@@ -297,7 +341,9 @@ async def test_the_lease_is_renewed_between_stages_of_a_long_run() -> None:
             seen.append(await ctx.store.acquire("other", clock(), 60))
             return await super().run(ctx)
 
-    runner, _ = make_runner([Slow("a", fatal=True), Slow("b"), Slow("c")], clock)
+    runner, _ = await make_runner(
+        graph_backend, [Slow("a", fatal=True), Slow("b"), Slow("c")], clock
+    )
 
     result = await runner.run()
 
@@ -305,7 +351,9 @@ async def test_the_lease_is_renewed_between_stages_of_a_long_run() -> None:
     assert seen == [False, False, False]
 
 
-async def test_a_stolen_lease_stops_the_remaining_stages() -> None:
+async def test_a_stolen_lease_stops_the_remaining_stages(
+    graph_backend: GraphBackend,
+) -> None:
     """A run whose lease was taken stops and reports LEASE_LOST."""
     clock = ManualClock()
 
@@ -316,7 +364,9 @@ async def test_a_stolen_lease_stops_the_remaining_stages() -> None:
             return await super().run(ctx)
 
     after = FakeStage("after")
-    runner, store = make_runner([Thief("a", fatal=True), after], clock)
+    runner, store = await make_runner(
+        graph_backend, [Thief("a", fatal=True), after], clock
+    )
 
     result = await runner.run()
 
@@ -327,10 +377,10 @@ async def test_a_stolen_lease_stops_the_remaining_stages() -> None:
     assert not await store.acquire("third", clock(), 60)
 
 
-async def test_run_ids_do_not_depend_on_the_clock() -> None:
+async def test_run_ids_do_not_depend_on_the_clock(graph_backend: GraphBackend) -> None:
     """Two runs on one fixed clock get different run ids."""
     clock = ManualClock()
-    runner, _ = make_runner([FakeStage("a", fatal=True)], clock)
+    runner, _ = await make_runner(graph_backend, [FakeStage("a", fatal=True)], clock)
 
     first = await runner.run()
     second = await runner.run()

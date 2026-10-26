@@ -1,9 +1,9 @@
 """The episode store port as the reader of the previous episodes."""
 
 from ontogr_mem.data_models import PreviousEpisodes
-from ontogr_mem.graphstore.memory import MemoryEpisodeStore
 from ontogr_mem.ingestion import EpisodeStore
 from tests.support.episodes import make_episode
+from tests.support.graph_backend import GraphBackend
 
 
 def as_previous(store: EpisodeStore) -> PreviousEpisodes:
@@ -18,9 +18,11 @@ def as_previous(store: EpisodeStore) -> PreviousEpisodes:
 class TestEpisodeStore:
     """The episode store port."""
 
-    async def test_store_serves_the_previous_episodes(self):
+    async def test_store_serves_the_previous_episodes(
+        self, graph_backend: GraphBackend
+    ):
         """The store that holds the episodes also serves the earlier ones."""
-        store = as_previous(MemoryEpisodeStore())
+        store = as_previous((await graph_backend.open_stores()).episodes)
         first = make_episode("e1", minutes=1)
         second = make_episode("e2", minutes=2)
         await store.write_episodes([first, second])

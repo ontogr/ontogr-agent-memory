@@ -1,6 +1,6 @@
 """Audit violations on hand-built temporal states, one kind per case."""
 
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -13,11 +13,9 @@ from ontogr_mem.data_models.fact_versions import (
 )
 from ontogr_mem.data_models.ledger import LedgerEntry, LedgerOp
 from ontogr_mem.data_models.observation import Observation, ObservationKind
-from ontogr_mem.graphstore.memory import (
-    MemoryEpisodeStore,
-    MemoryResolverStore,
-    MemoryTemporalStore,
-)
+from ontogr_mem.graphstore import GraphHandle
+from ontogr_mem.graphstore.protocol import GraphStore
+from ontogr_mem.graphstore.temporal.store import GraphTemporalStore
 from ontogr_mem.temporal.audit import audit
 from ontogr_mem.temporal.classify import Disposition
 from ontogr_mem.temporal.ledger import GENESIS, link, slot_chain
@@ -29,6 +27,7 @@ from ontogr_mem.temporal.verdicts import (
     VerdictSource,
 )
 from tests.contracts.temporal_store import contradiction
+from tests.support.graph_backend import GraphBackend
 
 
 SLOT = "slot-ana-employer"
@@ -142,32 +141,59 @@ def decision(chosen: str) -> ConflictDecision:
     )
 
 
-class BrokenStore(MemoryTemporalStore):
-    """A twin whose snapshot, chains and pending episodes are set by the test."""
+@dataclass
+class BrokenState:
+    """Hand-built audit input that replaces a tenant's stored rows.
+
+    Attributes:
+        snap: The snapshot the audit reads first.
+        chains: Ledger entries keyed by chain name.
+        pending: Episodes still waiting for recovery.
+    """
+
+    snap: TemporalSnapshot
+    chains: dict[str, list[LedgerEntry]] = field(default_factory=dict)
+    pending: list[IncompleteEpisode] = field(default_factory=list)
+
+
+class BrokenStore(GraphTemporalStore):
+    """A graph temporal store whose audit reads come from a `BrokenState`."""
 
     def __init__(
         self,
-        snap: TemporalSnapshot,
-        chains: dict[str, list[LedgerEntry]] | None = None,
-        pending: list[IncompleteEpisode] | None = None,
+        store: GraphStore,
+        handle: GraphHandle,
+        *,
+        tenant_keyed: bool,
+        state: BrokenState,
     ) -> None:
-        """Hold the hand-built state in place of the twin's own rows."""
-        super().__init__(MemoryEpisodeStore(), MemoryResolverStore())
-        self._rows = snap
-        self._chain_rows = chains or {}
-        self._pending_rows = pending or []
+        """Bind the store to the tenant and hold the hand-built state."""
+        super().__init__(store, handle, tenant_keyed=tenant_keyed)
+        self._state = state
 
     async def snapshot(self) -> TemporalSnapshot:
         """Return the hand-built snapshot."""
-        return self._rows
+        return self._state.snap
 
     async def ledger_entries(self, chain: str) -> list[LedgerEntry]:
         """Return the hand-built entries of a chain."""
-        return list(self._chain_rows.get(chain, []))
+        return list(self._state.chains.get(chain, []))
 
     async def incomplete_episodes(self) -> list[IncompleteEpisode]:
         """Return the hand-built pending episodes."""
-        return list(self._pending_rows)
+        return list(self._state.pending)
+
+
+async def audit_state(graph_backend: GraphBackend, state: BrokenState, **kwargs):
+    """Run the audit over a fresh tenant whose reads return `state`."""
+    handle = await graph_backend.open_tenant()
+    store = BrokenStore(
+        graph_backend.store,
+        handle,
+        tenant_keyed=graph_backend.tenant_keyed,
+        state=state,
+    )
+    return await audit(store, **kwargs)
 
 
 def tampered_chain() -> dict[str, list[LedgerEntry]]:
@@ -186,54 +212,54 @@ def tampered_chain() -> dict[str, list[LedgerEntry]]:
 
 CASES = [
     pytest.param(
-        BrokenStore(snapshot(facts=(fact(), fact())), {}),
+        BrokenState(snapshot(facts=(fact(), fact())), {}),
         "duplicate_version",
         id="duplicate_version",
     ),
     pytest.param(
-        BrokenStore(snapshot(facts=(fact(version=1), fact(version=2)))),
+        BrokenState(snapshot(facts=(fact(version=1), fact(version=2)))),
         "two_current_versions",
         id="two_current_versions",
     ),
     pytest.param(
-        BrokenStore(snapshot(facts=(fact(valid_to=AT),))),
+        BrokenState(snapshot(facts=(fact(valid_to=AT),))),
         "empty_valid_interval",
         id="empty_valid_interval",
     ),
     pytest.param(
-        BrokenStore(snapshot(facts=(fact(recorded=LATER, expired_at=AT),))),
+        BrokenState(snapshot(facts=(fact(recorded=LATER, expired_at=AT),))),
         "empty_system_interval",
         id="empty_system_interval",
     ),
     pytest.param(
-        BrokenStore(snapshot(facts=(fact(recorded=datetime(1970, 1, 1, tzinfo=UTC)),))),
+        BrokenState(snapshot(facts=(fact(recorded=datetime(1970, 1, 1, tzinfo=UTC)),))),
         "implausible_system_time",
         id="implausible_system_time",
     ),
     pytest.param(
-        BrokenStore(snapshot(facts=(fact(status=FactStatus.CLOSED),))),
+        BrokenState(snapshot(facts=(fact(status=FactStatus.CLOSED),))),
         "closed_without_record",
         id="closed_without_record",
     ),
     pytest.param(
-        BrokenStore(snapshot(facts=(fact(status=FactStatus.OVERRIDDEN, evidence=()),))),
+        BrokenState(snapshot(facts=(fact(status=FactStatus.OVERRIDDEN, evidence=()),))),
         "excluded_without_evidence",
         id="excluded_without_evidence",
     ),
     pytest.param(
-        BrokenStore(
+        BrokenState(
             snapshot(facts=(fact(status=FactStatus.WITHDRAWN, evidence=("obs-1",)),))
         ),
         "withdrawn_with_evidence",
         id="withdrawn_with_evidence",
     ),
     pytest.param(
-        BrokenStore(snapshot(facts=(fact(evidence=("obs-gone",)),))),
+        BrokenState(snapshot(facts=(fact(evidence=("obs-gone",)),))),
         "fact_without_evidence",
         id="fact_without_evidence",
     ),
     pytest.param(
-        BrokenStore(
+        BrokenState(
             snapshot(
                 facts=(
                     fact(
@@ -260,7 +286,7 @@ CASES = [
         id="applied_supersession_without_cause",
     ),
     pytest.param(
-        BrokenStore(
+        BrokenState(
             snapshot(
                 facts=(
                     fact(status=FactStatus.CLOSED, close_kind=SupersessionKind.VERDICT),
@@ -284,12 +310,12 @@ CASES = [
         id="verdict_supersession_with_episode",
     ),
     pytest.param(
-        BrokenStore(snapshot(facts=(fact(),)), tampered_chain()),
+        BrokenState(snapshot(facts=(fact(),)), tampered_chain()),
         "ledger_chain",
         id="ledger_chain",
     ),
     pytest.param(
-        BrokenStore(
+        BrokenState(
             snapshot(),
             pending=[IncompleteEpisode("ep-1", AT, "hash-ep-1")],
         ),
@@ -297,7 +323,7 @@ CASES = [
         id="episode_not_committed",
     ),
     pytest.param(
-        BrokenStore(
+        BrokenState(
             snapshot(
                 facts=(fact(),),
                 conflicts=(
@@ -310,7 +336,7 @@ CASES = [
         id="duplicate_conflict",
     ),
     pytest.param(
-        BrokenStore(
+        BrokenState(
             snapshot(
                 facts=(fact(),),
                 verdicts=(
@@ -323,7 +349,7 @@ CASES = [
         id="duplicate_verdict",
     ),
     pytest.param(
-        BrokenStore(
+        BrokenState(
             snapshot(
                 facts=(
                     fact(evidence=("obs-1",)),
@@ -336,7 +362,7 @@ CASES = [
         id="resolution_without_reason",
     ),
     pytest.param(
-        BrokenStore(
+        BrokenState(
             snapshot(
                 facts=(fact(), fact("f2")),
                 conflicts=(conflict(fact_ids=("f1", "f2")),),
@@ -346,7 +372,7 @@ CASES = [
         id="resolution_without_loser",
     ),
     pytest.param(
-        BrokenStore(
+        BrokenState(
             snapshot(
                 facts=(fact(status=FactStatus.OVERRIDDEN), fact("f2")),
                 decisions=(decision("f1"),),
@@ -356,7 +382,7 @@ CASES = [
         id="chosen_fact_overridden",
     ),
     pytest.param(
-        BrokenStore(
+        BrokenState(
             snapshot(
                 facts=(fact(), fact("f2", status=FactStatus.OVERRIDDEN)),
                 conflicts=(conflict(fact_ids=("f1", "ghost")),),
@@ -372,32 +398,44 @@ class TestTemporalAudit:
     """Each invariant the audit checks fails on the state that breaks it."""
 
     @pytest.mark.parametrize(("store", "code"), CASES)
-    async def test_reports_the_violated_invariant(self, store, code):
+    async def test_reports_the_violated_invariant(
+        self, graph_backend: GraphBackend, store, code
+    ):
         """The named check reports its violation on the broken state."""
-        violations = await audit(store, now=LATER, episode_ttl=timedelta(days=30))
+        violations = await audit_state(
+            graph_backend, store, now=LATER, episode_ttl=timedelta(days=30)
+        )
 
         assert code in [v.code for v in violations]
 
-    async def test_reports_nothing_for_a_consistent_state(self):
+    async def test_reports_nothing_for_a_consistent_state(
+        self, graph_backend: GraphBackend
+    ):
         """A live fact with its evidence and no other rows has no violation."""
-        store = BrokenStore(snapshot(facts=(fact(),)))
+        store = BrokenState(snapshot(facts=(fact(),)))
 
-        assert await audit(store) == []
+        assert await audit_state(graph_backend, store) == []
 
-    async def test_pending_episode_inside_the_ttl_is_not_reported(self):
+    async def test_pending_episode_inside_the_ttl_is_not_reported(
+        self, graph_backend: GraphBackend
+    ):
         """A pending episode younger than the TTL is still waiting for recover."""
-        store = BrokenStore(
+        store = BrokenState(
             snapshot(),
             pending=[IncompleteEpisode("ep-1", AT, "hash-ep-1")],
         )
 
-        violations = await audit(store, now=AT, episode_ttl=timedelta(hours=1))
+        violations = await audit_state(
+            graph_backend, store, now=AT, episode_ttl=timedelta(hours=1)
+        )
 
         assert violations == []
 
-    async def test_a_resolved_conflict_with_a_loser_is_consistent(self):
+    async def test_a_resolved_conflict_with_a_loser_is_consistent(
+        self, graph_backend: GraphBackend
+    ):
         """A preference whose loser is overridden and has a reason is clean."""
-        store = BrokenStore(
+        store = BrokenState(
             snapshot(
                 facts=(fact(), fact("f2", status=FactStatus.OVERRIDDEN)),
                 conflicts=(conflict(fact_ids=("f1", "f2")),),
@@ -405,15 +443,17 @@ class TestTemporalAudit:
             )
         )
 
-        assert await audit(store) == []
+        assert await audit_state(graph_backend, store) == []
 
-    async def test_a_choice_of_the_surviving_fact_is_consistent(self):
+    async def test_a_choice_of_the_surviving_fact_is_consistent(
+        self, graph_backend: GraphBackend
+    ):
         """Choosing a fact that is not overridden does not violate the audit."""
-        store = BrokenStore(
+        store = BrokenState(
             snapshot(
                 facts=(fact(), fact("f2", status=FactStatus.OVERRIDDEN)),
                 decisions=(decision("f1"),),
             )
         )
 
-        assert await audit(store) == []
+        assert await audit_state(graph_backend, store) == []

@@ -28,7 +28,6 @@ from ontogr_mem.entity_extraction import (
 )
 from ontogr_mem.entity_extraction.extractors import LLMExtractor, RecordMapper
 from ontogr_mem.graphstore.cons_store import GraphConsStore
-from ontogr_mem.graphstore.memory import MemoryEpisodeStore
 from ontogr_mem.graphstore.schemas import (
     CONSOLIDATION,
     EPISODES,
@@ -211,16 +210,6 @@ async def ingest_all(store, collected: list[Episode] | None = None) -> list[list
 class TestPipeline:
     """Ingestion writes the same episodes on every store."""
 
-    async def test_memory_twin_writes_each_episode_once(self):
-        """The in-memory twin keeps one episode per message and document part."""
-        store = MemoryEpisodeStore()
-
-        handed_off = await ingest_all(store)
-
-        assert [len(batch) for batch in handed_off] == [4, 2]
-        await assert_ingested(store, handed_off)
-        assert len(store.all_episodes()) == 6
-
     @pytest.mark.parametrize("backend", ["falkordb", "neo4j"])
     async def test_graph_backend_writes_the_same_episodes(
         self, backend, falkordb_store, neo4j_store
@@ -264,18 +253,11 @@ class TestEntityExtraction:
         assert "I moved to Berlin last week." in context
         assert "Welcome to Berlin!" in context
 
-    async def test_memory_twin_extracts_expected_entities(self):
-        """The twin supplies earlier episodes and extracts the names in each one."""
-        episodes, report, llm = await self.run_on(MemoryEpisodeStore())
-
-        self.assert_context_was_given(llm)
-        assert_entities_extracted(report, episodes)
-
     @pytest.mark.parametrize("backend", ["falkordb", "neo4j"])
     async def test_graph_backend_extracts_the_same_entities(
         self, backend, falkordb_store, neo4j_store
     ):
-        """A real backend gives the same extraction as the twin."""
+        """A real backend extracts the expected entities."""
         store = falkordb_store if backend == "falkordb" else neo4j_store
         handle = await store.open(new_tenant(), [EPISODES])
         try:

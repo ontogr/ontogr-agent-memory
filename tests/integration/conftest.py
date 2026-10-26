@@ -8,6 +8,7 @@ from ontogr_mem.graphstore.falkordb import FalkorDBGraphStore
 from ontogr_mem.graphstore.neo4j import Neo4jGraphStore
 from ontogr_mem.vectorstore.pgvector import PgVectorSettings, Pool, create_pool
 from tests.support.falkordb import falkordb_test_settings
+from tests.support.graph_backend import GraphBackend
 from tests.support.neo4j import neo4j_test_settings
 from tests.support.services import service_unreachable
 
@@ -34,6 +35,17 @@ async def neo4j_store() -> AsyncGenerator[Neo4jGraphStore]:
         service_unreachable("Neo4j", settings.uri)
     yield store
     await store.close()
+
+
+@pytest.fixture(params=["falkordb", "neo4j"])
+async def graph_backend(
+    request, falkordb_store: FalkorDBGraphStore, neo4j_store: Neo4jGraphStore
+) -> AsyncGenerator[GraphBackend]:
+    """Run the test on FalkorDB and on Neo4j, erasing the tenants it opened."""
+    store = falkordb_store if request.param == "falkordb" else neo4j_store
+    backend = GraphBackend(store, request.param)
+    yield backend
+    await backend.erase()
 
 
 @pytest.fixture

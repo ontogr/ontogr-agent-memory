@@ -1,9 +1,8 @@
-"""Merge, unmerge and reset-side behavior on the memory twin."""
+"""Merge, unmerge and reset-side behavior on a live graph tenant."""
 
 import pytest
 
 from ontogr_mem.data_models.entities import EntityStatus, MergeState
-from ontogr_mem.graphstore.memory.resolver_store import MemoryResolverStore
 from ontogr_mem.resolution.errors import (
     EntityHasFactsError,
     SnapshotPurgedError,
@@ -11,13 +10,17 @@ from ontogr_mem.resolution.errors import (
 )
 from ontogr_mem.resolution.ids import entity_id
 from ontogr_mem.resolution.merge import pick_survivor, survivor_order
+from ontogr_mem.resolution.resolver_store import ResolverStore
 from ontogr_mem.vectorstore import VectorKind
 from tests.contracts.resolver_store import entity
-from tests.unit.resolution.resolver_helpers import ex, make
+from tests.integration.resolution.resolver_helpers import ex, make
+from tests.support.graph_backend import GraphBackend
 
 
-async def _two_entities() -> tuple[MemoryResolverStore, object, str, str]:
-    store = MemoryResolverStore()
+async def _two_entities(
+    graph_backend: GraphBackend,
+) -> tuple[ResolverStore, object, str, str]:
+    store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(store)
     first = await resolver.resolve([ex("1", "Acme", "Company")])
     second = await resolver.resolve(
@@ -38,9 +41,11 @@ def test_survivor_order_prefers_mentions_then_age_then_id():
     assert pick_survivor([quiet, busy, bound]) is bound
 
 
-async def test_merge_then_unmerge_restores_the_absorbed_entity():
+async def test_merge_then_unmerge_restores_the_absorbed_entity(
+    graph_backend: GraphBackend,
+):
     """An unmerge returns the absorbed entity, its aliases and its mentions."""
-    store, resolver, survivor_id, absorbed_id = await _two_entities()
+    store, resolver, survivor_id, absorbed_id = await _two_entities(graph_backend)
 
     record = await resolver.merge(survivor_id, absorbed_id, actor="user")
     absorbed = (await store.get_entities([absorbed_id]))[0]
@@ -56,9 +61,9 @@ async def test_merge_then_unmerge_restores_the_absorbed_entity():
     assert {m.local_id for m in await store.mentions_of(absorbed_id)} == {"1"}
 
 
-async def test_merge_after_a_user_unmerge_is_refused():
+async def test_merge_after_a_user_unmerge_is_refused(graph_backend: GraphBackend):
     """The user DISTINCT verdict blocks an automated merge of the same pair."""
-    store, resolver, survivor_id, absorbed_id = await _two_entities()
+    store, resolver, survivor_id, absorbed_id = await _two_entities(graph_backend)
     record = await resolver.merge(survivor_id, absorbed_id, actor="user")
     await resolver.unmerge(record.merge_id, actor="user")
 
@@ -66,9 +71,9 @@ async def test_merge_after_a_user_unmerge_is_refused():
         await resolver.merge(survivor_id, absorbed_id, actor="resolver")
 
 
-async def test_purged_snapshot_blocks_unmerge():
+async def test_purged_snapshot_blocks_unmerge(graph_backend: GraphBackend):
     """A privacy purge makes the merge irreversible."""
-    store, resolver, survivor_id, absorbed_id = await _two_entities()
+    store, resolver, survivor_id, absorbed_id = await _two_entities(graph_backend)
     record = await resolver.merge(survivor_id, absorbed_id, actor="user")
 
     assert await resolver.purge_snapshots(entity_id=survivor_id) == 1
@@ -76,9 +81,11 @@ async def test_purged_snapshot_blocks_unmerge():
         await resolver.unmerge(record.merge_id, actor="user")
 
 
-async def test_remove_episode_mentions_deletes_an_orphan_entity():
+async def test_remove_episode_mentions_deletes_an_orphan_entity(
+    graph_backend: GraphBackend,
+):
     """The reset-side operation removes the mention and its entity."""
-    store = MemoryResolverStore()
+    store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(store)
     await resolver.resolve([ex("1", "Acme", "Company")])
 
@@ -89,9 +96,9 @@ async def test_remove_episode_mentions_deletes_an_orphan_entity():
     assert await resolver.vectors.exists(VectorKind.NODE, deleted) == set()
 
 
-async def test_delete_refuses_an_entity_with_a_live_fact():
+async def test_delete_refuses_an_entity_with_a_live_fact(graph_backend: GraphBackend):
     """A live fact is never deleted with its entity."""
-    store = MemoryResolverStore()
+    store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(store)
     result = await resolver.resolve([ex("1", "Acme", "Company")])
     entity_id = result.entities[0].entity_id
@@ -103,9 +110,11 @@ async def test_delete_refuses_an_entity_with_a_live_fact():
     assert len(await store.get_entities([entity_id])) == 1
 
 
-async def test_an_expired_fact_version_does_not_block_a_delete():
+async def test_an_expired_fact_version_does_not_block_a_delete(
+    graph_backend: GraphBackend,
+):
     """Only the current version of a fact counts as a live edge."""
-    store = MemoryResolverStore()
+    store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(store)
     result = await resolver.resolve([ex("1", "Acme", "Company")])
     entity_id = result.entities[0].entity_id
@@ -119,9 +128,9 @@ async def test_an_expired_fact_version_does_not_block_a_delete():
     assert await store.get_entities([entity_id]) == []
 
 
-async def test_a_new_mention_restores_an_archived_entity():
+async def test_a_new_mention_restores_an_archived_entity(graph_backend: GraphBackend):
     """A mention that matches an archived entity reuses it and makes it active."""
-    store = MemoryResolverStore()
+    store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(store)
     first = await resolver.resolve([ex("1", "Acme", "Company")])
     entity_id = first.entities[0].entity_id
@@ -135,9 +144,9 @@ async def test_a_new_mention_restores_an_archived_entity():
     assert stored.mention_count == 2
 
 
-async def test_archive_keeps_the_entity_readable():
+async def test_archive_keeps_the_entity_readable(graph_backend: GraphBackend):
     """Archive changes the status without deleting the row."""
-    store = MemoryResolverStore()
+    store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(store)
     result = await resolver.resolve([ex("1", "Acme", "Company")])
     entity_id = result.entities[0].entity_id

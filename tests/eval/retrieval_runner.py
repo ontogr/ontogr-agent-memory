@@ -1,6 +1,7 @@
 """Report lane contributions on the approved synthetic retrieval labels.
 
-Run with ``uv run python -m tests.eval.retrieval_runner``. Mock vectors prove
+Run with ``uv run python -m tests.eval.retrieval_runner`` while FalkorDB is up
+on the compose port. Mock vectors prove
 wiring, not semantic relevance. The small fixture does not estimate real quality.
 """
 
@@ -11,7 +12,8 @@ from dataclasses import replace
 from statistics import mean
 from typing import TypedDict
 
-from ontogr_mem.graphstore.memory import MemoryResolverStore
+from ontogr_mem.graphstore.falkordb import FalkorDBGraphStore
+from ontogr_mem.resolution.resolver_store import ResolverStore
 from ontogr_mem.retrieval import (
     KeywordKind,
     Passage,
@@ -23,6 +25,9 @@ from ontogr_mem.retrieval.text import terms
 from ontogr_mem.vectorstore import VectorKind
 from tests.eval.retrieval_labelled import LABELLED, LabelledQuery
 from tests.eval.retrieval_ports import SilentKeywords, SilentVectors
+from tests.support.falkordb import falkordb_test_settings
+from tests.support.graph_backend import GraphBackend
+from tests.support.retrieval_backends import graph_retrieval_backend
 from tests.support.retrieval_world import RetrievalWorld, build_world
 
 
@@ -115,7 +120,9 @@ class _TermReranker:
         }
 
 
-def _retriever(world: RetrievalWorld, configuration: str) -> Retriever:
+def _retriever(
+    world: RetrievalWorld, empty_resolver: ResolverStore, configuration: str
+) -> Retriever:
     """Build a read-only configuration without changing production retrieval."""
     vector_kinds = frozenset[VectorKind]()
     keyword_kinds = frozenset[KeywordKind]()
@@ -140,7 +147,7 @@ def _retriever(world: RetrievalWorld, configuration: str) -> Retriever:
         keywords=SilentKeywords(world.keywords, kinds=keyword_kinds),
         facts=world.facts_reader,
         entities=(
-            MemoryResolverStore()
+            empty_resolver
             if configuration in {"vector_only", "keyword_only"}
             else world.resolver_store
         ),
@@ -187,7 +194,9 @@ def _ranked_facts(
     return list(dict.fromkeys(fact.view.fact_id for fact in facts))
 
 
-async def run_ablation(world: RetrievalWorld) -> AblationReport:
+async def run_ablation(
+    world: RetrievalWorld, *, empty_resolver: ResolverStore
+) -> AblationReport:
     """Run every fixed configuration over the owner-reviewed labels.
 
     Importance is a fixture-only multiplier. Neither defaults nor stored scores
@@ -196,7 +205,7 @@ async def run_ablation(world: RetrievalWorld) -> AblationReport:
     configurations: dict[str, ConfigurationReport] = {}
     importance = {world.facts[key]: value for key, value in IMPORTANCE.items()}
     for configuration in CONFIGURATIONS:
-        retriever = _retriever(world, configuration)
+        retriever = _retriever(world, empty_resolver, configuration)
         fact_samples: list[tuple[LabelledQuery, Metrics | None]] = []
         episode_samples: list[tuple[LabelledQuery, Metrics | None]] = []
         missing: list[str] = []
@@ -234,7 +243,15 @@ async def run_ablation(world: RetrievalWorld) -> AblationReport:
 
 async def main() -> None:
     """Print the report as JSON and a compact non-overview fact table."""
-    report = await run_ablation(await build_world())
+    store = FalkorDBGraphStore(falkordb_test_settings())
+    backend = GraphBackend(store, "falkordb")
+    try:
+        world = await build_world(await graph_retrieval_backend(backend))
+        empty_resolver = (await backend.open_stores()).resolver_store
+        report = await run_ablation(world, empty_resolver=empty_resolver)
+    finally:
+        await backend.erase()
+        await store.close()
     print(json.dumps(report, indent=2, sort_keys=True))
     print("\nconfiguration          hit@1 recall@5 mrr")
     for name, configuration in report["configurations"].items():

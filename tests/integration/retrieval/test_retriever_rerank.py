@@ -15,6 +15,8 @@ from ontogr_mem.retrieval import (
     RetrievalSettings,
     Retriever,
 )
+from tests.support.graph_backend import GraphBackend
+from tests.support.retrieval_backends import graph_retrieval_backend
 from tests.support.retrieval_world import QUERY, RetrievalWorld, build_world
 
 
@@ -83,9 +85,11 @@ def _fact_key(fact: FactResult) -> str:
 class TestRetrieverRerank:
     """Verify reranking through the public retrieval interface."""
 
-    async def test_reranks_fact_and_episode_results_and_bounds_episode_passages(self):
+    async def test_reranks_fact_and_episode_results_and_bounds_episode_passages(
+        self, graph_backend: GraphBackend
+    ):
         """Both result lists reverse independently and episode text is truncated."""
-        world = await build_world()
+        world = await build_world(await graph_retrieval_backend(graph_backend))
         [episode] = await world.episodes.get_episodes(["e1"])
         await world.episodes.write_episodes(
             [replace(episode, content=f"{QUERY} {'x' * 500}")]
@@ -123,9 +127,11 @@ class TestRetrieverRerank:
             len(passage.text) <= settings.passage_chars for passage in episode_passages
         )
 
-    async def test_typed_reranker_failure_keeps_rankings_and_lane_records(self):
+    async def test_typed_reranker_failure_keeps_rankings_and_lane_records(
+        self, graph_backend: GraphBackend
+    ):
         """A recoverable scoring failure leaves ordinary results and lanes intact."""
-        world = await build_world()
+        world = await build_world(await graph_retrieval_backend(graph_backend))
         request = world.request(limit=5)
         plain = await world.retriever.retrieve(request)
         failed = await _retriever(
@@ -141,18 +147,22 @@ class TestRetrieverRerank:
         assert failed.lanes == plain.lanes
         assert sum(note == "reranker failed: offline" for note in failed.notes) == 2
 
-    async def test_unexpected_reranker_value_error_propagates(self):
+    async def test_unexpected_reranker_value_error_propagates(
+        self, graph_backend: GraphBackend
+    ):
         """Only the typed reranker failure is handled as a recoverable error."""
-        world = await build_world()
+        world = await build_world(await graph_retrieval_backend(graph_backend))
 
         with pytest.raises(ValueError, match="bad score"):
             await _retriever(
                 world, reranker=_FailingReranker(ValueError("bad score"))
             ).retrieve(world.request(limit=5))
 
-    async def test_disputed_penalty_changes_a_reranked_tie_after_blending(self):
+    async def test_disputed_penalty_changes_a_reranked_tie_after_blending(
+        self, graph_backend: GraphBackend
+    ):
         """A tie from reranking breaks in favor of the active fact after penalty."""
-        world = await build_world()
+        world = await build_world(await graph_retrieval_backend(graph_backend))
         request = world.request(limit=100)
         neutral_settings = RetrievalSettings(
             rerank_weight=1.0,
@@ -183,9 +193,11 @@ class TestRetrieverRerank:
             _fact_key(fact) for fact in penalized.facts
         ].index(disputed_key)
 
-    async def test_custom_token_counter_controls_admission_and_context_is_public(self):
+    async def test_custom_token_counter_controls_admission_and_context_is_public(
+        self, graph_backend: GraphBackend
+    ):
         """The caller's counter controls context admission and result usage."""
-        world = await build_world()
+        world = await build_world(await graph_retrieval_backend(graph_backend))
         request = world.request(budget_tokens=2000)
         plain = await world.retriever.retrieve(request)
 
@@ -202,9 +214,11 @@ class TestRetrieverRerank:
         assert custom.context.dropped > 0
         assert custom.context.tokens_used == count_tokens(custom.context.text)
 
-    async def test_omitting_reranker_preserves_the_default_rank(self):
+    async def test_omitting_reranker_preserves_the_default_rank(
+        self, graph_backend: GraphBackend
+    ):
         """The optional reranker leaves the ordinary result order unchanged."""
-        world = await build_world()
+        world = await build_world(await graph_retrieval_backend(graph_backend))
         request = world.request(limit=8)
         default = await world.retriever.retrieve(request)
         explicit_none = await _retriever(world, reranker=None).retrieve(request)

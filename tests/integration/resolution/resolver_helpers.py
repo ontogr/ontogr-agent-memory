@@ -2,10 +2,10 @@
 
 from ontogr_mem.data_models import ExtractedEntity, Method, SystemClock
 from ontogr_mem.data_models.entities import Mention
-from ontogr_mem.graphstore.memory.resolver_store import MemoryResolverStore
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionPolicy
 from ontogr_mem.resolution.resolver import EntityResolver
+from ontogr_mem.resolution.resolver_store import ResolverStore
 from ontogr_mem.vectorstore import EmbeddingGateway, VectorStore
 from ontogr_mem.vectorstore.memory import InMemoryBackend
 from tests.support.embedder import MockEmbedder
@@ -34,13 +34,13 @@ def ex(
 
 
 async def make(
-    store: MemoryResolverStore,
+    store: ResolverStore,
     *,
     llm: object | None = None,
     inline: bool = False,
     **settings: object,
 ) -> EntityResolver:
-    """Build a resolver on the memory twin with a deterministic embedder."""
+    """Build a resolver on the given store with a deterministic embedder."""
     vectors = VectorStore(InMemoryBackend(), EmbeddingGateway(MockEmbedder()))
     await vectors.ensure_ready()
     return EntityResolver(
@@ -53,7 +53,7 @@ async def make(
     )
 
 
-async def latest_mention(store: MemoryResolverStore, episode_id: str) -> Mention:
+async def latest_mention(store: ResolverStore, episode_id: str) -> Mention:
     """Return the last mention written for an episode."""
     found = [
         mention
@@ -64,6 +64,6 @@ async def latest_mention(store: MemoryResolverStore, episode_id: str) -> Mention
     return max(found, key=lambda mention: mention.mention_id)
 
 
-async def count_active(store: MemoryResolverStore) -> int:
+async def count_active(store: ResolverStore) -> int:
     """Return the number of active entities."""
     return len(await store.active_entities())

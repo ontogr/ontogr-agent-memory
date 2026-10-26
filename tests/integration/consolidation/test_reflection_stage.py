@@ -1,4 +1,4 @@
-"""The reflection stage on the in-memory twins, with scripted curator and writer.
+"""The reflection stage on live graph tenants, with scripted curator and writer.
 
 The scripted model tells the curator and the writer apart by the schema of the
 request: only the curator's answer has a ``lessons`` list. Every test that needs
@@ -27,6 +27,7 @@ from ontogr_mem.consolidation.stages.reflection import ReflectionStage
 from ontogr_mem.llm import LLMClient, LLMGate, LLMRequest, LLMResponse
 from ontogr_mem.llm.errors import LLMCallError
 from tests.support.consolidation import ConsWorld, new_world
+from tests.support.graph_backend import GraphBackend
 from tests.support.llm import ScriptedLLM
 
 
@@ -89,18 +90,26 @@ class SlowLLM:
 class TestReflectionStage:
     """Session entries become PENDING, ACCEPTED or REJECTED lesson proposals."""
 
-    async def test_gate_skips_without_a_model(self) -> None:
+    async def test_gate_skips_without_a_model(
+        self, graph_backend: GraphBackend
+    ) -> None:
         """The stage is skipped when no model is wired."""
-        world = await new_world()
+        world = await new_world(
+            graph_backend,
+        )
         await record_session_entry(
             world.store, "s1", "use km", world.clock(), helpfulness=1
         )
 
         assert await ReflectionStage().gate(_ctx(world)) == "no llm"
 
-    async def test_gate_skips_when_entries_are_below_the_confidence_floor(self) -> None:
+    async def test_gate_skips_when_entries_are_below_the_confidence_floor(
+        self, graph_backend: GraphBackend
+    ) -> None:
         """Entries under the confidence floor do not open the gate."""
-        world = await new_world()
+        world = await new_world(
+            graph_backend,
+        )
         llm = ScriptedLLM(answer=_scripted([]))
         await record_session_entry(
             world.store, "s1", "maybe", world.clock(), helpfulness=1, confidence=0.5
@@ -112,9 +121,13 @@ class TestReflectionStage:
         await ReflectionStage().run(_ctx(world, llm))
         assert llm.requests == []
 
-    async def test_accepted_lesson_becomes_a_pending_proposal(self) -> None:
+    async def test_accepted_lesson_becomes_a_pending_proposal(
+        self, graph_backend: GraphBackend
+    ) -> None:
         """An accepted lesson is stored as PENDING when auto-accept is off."""
-        world = await new_world()
+        world = await new_world(
+            graph_backend,
+        )
         entry = await record_session_entry(
             world.store, "s1", "use km please", world.clock(), helpfulness=1
         )
@@ -135,12 +148,13 @@ class TestReflectionStage:
 
     async def test_accepted_lesson_is_stored_as_accepted_with_auto_accept(
         self,
+        graph_backend: GraphBackend,
     ) -> None:
         """An accepted lesson is stored as ACCEPTED when auto-accept is on."""
         settings = ConsolidationSettings(
             reflection=ReflectionSettings(auto_accept=True)
         )
-        world = await new_world(settings)
+        world = await new_world(graph_backend, settings)
         entry = await record_session_entry(
             world.store, "s1", "use km please", world.clock(), helpfulness=1
         )
@@ -164,10 +178,12 @@ class TestReflectionStage:
         ],
     )
     async def test_non_accept_verdict_becomes_rejected_with_the_verdict_as_reason(
-        self, verdict: LessonVerdict
+        self, graph_backend: GraphBackend, verdict: LessonVerdict
     ) -> None:
         """A writer verdict other than accept rejects the lesson, with the reason."""
-        world = await new_world()
+        world = await new_world(
+            graph_backend,
+        )
         entry = await record_session_entry(
             world.store, "s1", "use km please", world.clock(), helpfulness=1
         )
@@ -189,9 +205,12 @@ class TestReflectionStage:
 
     async def test_lesson_without_source_entries_is_unsupported_without_a_call(
         self,
+        graph_backend: GraphBackend,
     ) -> None:
         """A lesson that cites no known entry is rejected and needs no writer call."""
-        world = await new_world()
+        world = await new_world(
+            graph_backend,
+        )
         await record_session_entry(
             world.store, "s1", "use km please", world.clock(), helpfulness=1
         )
@@ -210,9 +229,13 @@ class TestReflectionStage:
         ]
         assert len(llm.requests) == 1
 
-    async def test_known_lessons_are_passed_to_the_writer(self) -> None:
+    async def test_known_lessons_are_passed_to_the_writer(
+        self, graph_backend: GraphBackend
+    ) -> None:
         """The writer sees the lessons already stored and can reject a repeat."""
-        world = await new_world()
+        world = await new_world(
+            graph_backend,
+        )
         now = world.clock()
         await world.store.put(
             Proposal(
@@ -253,9 +276,12 @@ class TestReflectionStage:
 
     async def test_a_failed_curator_call_holds_the_watermark_and_the_retry_succeeds(
         self,
+        graph_backend: GraphBackend,
     ) -> None:
         """A failed call stores nothing, and the next run distils the same entries."""
-        world = await new_world()
+        world = await new_world(
+            graph_backend,
+        )
         entry = await record_session_entry(
             world.store, "s1", "use km please", world.clock(), helpfulness=1
         )
@@ -275,9 +301,13 @@ class TestReflectionStage:
         proposals = await world.store.list(Proposal)
         assert [p.text for p in proposals] == ["User prefers metric units"]
 
-    async def test_the_lessons_of_a_batch_are_judged_at_the_same_time(self) -> None:
+    async def test_the_lessons_of_a_batch_are_judged_at_the_same_time(
+        self, graph_backend: GraphBackend
+    ) -> None:
         """The writer calls of a batch run together, not one after the other."""
-        world = await new_world()
+        world = await new_world(
+            graph_backend,
+        )
         entry = await record_session_entry(
             world.store, "s1", "use km please", world.clock(), helpfulness=1
         )
@@ -292,10 +322,12 @@ class TestReflectionStage:
         assert result.counts["proposed"] == 3
         assert llm.peak == 3
 
-    async def test_a_lesson_accepted_in_a_batch_is_known_in_the_next(self) -> None:
+    async def test_a_lesson_accepted_in_a_batch_is_known_in_the_next(
+        self, graph_backend: GraphBackend
+    ) -> None:
         """A lesson accepted in one batch is offered to the writer of the next."""
         settings = ConsolidationSettings(reflection=ReflectionSettings(batch_size=1))
-        world = await new_world(settings)
+        world = await new_world(graph_backend, settings)
         first = await record_session_entry(
             world.store, "s1", "use km please", world.clock(), helpfulness=1
         )
@@ -330,9 +362,13 @@ class TestReflectionStage:
             "Replies stay short": (ProposalStatus.REJECTED, "already_known"),
         }
 
-    async def test_a_non_llm_error_from_the_curator_fails_the_stage(self) -> None:
+    async def test_a_non_llm_error_from_the_curator_fails_the_stage(
+        self, graph_backend: GraphBackend
+    ) -> None:
         """A non-LLM exception from the curator is not turned into a partial result."""
-        world = await new_world()
+        world = await new_world(
+            graph_backend,
+        )
         await record_session_entry(
             world.store, "s1", "use km please", world.clock(), helpfulness=1
         )
@@ -343,9 +379,12 @@ class TestReflectionStage:
 
     async def test_second_run_with_no_new_entries_makes_zero_calls_and_changes_nothing(
         self,
+        graph_backend: GraphBackend,
     ) -> None:
         """Once distilled, a session is not read again and its proposals stay."""
-        world = await new_world()
+        world = await new_world(
+            graph_backend,
+        )
         entry = await record_session_entry(
             world.store, "s1", "use km please", world.clock(), helpfulness=1
         )

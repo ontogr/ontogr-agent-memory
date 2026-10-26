@@ -1,15 +1,15 @@
-"""Build the service and public ports over in-memory test adapters."""
+"""Build the service and public ports over a live graph backend."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from ontogr_mem.data_models.clock import Clock
-from ontogr_mem.graphstore.memory.tenant_stacks import memory_stores
 from ontogr_mem.llm import LLMClient
 from ontogr_mem.observability import Tracer
 from ontogr_mem.relational_store import MemoryOperationStore
 from ontogr_mem.relational_store.memory import MemoryJobStore
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionMode, ResolutionPolicy, TypePolicy
+from ontogr_mem.retrieval.keyword import KeywordSearch
 from ontogr_mem.retrieval.settings import RetrievalSettings
 from ontogr_mem.service.access.audit_sink import InMemoryAuditSink
 from ontogr_mem.service.access.authz import Authorizer
@@ -21,6 +21,7 @@ from ontogr_mem.tenant_stores import TenantStores
 from ontogr_mem.vectorstore import Embedder
 from tests.support.clock import FixedClock
 from tests.support.embedder import MockEmbedder
+from tests.support.graph_backend import GraphBackend
 
 
 @dataclass
@@ -34,14 +35,21 @@ class MemoryServiceHarness:
     state: MemoryJobStore
 
 
-async def _noop_graph_drop(tenant_id: str) -> None:
-    """Keep graph cleanup local to the in-memory tenant stores."""
-
-
 async def memory_service_harness(
-    *, llm: LLMClient | None = None, tracer: Tracer | None = None
+    backend: GraphBackend,
+    *,
+    llm: LLMClient | None = None,
+    tracer: Tracer | None = None,
+    keywords: KeywordSearch | None = None,
 ) -> MemoryServiceHarness:
-    """Build an isolated service with a grant on one Tenant."""
+    """Build an isolated service with a grant on one Tenant.
+
+    Args:
+        backend: The live graph backend that tenant stores are opened on.
+        llm: Optional language model client.
+        tracer: Optional tracer for service and tenant spans.
+        keywords: Replaces the tenant's keyword search when given.
+    """
     clock = FixedClock()
     embedder = MockEmbedder()
     state = MemoryJobStore()
@@ -58,10 +66,13 @@ async def memory_service_harness(
         *,
         tracer: Tracer | None = None,
     ) -> TenantStores:
-        return await memory_stores(tenant_id, embedder, tracer=tracer)
+        stores = await backend.stores_for(tenant_id, embedder, tracer=tracer)
+        if keywords is None:
+            return stores
+        return replace(stores, keywords=keywords)
 
     service = await build_service(
-        ServiceSettings(backend="memory", allow_ephemeral=True),
+        ServiceSettings(backend=backend.name),
         stores_factory=stores_factory,
         state=state,
         authorizer=authorizer,
@@ -81,7 +92,7 @@ async def memory_service_harness(
         retrieval_settings=RetrievalSettings(),
         limiter=CallerRateLimiter(clock=lambda: 0.0),
         tracer=tracer,
-        drop_graph=_noop_graph_drop,
+        drop_graph=backend.store.erase_tenant,
     )
     principal = Principal(
         id="service-test-caller",

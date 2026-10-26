@@ -15,21 +15,10 @@ from ontogr_mem.data_models import (
 )
 from ontogr_mem.graphstore import QuerySpec, ScopedRunner
 from ontogr_mem.graphstore.episode_store import GraphEpisodeStore
-from ontogr_mem.graphstore.memory import MemoryEpisodeStore
 from ontogr_mem.ingestion import EpisodeStore
 
 
 T0 = datetime(2026, 10, 8, 12, 0, tzinfo=UTC)
-
-
-def memory_node_ids(store: MemoryEpisodeStore, label: str) -> set[str]:
-    """Return ids for one node label from a memory store's public episodes."""
-    episodes = store.all_episodes()
-    if label == "Episode":
-        return {episode.id for episode in episodes}
-    if label == "Source":
-        return {episode.source.id for episode in episodes}
-    return {episode.actor.id for episode in episodes}
 
 
 def make_episode(

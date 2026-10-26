@@ -16,14 +16,8 @@ from ontogr_mem.fact_extraction import (
 )
 from ontogr_mem.graphstore import GraphHandle, GraphStore, QuerySpec, ScopedRunner
 from ontogr_mem.graphstore.episode_store import GraphEpisodeStore
-from ontogr_mem.graphstore.memory import (
-    MemoryEpisodeStore,
-    MemoryOntologyStore,
-    MemoryResolverStore,
-    MemoryTemporalStore,
-)
+from ontogr_mem.graphstore.ontology_store import GraphOntologyStore
 from ontogr_mem.graphstore.resolver_store import GraphResolverStore
-from ontogr_mem.graphstore.schemas import EPISODES, RESOLUTION, TEMPORAL, VECTOR
 from ontogr_mem.graphstore.temporal.store import GraphTemporalStore
 from ontogr_mem.ingestion import ChatMessage, IngestionPipeline, default_registry
 from ontogr_mem.ontology.extraction_items import stabilize_facts
@@ -54,9 +48,9 @@ from tests.support.episodes import T0
 from tests.support.extraction import gate as extraction_gate
 from tests.support.facts import fact, reply
 from tests.support.facts import gate as fact_gate
+from tests.support.graph_backend import GraphBackend
 from tests.support.llm import ScriptedLLM
 from tests.support.ontology import base
-from tests.support.tenants import new_tenant
 from tests.support.vectors import HALF, OPPOSITE, ORTHOGONAL, A
 
 
@@ -97,12 +91,12 @@ class SelectiveFailureEmbedder(MockEmbedder):
 class WriterStack:
     """The components that run one ingest and temporal path."""
 
-    graph: GraphStore | None
-    handle: GraphHandle | None
-    runner: ScopedRunner | None
+    graph: GraphStore
+    handle: GraphHandle
+    runner: ScopedRunner
     keyed: bool
-    episodes: MemoryEpisodeStore | GraphEpisodeStore
-    temporal: MemoryTemporalStore | GraphTemporalStore
+    episodes: GraphEpisodeStore
+    temporal: GraphTemporalStore
     resolver: EntityResolver
     manager: OntologyManager
     vectors: VectorStore
@@ -123,33 +117,21 @@ def _messages(*texts: str, offset: int = 0) -> list[ChatMessage]:
     ]
 
 
-async def _stack(variant: str, falkordb_store, neo4j_store) -> WriterStack:
-    """Open the requested vector and graph stores."""
+async def _stack(backend: GraphBackend) -> WriterStack:
+    """Open a tenant on the backend and wire the writers to its stores."""
     fixed_clock = FixedClock()
-    graph: GraphStore | None = None
-    handle: GraphHandle | None = None
-    runner: ScopedRunner | None = None
-    keyed = variant == "neo4j"
-
-    if variant == "twin":
-        episodes = MemoryEpisodeStore()
-        resolver_store = MemoryResolverStore()
-        temporal = MemoryTemporalStore(episodes, resolver_store)
-        vector_backend = InMemoryBackend()
-    else:
-        graph = neo4j_store if keyed else falkordb_store
-        handle = await graph.open(
-            new_tenant(), [EPISODES, RESOLUTION, TEMPORAL, VECTOR]
-        )
-        runner = graph.runner(handle)
-        episodes = GraphEpisodeStore(runner, tenant_keyed=keyed)
-        temporal = GraphTemporalStore(graph, handle, tenant_keyed=keyed)
-        resolver_store = GraphResolverStore(runner, tenant_keyed=keyed)
-        vector_backend = (
-            Neo4jVectorBackend(graph, handle)
-            if keyed
-            else FalkorDBVectorBackend(graph, handle)
-        )
+    graph = backend.store
+    keyed = backend.tenant_keyed
+    handle = await backend.open_tenant()
+    runner = graph.runner(handle)
+    episodes = GraphEpisodeStore(runner, tenant_keyed=keyed)
+    temporal = GraphTemporalStore(graph, handle, tenant_keyed=keyed)
+    resolver_store = GraphResolverStore(runner, tenant_keyed=keyed)
+    vector_backend = (
+        Neo4jVectorBackend(graph, handle)
+        if keyed
+        else FalkorDBVectorBackend(graph, handle)
+    )
 
     vector_embedder = SelectiveFailureEmbedder()
     vectors = VectorStore(vector_backend, gateway(vector_embedder))
@@ -169,7 +151,7 @@ async def _stack(variant: str, falkordb_store, neo4j_store) -> WriterStack:
         fixed_clock,
     )
     manager = OntologyManager(
-        MemoryOntologyStore(set[str]),
+        GraphOntologyStore(graph, handle, tenant_keyed=keyed),
         ScriptedLLM(),
         OntologySettings(min_support=3),
         fixed_clock,
@@ -294,8 +276,6 @@ async def _process(stack: WriterStack, episodes: Sequence[Episode], observer):
 
 async def _edge_versions(stack: WriterStack, fact_id: str) -> list[dict[str, object]]:
     """Read the stored versions of one fact edge on graph-native backends."""
-    if stack.runner is None or stack.handle is None:
-        return []
     tenant_clause = " AND f._tenant = $tenant" if stack.keyed else ""
     result = await stack.runner.run(
         QuerySpec(
@@ -371,8 +351,6 @@ async def _assert_graph_vectors(
     stack: WriterStack, episodes: Sequence[Episode], fact_id: str
 ) -> None:
     """Check graph object properties and the vectorless newer fact version."""
-    if stack.graph is None or stack.handle is None:
-        return
     rows = await _edge_versions(stack, fact_id)
     assert len(rows) >= 2
     assert rows[0]["vectorized"]
@@ -418,25 +396,19 @@ async def _assert_post_commit_failure(
         VectorKind.EDGE, HALF, k=10, filters=history_filter
     )
     assert fact_id not in {hit.id for hit in hits}
-    if stack.graph is not None:
-        rows = await _edge_versions(stack, fact_id)
-        assert rows
-        assert all(not row["vectorized"] for row in rows)
+    rows = await _edge_versions(stack, fact_id)
+    assert rows
+    assert all(not row["vectorized"] for row in rows)
     return fact_id
 
 
 class TestVectorWriters:
-    """Exercise episode and fact writers across twin and graph-native stores."""
+    """Exercise episode and fact writers on each graph-native store."""
 
-    @pytest.fixture(params=["twin", "falkordb", "neo4j"])
-    async def stack(self, request, falkordb_store, neo4j_store):
-        """Build a fresh stack for each storage implementation."""
-        built = await _stack(request.param, falkordb_store, neo4j_store)
-        try:
-            yield built
-        finally:
-            if built.graph is not None and built.handle is not None:
-                await built.graph.erase_tenant(built.handle.tenant)
+    @pytest.fixture
+    async def stack(self, graph_backend: GraphBackend) -> WriterStack:
+        """Build a fresh stack on each graph backend."""
+        return await _stack(graph_backend)
 
     async def test_vectors_remain_searchable_after_temporal_commits(
         self, stack: WriterStack
@@ -487,9 +459,8 @@ class TestVectorWriters:
         )
         assert {hit.id for hit in history_hits} == {first_fact_id, later_fact_id}
         # Only graph-native stores read the updated validity on the FACT edge.
-        if stack.graph is not None:
-            current_hits = await stack.vectors.search(VectorKind.EDGE, A, k=10)
-            assert first_fact_id not in {hit.id for hit in current_hits}
+        current_hits = await stack.vectors.search(VectorKind.EDGE, A, k=10)
+        assert first_fact_id not in {hit.id for hit in current_hits}
         await _assert_graph_vectors(stack, first_pair, first_fact_id)
         failed_fact_id = await _assert_post_commit_failure(
             stack,

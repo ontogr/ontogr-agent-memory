@@ -1,4 +1,4 @@
-"""The communities stage on the in-memory twins, with a scripted model.
+"""The communities stage on live graph tenants, with a scripted model.
 
 Most tests run the stage through the runner, so the fingerprint watermark and the
 partial status behave as they do in production. The content-hash reuse test calls
@@ -30,6 +30,7 @@ from ontogr_mem.data_models.observation import Observation, ObservationKind
 from ontogr_mem.llm import LLMClient, LLMGate
 from ontogr_mem.llm.errors import LLMCallError
 from tests.support.consolidation import ConsWorld, new_world
+from tests.support.graph_backend import GraphBackend
 from tests.support.llm import ScriptedLLM
 
 
@@ -84,7 +85,7 @@ async def add_described_entity(world: ConsWorld, entity_id: str) -> None:
 
 
 async def add_fact(world: ConsWorld, subject: str, obj: str) -> None:
-    """Ingest one current fact from ``subject`` to ``obj`` into the temporal twin."""
+    """Ingest one current fact from ``subject`` to ``obj`` into the temporal store."""
     now = world.clock()
     await world.ensure_entities([subject, obj])
     await world.temporal.ingest_observations(
@@ -129,9 +130,13 @@ async def stored_communities(world: ConsWorld) -> list[Community]:
     return await world.store.list(Community)
 
 
-async def test_two_clusters_become_summarised_communities_under_one_bucket() -> None:
+async def test_two_clusters_become_summarised_communities_under_one_bucket(
+    graph_backend: GraphBackend,
+) -> None:
     """Each cluster is one community with a summary, and one bucket holds both."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     await two_clusters(world)
 
     result = await runner_for(world, merged_llm()).run()
@@ -149,10 +154,14 @@ async def test_two_clusters_become_summarised_communities_under_one_bucket() -> 
     assert sorted(buckets[0].child_ids) == sorted(c.community_id for c in communities)
 
 
-async def test_second_build_with_unchanged_content_makes_no_model_call() -> None:
+async def test_second_build_with_unchanged_content_makes_no_model_call(
+    graph_backend: GraphBackend,
+) -> None:
     """Rebuilding unchanged communities makes no model call and changes nothing."""
     llm = merged_llm()
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     await two_clusters(world)
     await CommunitiesStage().run(stage_context(world, llm))
     communities = await stored_communities(world)
@@ -168,10 +177,14 @@ async def test_second_build_with_unchanged_content_makes_no_model_call() -> None
     assert await world.store.list(Bucket) == buckets
 
 
-async def test_unchanged_graph_is_skipped_by_the_fingerprint() -> None:
+async def test_unchanged_graph_is_skipped_by_the_fingerprint(
+    graph_backend: GraphBackend,
+) -> None:
     """A second run over an unchanged graph is skipped and calls no model."""
     llm = merged_llm()
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     await two_clusters(world)
     runner = runner_for(world, llm)
     await runner.run()
@@ -183,9 +196,13 @@ async def test_unchanged_graph_is_skipped_by_the_fingerprint() -> None:
     assert len(llm.requests) == calls_after_first_run
 
 
-async def test_without_a_model_communities_are_stored_unbuilt_with_a_note() -> None:
+async def test_without_a_model_communities_are_stored_unbuilt_with_a_note(
+    graph_backend: GraphBackend,
+) -> None:
     """With no model, communities are stored with empty summaries and a note."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     await two_clusters(world)
 
     result = await runner_for(world, llm=None).run()
@@ -201,10 +218,12 @@ async def test_without_a_model_communities_are_stored_unbuilt_with_a_note() -> N
     assert all(c.summary == "" for c in communities)
 
 
-async def test_more_communities_than_a_bucket_holds_build_a_second_level() -> None:
+async def test_more_communities_than_a_bucket_holds_build_a_second_level(
+    graph_backend: GraphBackend,
+) -> None:
     """Three communities with a bucket size of two make a two-level hierarchy."""
     settings = ConsolidationSettings(community=CommunitySettings(max_bucket_size=2))
-    world = await new_world(settings)
+    world = await new_world(graph_backend, settings)
     await add_triangle(world, "abc")
     await add_triangle(world, "def")
     await add_triangle(world, "ghi")
@@ -224,10 +243,13 @@ async def test_more_communities_than_a_bucket_holds_build_a_second_level() -> No
     ids=["call_fails", "malformed_answer"],
 )
 async def test_failed_build_leaves_the_community_unbuilt_and_retries(
+    graph_backend: GraphBackend,
     outage: Any,
 ) -> None:
     """A failed or malformed model answer is PARTIAL, and the next run builds it."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     await two_clusters(world)
 
     failed = await runner_for(world, ScriptedLLM(answer=lambda _: outage)).run()
@@ -243,9 +265,13 @@ async def test_failed_build_leaves_the_community_unbuilt_and_retries(
     assert all(c.summary == "Merged." for c in await stored_communities(world))
 
 
-async def test_communities_whose_members_vanished_are_deleted() -> None:
+async def test_communities_whose_members_vanished_are_deleted(
+    graph_backend: GraphBackend,
+) -> None:
     """A stored community with no current counterpart is removed with its bucket."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     await two_clusters(world)
     runner = runner_for(world, merged_llm())
     await runner.run()

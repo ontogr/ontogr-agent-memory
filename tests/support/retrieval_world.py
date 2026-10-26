@@ -18,13 +18,6 @@ from ontogr_mem.fact_extraction import (
     InMemoryFactStore,
     LLMFactExtractor,
 )
-from ontogr_mem.graphstore.memory import (
-    MemoryEpisodeStore,
-    MemoryKeywordSearch,
-    MemoryOntologyStore,
-    MemoryResolverStore,
-    MemoryTemporalStore,
-)
 from ontogr_mem.ingestion import content_hash
 from ontogr_mem.ingestion.store import EpisodeStore
 from ontogr_mem.ontology.apply import apply_changeset
@@ -58,14 +51,12 @@ from ontogr_mem.temporal.verdicts import (
     VerdictSource,
 )
 from ontogr_mem.vectorstore import (
-    EmbeddingGateway,
     FactVectorObserver,
     VectorKind,
     VectorStore,
     VectorWriter,
     write_episode_vectors,
 )
-from ontogr_mem.vectorstore.memory import InMemoryBackend
 from tests.support.clock import FixedClock
 from tests.support.embedder import RecordingEmbedder
 from tests.support.episodes import make_episode as episode_at
@@ -120,13 +111,11 @@ class RetrievalWorld:
         return RetrievalRequest(query=query, now=NOW, **kwargs)
 
 
-async def build_world(backend: RetrievalBackend | None = None) -> RetrievalWorld:
+async def build_world(backend: RetrievalBackend) -> RetrievalWorld:
     """Build the deterministic F1-F11 world using tenant-bound backend ports.
 
-    Pass a ``RetrievalBackend`` assembled from graph-backed stores to run the
-    same ingestion scenario on another backend. The default builds the twin.
+    Pass a ``RetrievalBackend`` assembled from graph-backed stores.
     """
-    backend = backend or await _memory_backend()
     vectors = backend.vectors
     writer = VectorWriter(vectors)
     resolver = EntityResolver(
@@ -579,24 +568,4 @@ def _raw_fact(
         precision="year" if definition.valid_from else None,
         time_expression=definition.valid_from,
         evidence_quote=definition.statement,
-    )
-
-
-async def _memory_backend() -> RetrievalBackend:
-    """Build twin ports and fixed embeddings for the shared retrieval world."""
-    embedder = new_retrieval_embedder()
-    vectors = VectorStore(InMemoryBackend(), EmbeddingGateway(embedder))
-    await vectors.ensure_ready()
-    episodes = MemoryEpisodeStore()
-    resolver = MemoryResolverStore()
-    temporal = MemoryTemporalStore(episodes, resolver)
-    return RetrievalBackend(
-        vectors=vectors,
-        embedder=embedder,
-        episodes=episodes,
-        resolver_store=resolver,
-        temporal_store=temporal,
-        ontology_store=MemoryOntologyStore(episodes.ingested_ids),
-        keywords=MemoryKeywordSearch(resolver, temporal, episodes),
-        prune_orphan_vectors=lambda ids: vectors.delete(VectorKind.EDGE, ids),
     )

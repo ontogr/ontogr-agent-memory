@@ -1,19 +1,22 @@
 """Repeatable lane ablation on the approved deterministic retrieval world."""
 
-from ontogr_mem.graphstore.memory import MemoryResolverStore
 from ontogr_mem.retrieval import KeywordKind, LaneStatus, Retriever
 from ontogr_mem.vectorstore import VectorKind
 from tests.eval.retrieval_ports import SilentKeywords, SilentVectors
 from tests.eval.retrieval_runner import run_ablation
+from tests.support.graph_backend import GraphBackend
+from tests.support.retrieval_backends import graph_retrieval_backend
 from tests.support.retrieval_world import VECTOR, build_world
 
 
 class TestRetrievalAblation:
     """Compare the report and prove that disabled lanes cannot retrieve data."""
 
-    async def test_disabled_ports_and_lanes_return_nothing(self):
+    async def test_disabled_ports_and_lanes_return_nothing(
+        self, graph_backend: GraphBackend
+    ):
         """Suppressed reads leave every result empty and graph expansion skipped."""
-        world = await build_world()
+        world = await build_world(await graph_retrieval_backend(graph_backend))
         vectors = SilentVectors(world.vectors, kinds=frozenset(VectorKind))
         keywords = SilentKeywords(world.keywords, kinds=frozenset(KeywordKind))
         for kind in VectorKind:
@@ -23,7 +26,7 @@ class TestRetrievalAblation:
         retriever = Retriever(
             vectors=vectors,
             keywords=keywords,
-            entities=MemoryResolverStore(),
+            entities=(await graph_backend.open_stores()).resolver_store,
             facts=world.facts_reader,
             episodes=world.episodes,
         )
@@ -38,11 +41,14 @@ class TestRetrievalAblation:
             LaneStatus.SKIPPED,
         ]
 
-    async def test_report_repeats_and_fusion_retains_single_lane_rank(self):
+    async def test_report_repeats_and_fusion_retains_single_lane_rank(
+        self, graph_backend: GraphBackend
+    ):
         """The report repeats exactly and names the metrics each lane adds."""
-        world = await build_world()
-        report = await run_ablation(world)
-        assert await run_ablation(world) == report
+        world = await build_world(await graph_retrieval_backend(graph_backend))
+        empty_resolver = (await graph_backend.open_stores()).resolver_store
+        report = await run_ablation(world, empty_resolver=empty_resolver)
+        assert await run_ablation(world, empty_resolver=empty_resolver) == report
 
         configurations = report["configurations"]
         fused = configurations["fused"]["facts"]["non_overview"]

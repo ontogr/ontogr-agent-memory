@@ -1,19 +1,20 @@
-"""Stale episode detection on the in-memory tenant stack."""
+"""Stale episode detection on a live graph tenant stack."""
 
-from ontogr_mem.graphstore.memory.tenant_stacks import memory_stores
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import AddEntity
 from ontogr_mem.ontology.settings import OntologySettings
 from ontogr_mem.ontology.validate import Context, EntityItem, ExtractedItems
 from tests.support.clock import FixedClock
-from tests.support.embedder import MockEmbedder
+from tests.support.graph_backend import GraphBackend
 from tests.support.llm import ScriptedLLM
 from tests.support.ontology import base, cs, ingest_episode
 
 
-async def test_stale_episodes_reports_an_ingested_episode_after_a_catalog_change():
+async def test_stale_episodes_reports_an_ingested_episode_after_a_catalog_change(
+    graph_backend: GraphBackend,
+):
     """A catalog change that covers an unmatched label marks its episode stale."""
-    stores = await memory_stores("stale-tenant", MockEmbedder())
+    stores = await graph_backend.open_stores()
     await ingest_episode(stores.episodes, "ep1")
     manager = OntologyManager(
         stores.ontology_store,

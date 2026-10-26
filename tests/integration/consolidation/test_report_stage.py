@@ -1,4 +1,4 @@
-"""The report stage on the in-memory twins: what a run found but did not act on.
+"""The report stage on live graph tenants: what a run found but did not act on.
 
 Disputes are opened through the temporal engine with the same scripted judge and
 two-valued rules that the temporal contradiction tests use, so the report reads
@@ -14,20 +14,21 @@ from ontogr_mem.consolidation.models import (
 )
 from ontogr_mem.consolidation.stage import StageContext
 from ontogr_mem.consolidation.stages.report import ReportStage
-from ontogr_mem.consolidation.store import M
-from ontogr_mem.graphstore.memory import MemoryConsStore
+from ontogr_mem.consolidation.store import ConsStore, M
+from ontogr_mem.graphstore.cons_store import GraphConsStore
 from ontogr_mem.temporal.engine import TemporalEngine
 from ontogr_mem.temporal.verdicts import VerdictKind
-from tests.support.consolidation import ConsWorld, new_world
-from tests.unit.temporal.helpers import at
-from tests.unit.temporal.test_engine_contradictions import (
+from tests.integration.temporal.test_engine_contradictions import (
     RULES,
     ScriptedJudge,
     ingest_city_and_employer,
 )
+from tests.support.consolidation import ConsWorld, new_world
+from tests.support.graph_backend import GraphBackend
+from tests.unit.temporal.helpers import at
 
 
-class FailingFindStore(MemoryConsStore):
+class FailingFindStore(GraphConsStore):
     """A consolidation store whose lookups fail, as a broken backend would."""
 
     async def find(self, model: type[M], field: str, value: object) -> list[M]:
@@ -39,7 +40,7 @@ def ctx_for(
     world: ConsWorld,
     *,
     results: list[StageResult] | None = None,
-    store: MemoryConsStore | None = None,
+    store: ConsStore | None = None,
 ) -> StageContext:
     """Build a stage context over the world, optionally with another store."""
     return StageContext(
@@ -65,9 +66,13 @@ def proposal(proposal_id: str, status: ProposalStatus) -> Proposal:
     )
 
 
-async def test_reports_both_facts_of_an_open_dispute() -> None:
+async def test_reports_both_facts_of_an_open_dispute(
+    graph_backend: GraphBackend,
+) -> None:
     """A judge that cannot decide leaves both facts open and reported as disputed."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     people_and_places = [("ana", "Ana"), ("acme", "Acme"), ("globex", "Globex")]
     for entity_id, name in people_and_places:
         await world.add_entity(entity_id, name)
@@ -87,9 +92,13 @@ async def test_reports_both_facts_of_an_open_dispute() -> None:
     assert result.counts["disputed_facts"] == 2
 
 
-async def test_reports_a_pending_proposal_and_not_a_decided_one() -> None:
+async def test_reports_a_pending_proposal_and_not_a_decided_one(
+    graph_backend: GraphBackend,
+) -> None:
     """Only proposals still awaiting a decision are counted as pending."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     await world.store.put(proposal("p1", ProposalStatus.PENDING))
     await world.store.put(proposal("p2", ProposalStatus.ACCEPTED))
 
@@ -99,9 +108,13 @@ async def test_reports_a_pending_proposal_and_not_a_decided_one() -> None:
     assert result.counts["pending_proposals"] == 1
 
 
-async def test_empty_tenant_reports_zeros_and_status_ok() -> None:
+async def test_empty_tenant_reports_zeros_and_status_ok(
+    graph_backend: GraphBackend,
+) -> None:
     """A tenant with nothing to report gets zero counts and no notes."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
 
     result = await ReportStage().run(ctx_for(world))
 
@@ -115,20 +128,33 @@ async def test_empty_tenant_reports_zeros_and_status_ok() -> None:
     assert result.notes == []
 
 
-async def test_a_failing_store_read_returns_partial_without_raising() -> None:
+async def test_a_failing_store_read_returns_partial_without_raising(
+    graph_backend: GraphBackend,
+) -> None:
     """A store failure is recorded on the result instead of aborting the run."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
 
-    result = await ReportStage().run(ctx_for(world, store=FailingFindStore()))
+    failing = FailingFindStore(
+        graph_backend.store,
+        await graph_backend.open_tenant(),
+        tenant_keyed=graph_backend.tenant_keyed,
+    )
+    result = await ReportStage().run(ctx_for(world, store=failing))
 
     assert result.status is StageStatus.PARTIAL
     assert result.errors
     assert result.stage == "report"
 
 
-async def test_counts_rejected_pairs_of_deduplication_as_near_misses() -> None:
+async def test_counts_rejected_pairs_of_deduplication_as_near_misses(
+    graph_backend: GraphBackend,
+) -> None:
     """Pairs the deduplication stage judged distinct are near misses."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     earlier = [
         StageResult(
             stage="deduplication",
@@ -142,9 +168,13 @@ async def test_counts_rejected_pairs_of_deduplication_as_near_misses() -> None:
     assert result.counts["near_misses"] == 2
 
 
-async def test_lists_stages_that_failed_or_stopped_partway() -> None:
+async def test_lists_stages_that_failed_or_stopped_partway(
+    graph_backend: GraphBackend,
+) -> None:
     """The notes name every earlier stage that failed or ended partial."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     earlier = [
         StageResult(stage="deduplication", status=StageStatus.FAILED),
         StageResult(stage="feedback_weights", status=StageStatus.PARTIAL),

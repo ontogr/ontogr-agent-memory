@@ -1,22 +1,22 @@
-"""Shared in-memory worlds for P9i read integration tests."""
+"""Shared tenant worlds on a live graph backend for P9i read integration tests."""
 
 from dataclasses import replace
 from datetime import UTC, datetime
 
 from ontogr_mem.data_models import Alias, Entity
-from ontogr_mem.graphstore.memory import (
-    MemoryEpisodeStore,
-    MemoryResolverStore,
-    MemoryTemporalStore,
-)
+from ontogr_mem.ingestion.store import EpisodeStore
+from ontogr_mem.resolution.resolver_store import ResolverStore
+from ontogr_mem.retrieval.keyword import KeywordSearch
 from ontogr_mem.temporal.cardinality import (
     Cardinality,
     DictRelationPolicy,
     RelationRules,
 )
 from ontogr_mem.temporal.engine import TemporalEngine
+from ontogr_mem.temporal.temporal_store import TemporalStore
 from tests.support.clock import FixedClock
 from tests.support.episodes import make_episode
+from tests.support.graph_backend import GraphBackend
 from tests.unit.temporal.helpers import LocalRefResolver, obs
 
 
@@ -51,20 +51,22 @@ def alias(entity_id: str, text: str, alias_id: str) -> Alias:
 
 
 async def make_world(
-    entity_ids: tuple[str, ...],
+    backend: GraphBackend, entity_ids: tuple[str, ...]
 ) -> tuple[
-    MemoryEpisodeStore,
-    MemoryResolverStore,
-    MemoryTemporalStore,
+    EpisodeStore,
+    ResolverStore,
+    TemporalStore,
     FixedClock,
     TemporalEngine,
+    KeywordSearch,
 ]:
-    """Build in-memory episode, resolver and temporal stores with an engine."""
-    episodes = MemoryEpisodeStore()
-    resolver = MemoryResolverStore()
+    """Open a tenant and build its episode, resolver, temporal and keyword stores."""
+    stores = await backend.open_stores()
+    episodes = stores.episodes
+    resolver = stores.resolver_store
     for entity_id in entity_ids:
         await resolver.save_entity(entity(entity_id))
-    store = MemoryTemporalStore(episodes, resolver)
+    store = stores.temporal_store
     clock = FixedClock(NOW)
     engine = TemporalEngine(
         store,
@@ -72,11 +74,11 @@ async def make_world(
         LocalRefResolver(),
         clock.now,
     )
-    return episodes, resolver, store, clock, engine
+    return episodes, resolver, store, clock, engine, stores.keywords
 
 
 async def add_fact(
-    episodes: MemoryEpisodeStore,
+    episodes: EpisodeStore,
     engine: TemporalEngine,
     *,
     observation_id: str,

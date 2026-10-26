@@ -1,4 +1,4 @@
-"""The entity graph the stages read, built over the in-memory twins."""
+"""The entity graph the stages read, built over live graph tenants."""
 
 from datetime import timedelta
 from uuid import uuid4
@@ -10,6 +10,7 @@ from ontogr_mem.data_models.entities import EntityStatus
 from ontogr_mem.data_models.facts import Precision, TimeBasis
 from ontogr_mem.data_models.observation import Observation, ObservationKind
 from tests.support.consolidation import ConsWorld, new_world
+from tests.support.graph_backend import GraphBackend
 
 
 def ctx_for(world: ConsWorld) -> StageContext:
@@ -25,7 +26,7 @@ def ctx_for(world: ConsWorld) -> StageContext:
 
 
 async def add_fact(world: ConsWorld, subject: str, obj: str) -> None:
-    """Ingest one current fact from ``subject`` to ``obj`` into the temporal twin."""
+    """Ingest one current fact from ``subject`` to ``obj`` into the temporal store."""
     now = world.clock()
     await world.ensure_entities([subject, obj])
     await world.temporal.ingest_observations(
@@ -51,9 +52,13 @@ async def add_fact(world: ConsWorld, subject: str, obj: str) -> None:
     )
 
 
-async def test_graph_has_active_entities_and_weights_parallel_facts() -> None:
+async def test_graph_has_active_entities_and_weights_parallel_facts(
+    graph_backend: GraphBackend,
+) -> None:
     """Parallel facts between a pair add up to one edge weight."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     for entity_id in "abc":
         await world.add_entity(entity_id, entity_id.upper())
     await add_fact(world, "a", "b")
@@ -68,9 +73,13 @@ async def test_graph_has_active_entities_and_weights_parallel_facts() -> None:
     assert graph.degree("b") == 2
 
 
-async def test_graph_ignores_facts_to_unknown_entities_and_self_loops() -> None:
+async def test_graph_ignores_facts_to_unknown_entities_and_self_loops(
+    graph_backend: GraphBackend,
+) -> None:
     """A fact to an entity that is not active, or to itself, is not an edge."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     await world.add_entity("a", "A")
     await add_fact(world, "a", "ghost")
     ghost = (await world.resolution.store.get_entities(["ghost"]))[0]
@@ -86,9 +95,13 @@ async def test_graph_ignores_facts_to_unknown_entities_and_self_loops() -> None:
     assert graph.facts == ()
 
 
-async def test_graph_follows_a_merged_endpoint_to_its_survivor() -> None:
+async def test_graph_follows_a_merged_endpoint_to_its_survivor(
+    graph_backend: GraphBackend,
+) -> None:
     """A fact that names a merged entity is an edge to the survivor."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     await world.add_entity("a", "A")
     await world.add_entity("b", "B")
     old = await world.add_entity("old", "Old")
@@ -101,9 +114,13 @@ async def test_graph_follows_a_merged_endpoint_to_its_survivor() -> None:
     assert graph.neighbours["a"] == {"b": 1}
 
 
-async def test_graph_resolves_all_merged_endpoints_in_batches() -> None:
+async def test_graph_resolves_all_merged_endpoints_in_batches(
+    graph_backend: GraphBackend,
+) -> None:
     """Distinct merged endpoints are resolved with one batched store read."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     await world.add_entity("a", "A")
     await world.add_entity("b", "B")
     for old_id in ("old1", "old2"):
@@ -124,9 +141,13 @@ async def test_graph_resolves_all_merged_endpoints_in_batches() -> None:
     assert resolution.requests == [(["old1", "old2"], False)]
 
 
-async def test_building_the_graph_twice_reuses_the_same_reads() -> None:
+async def test_building_the_graph_twice_reuses_the_same_reads(
+    graph_backend: GraphBackend,
+) -> None:
     """A stage context reuses its graph rather than reading the graph twice."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     await world.add_entity("a", "A")
     await world.add_entity("b", "B")
     await add_fact(world, "a", "b")
@@ -178,9 +199,13 @@ class CountingTemporal:
         return await self._temporal.current_facts()
 
 
-async def test_archived_entities_and_facts_leave_the_graph() -> None:
+async def test_archived_entities_and_facts_leave_the_graph(
+    graph_backend: GraphBackend,
+) -> None:
     """An archived entity and an archived fact are not in the graph."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     for entity_id in "abc":
         await world.add_entity(entity_id, entity_id.upper())
     await add_fact(world, "a", "b")

@@ -1,4 +1,4 @@
-"""The scoring stage, on the in-memory twins."""
+"""The scoring stage, on live graph tenants."""
 
 import pytest
 
@@ -8,6 +8,7 @@ from ontogr_mem.consolidation.stage import StageContext
 from ontogr_mem.consolidation.stages.feedback_weights import FeedbackWeightsStage
 from ontogr_mem.consolidation.stages.scoring import ScoringStage
 from tests.support.consolidation import ConsWorld, new_world
+from tests.support.graph_backend import GraphBackend
 from tests.unit.temporal.helpers import at, obs
 
 
@@ -30,9 +31,13 @@ async def score_of(world: ConsWorld, target_id: str) -> Score:
     return score
 
 
-async def test_gate_skips_without_a_resolver_or_temporal_engine() -> None:
+async def test_gate_skips_without_a_resolver_or_temporal_engine(
+    graph_backend: GraphBackend,
+) -> None:
     """Scoring is skipped when neither the resolver nor the temporal engine is wired."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     ctx = StageContext(
         run_id="r1",
         clock=world.clock,
@@ -54,10 +59,12 @@ async def test_gate_skips_without_a_resolver_or_temporal_engine() -> None:
     ],
 )
 async def test_recency_halves_every_thirty_days(
-    idle_days: int, recency: float, score: float
+    graph_backend: GraphBackend, idle_days: int, recency: float, score: float
 ) -> None:
     """An entity's recency halves after each 30 days without a change."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     await world.add_entity("a", "A")
     world.clock.advance(days=idle_days)
 
@@ -74,10 +81,12 @@ async def test_recency_halves_every_thirty_days(
     [(0, 0.0), (20, 1.0), (25, 1.0)],
 )
 async def test_frequency_is_zero_without_access_and_caps_at_twenty(
-    accesses: int, frequency: float
+    graph_backend: GraphBackend, accesses: int, frequency: float
 ) -> None:
     """Frequency reaches 1.0 at 20 accesses and stays there."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     await world.add_entity("a", "A")
     for _ in range(accesses):
         await record_access(world.store, "a", world.clock())
@@ -98,10 +107,12 @@ async def test_frequency_is_zero_without_access_and_caps_at_twenty(
     ],
 )
 async def test_salience_caps_at_degree_ten(
-    degree: int, salience: float, score: float
+    graph_backend: GraphBackend, degree: int, salience: float, score: float
 ) -> None:
     """The degree part of salience caps at ten neighbours, and facts are scored."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     neighbours = [f"n{i}" for i in range(degree)]
     await world.add_entity("hub", "Hub")
     for name in neighbours:
@@ -124,9 +135,11 @@ async def test_salience_caps_at_degree_ten(
     assert sum(1 for s in scores if s.kind == "entity") == degree + 1
 
 
-async def test_feedback_raises_salience_and_score() -> None:
+async def test_feedback_raises_salience_and_score(graph_backend: GraphBackend) -> None:
     """One good rating lifts the weight from 0.5 to 0.55, and so the score."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     await world.add_entity("a", "A")
     await record_feedback(world.store, "a", 1.0, world.clock())
     await FeedbackWeightsStage().run(ctx_for(world))
@@ -138,9 +151,13 @@ async def test_feedback_raises_salience_and_score() -> None:
     assert stored.score == pytest.approx(0.4825)
 
 
-async def test_scores_of_vanished_entities_are_removed() -> None:
+async def test_scores_of_vanished_entities_are_removed(
+    graph_backend: GraphBackend,
+) -> None:
     """An archived entity leaves the graph, so its score is removed."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     await world.add_entity("a", "A")
     await world.add_entity("b", "B")
     await ScoringStage().run(ctx_for(world))
@@ -154,9 +171,11 @@ async def test_scores_of_vanished_entities_are_removed() -> None:
     assert await world.store.get(Score, "a") is not None
 
 
-async def test_a_second_run_changes_no_score() -> None:
+async def test_a_second_run_changes_no_score(graph_backend: GraphBackend) -> None:
     """Running the scoring stage again writes the same scores."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     await world.add_entity("a", "A")
     await world.add_entity("b", "B")
     await ScoringStage().run(ctx_for(world))

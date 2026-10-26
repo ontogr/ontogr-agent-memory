@@ -11,7 +11,7 @@ from ontogr_mem.fact_extraction import (
     InMemoryFactStore,
     LLMFactExtractor,
 )
-from ontogr_mem.graphstore.memory import MemoryOntologyStore
+from ontogr_mem.graphstore.ontology_store import GraphOntologyStore
 from ontogr_mem.graphstore.resolver_store import GraphResolverStore
 from ontogr_mem.graphstore.temporal.store import GraphTemporalStore
 from ontogr_mem.ingestion.store import EpisodeStore
@@ -179,7 +179,7 @@ async def temporal_stack(store, handle, keyed: bool) -> TemporalStack:
         FixedClock(),
     )
     manager = OntologyManager(
-        MemoryOntologyStore(set[str]),
+        GraphOntologyStore(store, handle, tenant_keyed=keyed),
         ScriptedLLM(),
         OntologySettings(min_support=3),
         FixedClock(),
@@ -198,7 +198,7 @@ async def temporal_stack(store, handle, keyed: bool) -> TemporalStack:
         store,
         handle,
         keyed,
-        GraphTemporalStore(store, handle),
+        GraphTemporalStore(store, handle, tenant_keyed=keyed),
         graph_harness(runner, tenant_keyed=keyed).store,
         resolver,
         manager,

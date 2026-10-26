@@ -1,4 +1,4 @@
-"""The prune and archive stage, on the in-memory twins."""
+"""The prune and archive stage, on live graph tenants."""
 
 from ontogr_mem.consolidation.archive import archive_item, restore_item
 from ontogr_mem.consolidation.config import ConsolidationSettings, PruneSettings
@@ -13,9 +13,9 @@ from ontogr_mem.consolidation.stage import StageContext
 from ontogr_mem.consolidation.stages.prune_archive import PruneArchiveStage
 from ontogr_mem.consolidation.stages.scoring import ScoringStage
 from ontogr_mem.data_models.entities import EntityStatus
-from ontogr_mem.graphstore.memory import MemoryResolverStore
+from tests.integration.resolution.resolver_helpers import ex
 from tests.support.consolidation import ConsWorld, new_world
-from tests.unit.resolution.resolver_helpers import ex
+from tests.support.graph_backend import GraphBackend
 from tests.unit.temporal.helpers import at, obs
 
 
@@ -58,23 +58,18 @@ async def entity_status(world: ConsWorld, entity_id: str) -> EntityStatus | None
 
 
 async def add_fact(world: ConsWorld, subject: str, obj: str) -> None:
-    """Ingest one current fact from ``subject`` to ``obj`` into the temporal twin."""
+    """Ingest one current fact from ``subject`` to ``obj`` into the temporal store."""
     await world.ensure_entities([subject, obj])
     await world.temporal.ingest_observations(
         [obs(f"o-{subject}-{obj}", obj, at(2010), subject=subject, slot=subject)]
     )
 
 
-def seed_live_fact_edge(world: ConsWorld, subject: str, obj: str) -> None:
-    """Add a live fact edge between two entities to the resolver's delete guard."""
-    store = world.resolution.store
-    assert isinstance(store, MemoryResolverStore)
-    store.seed_fact_edge(subject, obj, "RELATED_TO", {"status": "active"})
-
-
-async def aged_world(settings: ConsolidationSettings) -> ConsWorld:
+async def aged_world(
+    graph_backend: GraphBackend, settings: ConsolidationSettings
+) -> ConsWorld:
     """Return a world with a cold entity ``old`` and a hot entity ``keep``, scored."""
-    world = await new_world(settings)
+    world = await new_world(graph_backend, settings)
     await world.add_entity("old", "Old")
     await world.add_entity("keep", "Keep")
     world.clock.advance(days=400)
@@ -84,18 +79,22 @@ async def aged_world(settings: ConsolidationSettings) -> ConsWorld:
     return world
 
 
-async def test_gate_skips_when_nothing_is_scored_or_archived() -> None:
+async def test_gate_skips_when_nothing_is_scored_or_archived(
+    graph_backend: GraphBackend,
+) -> None:
     """The stage has nothing to do on an empty tenant."""
-    world = await new_world(live_settings())
+    world = await new_world(graph_backend, live_settings())
 
     assert await PruneArchiveStage().gate(ctx_for(world)) == (
         "no scores and nothing archived"
     )
 
 
-async def test_dry_run_is_the_default_and_changes_nothing() -> None:
+async def test_dry_run_is_the_default_and_changes_nothing(
+    graph_backend: GraphBackend,
+) -> None:
     """With default settings the cold item is reported and left in place."""
-    world = await aged_world(ConsolidationSettings(_env_file=None))
+    world = await aged_world(graph_backend, ConsolidationSettings(_env_file=None))
 
     result = await PruneArchiveStage().run(ctx_for(world))
 
@@ -106,9 +105,11 @@ async def test_dry_run_is_the_default_and_changes_nothing() -> None:
     assert await archived_records(ctx_for(world)) == []
 
 
-async def test_cold_entity_is_archived_and_leaves_the_graph() -> None:
+async def test_cold_entity_is_archived_and_leaves_the_graph(
+    graph_backend: GraphBackend,
+) -> None:
     """A low-score entity past the minimum age is archived and leaves the graph."""
-    world = await aged_world(live_settings())
+    world = await aged_world(graph_backend, live_settings())
 
     result = await PruneArchiveStage().run(ctx_for(world))
 
@@ -119,18 +120,20 @@ async def test_cold_entity_is_archived_and_leaves_the_graph() -> None:
     assert set(graph.entities) == {"keep"}
 
 
-async def test_hot_entity_is_not_archived() -> None:
+async def test_hot_entity_is_not_archived(graph_backend: GraphBackend) -> None:
     """An entity whose score is above the threshold stays active."""
-    world = await aged_world(live_settings())
+    world = await aged_world(graph_backend, live_settings())
 
     await PruneArchiveStage().run(ctx_for(world))
 
     assert await entity_status(world, "keep") is EntityStatus.ACTIVE
 
 
-async def test_young_entity_is_archived_only_after_the_minimum_age() -> None:
+async def test_young_entity_is_archived_only_after_the_minimum_age(
+    graph_backend: GraphBackend,
+) -> None:
     """A low-score entity younger than the minimum age is archived later."""
-    world = await new_world(live_settings(archive_below=1.0))
+    world = await new_world(graph_backend, live_settings(archive_below=1.0))
     await world.add_entity("new", "New")
     world.clock.advance(days=5)
     await ScoringStage().run(ctx_for(world))
@@ -149,9 +152,11 @@ async def test_young_entity_is_archived_only_after_the_minimum_age() -> None:
     assert await entity_status(world, "new") is EntityStatus.ARCHIVED
 
 
-async def test_restore_brings_an_archived_entity_back() -> None:
+async def test_restore_brings_an_archived_entity_back(
+    graph_backend: GraphBackend,
+) -> None:
     """A restored entity is active again and no longer listed as archived."""
-    world = await aged_world(live_settings())
+    world = await aged_world(graph_backend, live_settings())
     await PruneArchiveStage().run(ctx_for(world))
 
     await restore_item(ctx_for(world), "old")
@@ -160,10 +165,12 @@ async def test_restore_brings_an_archived_entity_back() -> None:
     assert await archived_records(ctx_for(world)) == []
 
 
-async def test_retention_deletes_an_archived_entity_only_after_the_window() -> None:
+async def test_retention_deletes_an_archived_entity_only_after_the_window(
+    graph_backend: GraphBackend,
+) -> None:
     """Retention waits for the full window, then deletes the entity and its record."""
     world = await aged_world(
-        live_settings(retention_days=100, delete_after_retention=True)
+        graph_backend, live_settings(retention_days=100, delete_after_retention=True)
     )
     await PruneArchiveStage().run(ctx_for(world))
 
@@ -181,9 +188,11 @@ async def test_retention_deletes_an_archived_entity_only_after_the_window() -> N
     assert await world.store.get(ArchiveRecord, "old") is None
 
 
-async def test_retention_keeps_archived_entities_when_deletion_is_off() -> None:
+async def test_retention_keeps_archived_entities_when_deletion_is_off(
+    graph_backend: GraphBackend,
+) -> None:
     """With delete_after_retention off, an item past retention stays archived."""
-    world = await aged_world(live_settings(retention_days=1))
+    world = await aged_world(graph_backend, live_settings(retention_days=1))
     await PruneArchiveStage().run(ctx_for(world))
 
     world.clock.advance(days=50)
@@ -194,10 +203,10 @@ async def test_retention_keeps_archived_entities_when_deletion_is_off() -> None:
     assert await entity_status(world, "old") is EntityStatus.ARCHIVED
 
 
-async def test_retention_never_deletes_a_fact() -> None:
+async def test_retention_never_deletes_a_fact(graph_backend: GraphBackend) -> None:
     """A fact past retention stays archived, and the result says so."""
     world = await new_world(
-        live_settings(retention_days=10, delete_after_retention=True)
+        graph_backend, live_settings(retention_days=10, delete_after_retention=True)
     )
     await world.add_entity("a", "A")
     await world.add_entity("b", "B")
@@ -215,14 +224,16 @@ async def test_retention_never_deletes_a_fact() -> None:
     assert (await build_entity_graph(ctx_for(world))).facts == ()
 
 
-async def test_entity_with_a_live_fact_is_kept_with_a_note() -> None:
+async def test_entity_with_a_live_fact_is_kept_with_a_note(
+    graph_backend: GraphBackend,
+) -> None:
     """Deletion is refused while a live fact still points at the entity."""
     world = await new_world(
-        live_settings(retention_days=10, delete_after_retention=True)
+        graph_backend, live_settings(retention_days=10, delete_after_retention=True)
     )
     await world.add_entity("a", "A")
     await world.add_entity("b", "B")
-    seed_live_fact_edge(world, "a", "b")
+    await world.seed_live_fact("a", "b")
     await archive_item(ctx_for(world), "a", "entity", "cold")
 
     world.clock.advance(days=30)
@@ -233,10 +244,12 @@ async def test_entity_with_a_live_fact_is_kept_with_a_note() -> None:
     assert await entity_status(world, "a") is EntityStatus.ARCHIVED
 
 
-async def test_a_re_mentioned_item_is_skipped_by_retention_and_restored() -> None:
+async def test_a_re_mentioned_item_is_skipped_by_retention_and_restored(
+    graph_backend: GraphBackend,
+) -> None:
     """An item accessed after it was archived is restored instead of deleted."""
     world = await aged_world(
-        live_settings(retention_days=100, delete_after_retention=True)
+        graph_backend, live_settings(retention_days=100, delete_after_retention=True)
     )
     await PruneArchiveStage().run(ctx_for(world))
 
@@ -253,9 +266,11 @@ async def test_a_re_mentioned_item_is_skipped_by_retention_and_restored() -> Non
     assert await archived_records(ctx_for(world)) == []
 
 
-async def test_archiving_leaves_updated_at_untouched() -> None:
+async def test_archiving_leaves_updated_at_untouched(
+    graph_backend: GraphBackend,
+) -> None:
     """Archiving is not a change to the entity, so its last update stays."""
-    world = await aged_world(live_settings())
+    world = await aged_world(graph_backend, live_settings())
     before = (await world.resolution.get_entities(["old"]))[0]
 
     result = await PruneArchiveStage().run(ctx_for(world))
@@ -265,9 +280,9 @@ async def test_archiving_leaves_updated_at_untouched() -> None:
     assert after.updated_at == before.updated_at
 
 
-async def test_a_second_run_archives_nothing_more() -> None:
+async def test_a_second_run_archives_nothing_more(graph_backend: GraphBackend) -> None:
     """Running the stage again changes no archive record."""
-    world = await aged_world(live_settings())
+    world = await aged_world(graph_backend, live_settings())
     await PruneArchiveStage().run(ctx_for(world))
     first = await world.store.list(ArchiveRecord)
 
@@ -278,9 +293,11 @@ async def test_a_second_run_archives_nothing_more() -> None:
     assert await world.store.list(ArchiveRecord) == first
 
 
-async def test_a_mention_that_restored_an_entity_clears_its_archive_record() -> None:
+async def test_a_mention_that_restored_an_entity_clears_its_archive_record(
+    graph_backend: GraphBackend,
+) -> None:
     """Resolution restores a matched archived entity, so it is no longer archived."""
-    world = await new_world(live_settings())
+    world = await new_world(graph_backend, live_settings())
     created = await world.resolution.resolve([ex("1", "Old", "Thing")])
     old_id = created.entities[0].entity_id
     world.clock.advance(days=400)
@@ -297,9 +314,11 @@ async def test_a_mention_that_restored_an_entity_clears_its_archive_record() -> 
     assert await archived_records(ctx_for(world)) == []
 
 
-async def test_the_archive_record_of_a_deleted_entity_is_dropped() -> None:
+async def test_the_archive_record_of_a_deleted_entity_is_dropped(
+    graph_backend: GraphBackend,
+) -> None:
     """An entity removed elsewhere does not make the stage fail on every run."""
-    world = await aged_world(live_settings())
+    world = await aged_world(graph_backend, live_settings())
     await PruneArchiveStage().run(ctx_for(world))
     await world.resolution.delete("old")
 

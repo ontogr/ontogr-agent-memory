@@ -5,11 +5,11 @@ from dataclasses import replace
 import pytest
 
 from ontogr_mem.data_models import Alias
-from ontogr_mem.graphstore.memory.keyword_search import MemoryKeywordSearch
 from ontogr_mem.retrieval.errors import RetrievalError
 from ontogr_mem.retrieval.neighbourhood import neighbourhood
 from ontogr_mem.temporal.reader import FactReader
 from tests.support.episodes import make_episode
+from tests.support.graph_backend import GraphBackend
 from tests.support.p9i import NOW, add_fact, make_world
 from tests.unit.temporal.helpers import at, obs
 
@@ -17,9 +17,13 @@ from tests.unit.temporal.helpers import at, obs
 class TestNeighbourhood:
     """Walk the visible fact graph with stable bounds and annotations."""
 
-    async def test_depth_limits_the_walk_and_edges_keep_their_statements(self):
+    async def test_depth_limits_the_walk_and_edges_keep_their_statements(
+        self, graph_backend: GraphBackend
+    ):
         """A depth-one walk returns the seed and its direct neighbour."""
-        episodes, resolver, store, _, engine = await make_world(("A", "B", "C", "D"))
+        episodes, resolver, store, _, engine, keywords = await make_world(
+            graph_backend, ("A", "B", "C", "D")
+        )
         for index, (left, right) in enumerate((("A", "B"), ("B", "C"), ("C", "D"))):
             await add_fact(
                 episodes,
@@ -32,7 +36,7 @@ class TestNeighbourhood:
                 valid_from=at(2020),
                 statement=f"{left} knows {right}.",
             )
-        search = MemoryKeywordSearch(resolver, store, episodes)
+        search = keywords
 
         result = await neighbourhood(
             store,
@@ -51,9 +55,13 @@ class TestNeighbourhood:
         assert result.seeds == ("A",)
         assert result.truncated is False
 
-    async def test_keyword_search_supplies_a_seed_for_an_alias(self):
+    async def test_keyword_search_supplies_a_seed_for_an_alias(
+        self, graph_backend: GraphBackend
+    ):
         """A keyword hit on an alias starts the walk at its active entity."""
-        episodes, resolver, store, _, engine = await make_world(("ana", "acme"))
+        episodes, resolver, store, _, engine, keywords = await make_world(
+            graph_backend, ("ana", "acme")
+        )
         await resolver.write_entity_batch(
             [],
             [
@@ -81,7 +89,7 @@ class TestNeighbourhood:
         result = await neighbourhood(
             store,
             resolver,
-            MemoryKeywordSearch(resolver, store, episodes),
+            keywords,
             FactReader(store),
             now=NOW,
             query="Acme",
@@ -90,10 +98,14 @@ class TestNeighbourhood:
         assert result.seeds == ("acme",)
         assert {node.entity_id for node in result.nodes} == {"acme", "ana"}
 
-    async def test_cap_returns_breadth_first_prefix_and_reports_truncation(self):
+    async def test_cap_returns_breadth_first_prefix_and_reports_truncation(
+        self, graph_backend: GraphBackend
+    ):
         """A full cap is truncated only when an unseen neighbour is waiting."""
         ids = ("hub", *(f"n{index:03}" for index in range(300)))
-        episodes, resolver, store, _, engine = await make_world(ids)
+        episodes, resolver, store, _, engine, keywords = await make_world(
+            graph_backend, ids
+        )
         observation_rows = []
         episode_rows = []
         for index in range(300):
@@ -115,7 +127,7 @@ class TestNeighbourhood:
             )
         await episodes.write_episodes(episode_rows)
         await engine.ingest_observations(observation_rows)
-        search = MemoryKeywordSearch(resolver, store, episodes)
+        search = keywords
 
         capped = await neighbourhood(
             store,
@@ -146,7 +158,9 @@ class TestNeighbourhood:
         assert len(complete.nodes) == 301
         assert complete.truncated is False
 
-    async def test_default_seeds_are_the_three_most_connected_entities(self):
+    async def test_default_seeds_are_the_three_most_connected_entities(
+        self, graph_backend: GraphBackend
+    ):
         """Seed selection ranks visible fact counts and breaks ties by id."""
         ids = (
             "a-hub",
@@ -157,7 +171,9 @@ class TestNeighbourhood:
             "f-leaf",
             "g-leaf",
         )
-        episodes, resolver, store, _, engine = await make_world(ids)
+        episodes, resolver, store, _, engine, keywords = await make_world(
+            graph_backend, ids
+        )
         for index, (left, right) in enumerate(
             (
                 ("a-hub", "b-leaf"),
@@ -182,7 +198,7 @@ class TestNeighbourhood:
         result = await neighbourhood(
             store,
             resolver,
-            MemoryKeywordSearch(resolver, store, episodes),
+            keywords,
             FactReader(store),
             now=NOW,
             query="",
@@ -190,9 +206,13 @@ class TestNeighbourhood:
 
         assert result.seeds == ("a-hub", "e-hub", "b-leaf")
 
-    async def test_default_view_hides_withdrawn_facts(self):
+    async def test_default_view_hides_withdrawn_facts(
+        self, graph_backend: GraphBackend
+    ):
         """History exposes a retracted edge that the default view omits."""
-        episodes, resolver, store, clock, engine = await make_world(("ana", "acme"))
+        episodes, resolver, store, clock, engine, keywords = await make_world(
+            graph_backend, ("ana", "acme")
+        )
         await add_fact(
             episodes,
             engine,
@@ -207,7 +227,7 @@ class TestNeighbourhood:
         clock.value = clock.value.replace(day=23)
         await engine.retract_episodes(["ep1"])
         reader = FactReader(store)
-        search = MemoryKeywordSearch(resolver, store, episodes)
+        search = keywords
 
         current = await neighbourhood(
             store, resolver, search, reader, now=clock.value, seeds=("ana",)
@@ -230,16 +250,18 @@ class TestNeighbourhood:
         ((5, 100), (-1, 100), (2, 0), (2, 501)),
     )
     async def test_out_of_range_bounds_raise_retrieval_error(
-        self, depth: int, max_nodes: int
+        self, graph_backend: GraphBackend, depth: int, max_nodes: int
     ):
         """Invalid walk bounds fail before the read begins."""
-        episodes, resolver, store, _, _ = await make_world(("ana",))
+        episodes, resolver, store, _, _, keywords = await make_world(
+            graph_backend, ("ana",)
+        )
 
         with pytest.raises(RetrievalError):
             await neighbourhood(
                 store,
                 resolver,
-                MemoryKeywordSearch(resolver, store, episodes),
+                keywords,
                 FactReader(store),
                 now=NOW,
                 depth=depth,

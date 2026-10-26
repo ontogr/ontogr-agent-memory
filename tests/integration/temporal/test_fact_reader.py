@@ -5,7 +5,6 @@ from datetime import timedelta
 
 from ontogr_mem.data_models.fact_versions import FactStatus
 from ontogr_mem.data_models.observation import ObservationKind
-from ontogr_mem.graphstore.memory import MemoryEpisodeStore, MemoryTemporalStore
 from ontogr_mem.temporal.cardinality import (
     Cardinality,
     DictRelationPolicy,
@@ -20,10 +19,12 @@ from ontogr_mem.temporal.verdicts import (
     VerdictKind,
     VerdictSource,
 )
+from tests.integration.temporal.test_engine_contradictions import ScriptedJudge
 from tests.support.clock import FixedClock
 from tests.support.episodes import make_episode
-from tests.unit.temporal.helpers import EntityLookup, LocalRefResolver, at, obs
-from tests.unit.temporal.test_engine_contradictions import ScriptedJudge
+from tests.support.graph_backend import GraphBackend
+from tests.support.temporal import open_temporal
+from tests.unit.temporal.helpers import LocalRefResolver, at, obs
 
 
 NOW = FixedClock().now()
@@ -35,11 +36,10 @@ ONE_AND_MANY = DictRelationPolicy(
 )
 
 
-async def make_reader_world():
+async def make_reader_world(graph_backend: GraphBackend):
     """Build facts with replacements, correction and reset through the engine."""
-    episodes = MemoryEpisodeStore()
-    store = MemoryTemporalStore(
-        episodes, EntityLookup(("ana", "acme", "globex", "paris", "rome"))
+    episodes, store = await open_temporal(
+        graph_backend, ("ana", "acme", "globex", "paris", "rome")
     )
     clock = FixedClock(NOW)
     engine = TemporalEngine(store, ONE_AND_MANY, LocalRefResolver(), clock.now)
@@ -114,11 +114,9 @@ class _NoopMentions:
         return []
 
 
-async def make_dispute_world():
+async def make_dispute_world(graph_backend: GraphBackend):
     """Build two cross-slot facts that remain in an open dispute."""
-    store = MemoryTemporalStore(
-        MemoryEpisodeStore(), EntityLookup(("ana", "acme", "globex"))
-    )
+    _, store = await open_temporal(graph_backend, ("ana", "acme", "globex"))
     clock = FixedClock(NOW)
     engine = TemporalEngine(store, ONE_AND_MANY, LocalRefResolver(), clock.now)
     await engine.ingest_observations(
@@ -134,9 +132,11 @@ async def make_dispute_world():
 class TestFactReader:
     """Read fact versions through temporal and evidence queries."""
 
-    async def test_queries_apply_time_visibility_and_annotate_evidence(self):
+    async def test_queries_apply_time_visibility_and_annotate_evidence(
+        self, graph_backend: GraphBackend
+    ):
         """Every query preserves temporal rules and adds observation text."""
-        _, store, clock, reader = await make_reader_world()
+        _, store, clock, reader = await make_reader_world(graph_backend)
         before_correction = clock.value - timedelta(microseconds=1)
         correction_slot = await store.load_slot("correction")
         original = next(
@@ -210,9 +210,11 @@ class TestFactReader:
             == []
         )
 
-    async def test_touching_matches_either_entity_side(self):
+    async def test_touching_matches_either_entity_side(
+        self, graph_backend: GraphBackend
+    ):
         """Entity lookup returns annotated facts with that entity on either side."""
-        _, _, _, reader = await make_reader_world()
+        _, _, _, reader = await make_reader_world(graph_backend)
 
         touching = await reader.touching(["paris"], TemporalQuery(now=NOW))
 
@@ -221,9 +223,11 @@ class TestFactReader:
             view.statement or view.slot_key in {"kept", "inverse"} for view in touching
         )
 
-    async def test_subset_of_open_dispute_keeps_its_counterpart_annotation(self):
+    async def test_subset_of_open_dispute_keeps_its_counterpart_annotation(
+        self, graph_backend: GraphBackend
+    ):
         """A single requested side still names the other disputed fact."""
-        _, store, clock, reader = await make_dispute_world()
+        _, store, clock, reader = await make_dispute_world(graph_backend)
         facts = await store.facts_of_entities(["ana"])
         first, second = sorted(facts, key=lambda fact: fact.slot_key)
 
@@ -233,9 +237,11 @@ class TestFactReader:
         assert view.counterpart_ids == (second.fact_id,)
         assert view.dispute_reason == "the judge could not decide"
 
-    async def test_person_decision_clears_dispute_and_overrides_the_loser(self):
+    async def test_person_decision_clears_dispute_and_overrides_the_loser(
+        self, graph_backend: GraphBackend
+    ):
         """Choosing one side settles the dispute and leaves the loser visible."""
-        engine, store, clock, reader = await make_dispute_world()
+        engine, store, clock, reader = await make_dispute_world(graph_backend)
         facts = sorted(await store.facts_of_entities(["ana"]), key=lambda f: f.slot_key)
         chosen, loser = facts
         decision = ConflictDecision(
@@ -260,9 +266,11 @@ class TestFactReader:
             FactStatus.OVERRIDDEN
         )
 
-    async def test_observation_texts_include_episode_and_omit_unknown_ids(self):
+    async def test_observation_texts_include_episode_and_omit_unknown_ids(
+        self, graph_backend: GraphBackend
+    ):
         """Evidence text carries its episode id and ignores missing observations."""
-        _, _, _, reader = await make_reader_world()
+        _, _, _, reader = await make_reader_world(graph_backend)
 
         texts = await reader.observation_texts(["stable-1", "missing"])
 

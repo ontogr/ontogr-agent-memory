@@ -6,15 +6,14 @@ from typing import Any
 
 from ontogr_mem.data_models.entities import Entity
 from ontogr_mem.graphstore import GraphHandle, QuerySpec
-from ontogr_mem.graphstore.memory import (
-    MemoryEpisodeStore,
-    MemoryResolverStore,
-    MemoryTemporalStore,
-)
+from ontogr_mem.graphstore.episode_store import GraphEpisodeStore
 from ontogr_mem.graphstore.protocol import GraphStore
 from ontogr_mem.graphstore.resolver_store import GraphResolverStore
+from ontogr_mem.graphstore.temporal.store import GraphTemporalStore
+from ontogr_mem.ingestion.store import EpisodeStore
 from ontogr_mem.temporal.temporal_store import TemporalStore
 from tests.support.episodes import graph_harness, make_episode
+from tests.support.graph_backend import GraphBackend
 
 
 @dataclass
@@ -33,32 +32,6 @@ class TemporalHarness:
     seed_episode: Callable[[str], Awaitable[None]]
     rewrite_episode: Callable[[str], Awaitable[None]]
     raw_slot_properties: Callable[[str], Awaitable[dict[str, Any]]] | None = None
-
-
-def memory_temporal_harness() -> TemporalHarness:
-    """Build a harness around an in-memory store and episode store."""
-    episodes = MemoryEpisodeStore()
-    resolver = MemoryResolverStore()
-    store = MemoryTemporalStore(episodes, resolver)
-
-    async def seed_entities(entity_ids: Iterable[str]) -> None:
-        for entity_id in entity_ids:
-            await resolver.save_entity(
-                Entity(
-                    entity_id=entity_id,
-                    type_label="Thing",
-                    canonical_name=entity_id,
-                    strict_key=entity_id,
-                    loose_key=entity_id,
-                    created_at=make_episode("entity-time").occurred_at,
-                    updated_at=make_episode("entity-time").occurred_at,
-                )
-            )
-
-    async def seed_episode(episode_id: str) -> None:
-        await episodes.write_episodes([make_episode(episode_id)])
-
-    return TemporalHarness(store, seed_entities, seed_episode, seed_episode)
 
 
 def graph_temporal_harness(
@@ -108,3 +81,39 @@ def graph_temporal_harness(
     return TemporalHarness(
         store, seed_entities, seed_episode, rewrite_episode, raw_slot_properties
     )
+
+
+async def open_temporal(
+    backend: GraphBackend,
+    entity_ids: Iterable[str] = (),
+    store_type: type[GraphTemporalStore] = GraphTemporalStore,
+    **kwargs: Any,
+) -> tuple[EpisodeStore, GraphTemporalStore]:
+    """Open a tenant and return its episode store and a temporal store over it.
+
+    Args:
+        backend: The live graph backend to open the tenant on.
+        entity_ids: Entities that exist before the test writes facts.
+        store_type: The temporal store class, for tests that inject faults.
+        **kwargs: Extra constructor arguments for `store_type`.
+    """
+    handle = await backend.open_tenant()
+    runner = backend.store.runner(handle)
+    episodes = GraphEpisodeStore(runner, tenant_keyed=backend.tenant_keyed)
+    resolver = GraphResolverStore(runner, tenant_keyed=backend.tenant_keyed)
+    for entity_id in entity_ids:
+        await resolver.save_entity(
+            Entity(
+                entity_id=entity_id,
+                type_label="Thing",
+                canonical_name=entity_id,
+                strict_key=entity_id,
+                loose_key=entity_id,
+                created_at=make_episode("entity-time").occurred_at,
+                updated_at=make_episode("entity-time").occurred_at,
+            )
+        )
+    store = store_type(
+        backend.store, handle, tenant_keyed=backend.tenant_keyed, **kwargs
+    )
+    return episodes, store

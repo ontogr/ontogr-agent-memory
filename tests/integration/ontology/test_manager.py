@@ -1,11 +1,11 @@
-"""Tests for the ontology manager over the in-memory store."""
+"""Tests for the ontology manager over a live graph tenant."""
 
 import asyncio
 import json
 
 import pytest
 
-from ontogr_mem.graphstore.memory import MemoryOntologyStore
+from ontogr_mem.graphstore.ontology_store import GraphOntologyStore
 from ontogr_mem.llm import LLMCallError
 from ontogr_mem.ontology.apply import apply_changeset
 from ontogr_mem.ontology.errors import (
@@ -40,6 +40,7 @@ from ontogr_mem.ontology.validate import (
     validate,
 )
 from tests.support.clock import FixedClock
+from tests.support.graph_backend import GraphBackend
 from tests.support.llm import ScriptedLLM
 from tests.support.ontology import base, cs
 
@@ -49,12 +50,22 @@ GOOD = json.dumps(
 )
 
 
+async def make_store(graph_backend: GraphBackend) -> GraphOntologyStore:
+    """Open a fresh tenant and return its ontology store."""
+    handle = await graph_backend.open_tenant()
+    return GraphOntologyStore(
+        graph_backend.store, handle, tenant_keyed=graph_backend.tenant_keyed
+    )
+
+
 async def make_manager(
-    catalog: Ontology | None = None, llm: ScriptedLLM | None = None
+    graph_backend: GraphBackend,
+    catalog: Ontology | None = None,
+    llm: ScriptedLLM | None = None,
 ) -> OntologyManager:
-    """Build a manager on a fresh twin, optionally loaded with a catalog."""
+    """Build a manager on a fresh tenant, optionally loaded with a catalog."""
     manager = OntologyManager(
-        MemoryOntologyStore(set[str]),
+        await make_store(graph_backend),
         llm or ScriptedLLM(),
         OntologySettings(min_support=2),
         FixedClock(),
@@ -85,9 +96,11 @@ async def seed(manager: OntologyManager, episodes=("e1", "e2")) -> None:
 class TestOntologyManager:
     """Behavior of OntologyManager."""
 
-    async def test_load_catalog_only_into_version_zero(self):
+    async def test_load_catalog_only_into_version_zero(
+        self, graph_backend: GraphBackend
+    ):
         """Load catalog only into version zero."""
-        manager = await make_manager(base())
+        manager = await make_manager(graph_backend, base())
 
         head = await manager.catalog()
         assert head.version == 1
@@ -100,28 +113,32 @@ class TestOntologyManager:
         with pytest.raises(InvalidChange):
             await manager.load_catalog(base())
 
-    async def test_below_the_support_threshold_makes_no_proposal(self):
+    async def test_below_the_support_threshold_makes_no_proposal(
+        self, graph_backend: GraphBackend
+    ):
         """Below the support threshold makes no proposal."""
-        manager = await make_manager(base())
+        manager = await make_manager(graph_backend, base())
         await seed(manager, ("e1",))
 
         run = await manager.propose()
 
         assert run.proposals == [] and run.failures == []
 
-    async def test_support_counts_distinct_episodes(self):
+    async def test_support_counts_distinct_episodes(self, graph_backend: GraphBackend):
         """Support counts distinct episodes."""
-        manager = await make_manager(base())
+        manager = await make_manager(graph_backend, base())
         await manager.record_unmatched(
             "e1", [unmatched("Gadget", "e1"), unmatched("gadget", "e1")]
         )
 
         assert (await manager.propose()).proposals == []
 
-    async def test_drafting_uses_the_llm_client_and_accepting_commits(self):
+    async def test_drafting_uses_the_llm_client_and_accepting_commits(
+        self, graph_backend: GraphBackend
+    ):
         """Drafting uses the llm client and accepting commits."""
         llm = ScriptedLLM([GOOD])
-        manager = await make_manager(base(), llm)
+        manager = await make_manager(graph_backend, base(), llm)
         await seed(manager)
 
         run = await manager.propose()
@@ -139,11 +156,13 @@ class TestOntologyManager:
         again = await manager.propose()
         assert again.proposals == []
 
-    async def test_malformed_draft_is_retried_then_works(self):
+    async def test_malformed_draft_is_retried_then_works(
+        self, graph_backend: GraphBackend
+    ):
         """Malformed draft is retried then works."""
         bad = json.dumps({"ops": [{"op": "add_entity", "label": "Person"}]})
         llm = ScriptedLLM([bad, GOOD])
-        manager = await make_manager(base(), llm)
+        manager = await make_manager(graph_backend, base(), llm)
         await seed(manager)
 
         run = await manager.propose()
@@ -151,7 +170,9 @@ class TestOntologyManager:
         assert [p.status for p in run.proposals] == [ProposalStatus.PENDING]
         assert len(llm.requests) == 2
 
-    async def test_draft_that_never_validates_is_stored_rejected(self):
+    async def test_draft_that_never_validates_is_stored_rejected(
+        self, graph_backend: GraphBackend
+    ):
         """Draft that never validates is stored rejected."""
         llm = ScriptedLLM(
             [
@@ -170,7 +191,7 @@ class TestOntologyManager:
                 "not json",
             ]
         )
-        manager = await make_manager(base(), llm)
+        manager = await make_manager(graph_backend, base(), llm)
         await seed(manager)
 
         (proposal,) = (await manager.propose()).proposals
@@ -180,23 +201,27 @@ class TestOntologyManager:
         assert proposal.ops == [] and proposal.reason
         assert stored.proposals == []
 
-    async def test_model_failure_raises_an_ontology_error(self):
+    async def test_model_failure_raises_an_ontology_error(
+        self, graph_backend: GraphBackend
+    ):
         """Model failure raises an ontology error."""
 
         def fail(_request):
             """Fail."""
             raise LLMCallError("timeout")
 
-        manager = await make_manager(base(), ScriptedLLM(answer=fail))
+        manager = await make_manager(graph_backend, base(), ScriptedLLM(answer=fail))
         await seed(manager)
 
         with pytest.raises(OntologyError, match="draft failed"):
             await manager.propose()
 
-    async def test_rejected_group_returns_only_when_support_doubles(self):
+    async def test_rejected_group_returns_only_when_support_doubles(
+        self, graph_backend: GraphBackend
+    ):
         """Rejected group returns only when support doubles."""
         llm = ScriptedLLM([GOOD, GOOD])
-        manager = await make_manager(base(), llm)
+        manager = await make_manager(graph_backend, base(), llm)
         await seed(manager)
         (first,) = (await manager.propose()).proposals
         assert (
@@ -214,9 +239,9 @@ class TestOntologyManager:
         assert again.proposal_id != first.proposal_id
         assert again.status is ProposalStatus.PENDING
 
-    async def test_known_aliases_are_not_proposed(self):
+    async def test_known_aliases_are_not_proposed(self, graph_backend: GraphBackend):
         """Known aliases are not proposed."""
-        manager = await make_manager(base())
+        manager = await make_manager(graph_backend, base())
         await manager.record_unmatched("e1", [unmatched("Org", "e1")])
         await manager.record_unmatched("e2", [unmatched("Org", "e2")])
 
@@ -224,9 +249,10 @@ class TestOntologyManager:
 
     async def test_accepting_a_proposal_that_no_longer_applies_marks_it_superseded(
         self,
+        graph_backend: GraphBackend,
     ):
         """Accepting a proposal that no longer applies marks it superseded."""
-        manager = await make_manager(base(), ScriptedLLM([GOOD]))
+        manager = await make_manager(graph_backend, base(), ScriptedLLM([GOOD]))
         await seed(manager)
         (proposal,) = (await manager.propose()).proposals
         head = await manager.catalog()
@@ -244,9 +270,11 @@ class TestOntologyManager:
                 proposal.proposal_id, accept=True, actor="ana", reason=""
             )
 
-    async def test_a_decided_proposal_cannot_be_decided_again(self):
+    async def test_a_decided_proposal_cannot_be_decided_again(
+        self, graph_backend: GraphBackend
+    ):
         """A decided proposal cannot be decided again."""
-        manager = await make_manager(base(), ScriptedLLM([GOOD]))
+        manager = await make_manager(graph_backend, base(), ScriptedLLM([GOOD]))
         await seed(manager)
         (proposal,) = (await manager.propose()).proposals
         await manager.decide(proposal.proposal_id, accept=False, actor="a", reason="")
@@ -255,25 +283,27 @@ class TestOntologyManager:
             await manager.decide(
                 proposal.proposal_id, accept=True, actor="a", reason=""
             )
-        store = MemoryOntologyStore(set[str])
+        store = await make_store(graph_backend)
         await store.save_proposal(
             proposal.model_copy(update={"status": ProposalStatus.REJECTED})
         )
         with pytest.raises(ProposalDecidedError):
             await store.save_proposal(proposal)
 
-    async def test_apply_with_a_stale_base_conflicts(self):
+    async def test_apply_with_a_stale_base_conflicts(self, graph_backend: GraphBackend):
         """Apply with a stale base conflicts."""
-        manager = await make_manager(base())
+        manager = await make_manager(graph_backend, base())
         stale = await manager.catalog()
         await manager.apply(cs(stale, AddEntity(label="Place")))
 
         with pytest.raises(VersionConflict):
             await manager.apply(cs(stale, AddEntity(label="Other")))
 
-    async def test_open_mode_registers_new_types_and_types_them(self):
+    async def test_open_mode_registers_new_types_and_types_them(
+        self, graph_backend: GraphBackend
+    ):
         """Open mode registers new types and types them."""
-        manager = await make_manager(base())
+        manager = await make_manager(graph_backend, base())
         head = await manager.catalog()
         await manager.apply(cs(head, SetModes(entity_mode=Mode.OPEN)))
         items = ExtractedItems(
@@ -292,9 +322,11 @@ class TestOntologyManager:
         history = await manager.history()
         assert history[-1].channel.value == "open_mode"
 
-    async def test_open_mode_registration_is_concurrency_safe(self):
+    async def test_open_mode_registration_is_concurrency_safe(
+        self, graph_backend: GraphBackend
+    ):
         """Open mode registration is concurrency safe."""
-        manager = await make_manager(base())
+        manager = await make_manager(graph_backend, base())
         head = await manager.catalog()
         await manager.apply(cs(head, SetModes(entity_mode=Mode.OPEN)))
 
@@ -320,9 +352,11 @@ class TestOntologyManager:
         assert len(labels) == len(set(labels))
         assert set(words) | {"Shared"} <= set(labels)
 
-    async def test_registered_type_is_typed_in_the_next_projection(self):
+    async def test_registered_type_is_typed_in_the_next_projection(
+        self, graph_backend: GraphBackend
+    ):
         """Registered type is typed in the next projection."""
-        manager = await make_manager(base())
+        manager = await make_manager(graph_backend, base())
         head = await manager.catalog()
         await manager.apply(cs(head, SetModes(entity_mode=Mode.OPEN)))
         items = ExtractedItems(entities=(EntityItem("a", raw_type="Gadget"),))
@@ -340,9 +374,11 @@ class TestOntologyManager:
             ).type_id
         )
 
-    async def test_prompt_injection_label_is_not_registered(self):
+    async def test_prompt_injection_label_is_not_registered(
+        self, graph_backend: GraphBackend
+    ):
         """Prompt injection label is not registered."""
-        manager = await make_manager(base())
+        manager = await make_manager(graph_backend, base())
         head = await manager.catalog()
         await manager.apply(cs(head, SetModes(entity_mode=Mode.OPEN)))
         items = ExtractedItems(
@@ -357,9 +393,11 @@ class TestOntologyManager:
         assert [v.kept for v in report.entities] == [False, False]
         assert (await manager.catalog()).version == head.version + 1
 
-    async def test_preferred_mode_replaces_the_episodes_unmatched_rows(self):
+    async def test_preferred_mode_replaces_the_episodes_unmatched_rows(
+        self, graph_backend: GraphBackend
+    ):
         """Preferred mode replaces the episodes unmatched rows."""
-        manager = await make_manager(base())
+        manager = await make_manager(graph_backend, base())
         items = ExtractedItems(entities=(EntityItem("a", raw_type="Gadget"),))
         await manager.process_extraction(items, Context("ep1"))
         await manager.process_extraction(items, Context("ep1"))
@@ -374,9 +412,10 @@ class TestOntologyManager:
 
     async def test_registered_labels_record_unmatched_rows_against_the_new_catalog(
         self,
+        graph_backend: GraphBackend,
     ):
         """Registered labels record unmatched rows against the new catalog."""
-        manager = await make_manager(base())
+        manager = await make_manager(graph_backend, base())
         head = await manager.catalog()
         await manager.apply(
             cs(head, SetModes(entity_mode=Mode.OPEN, relation_mode=Mode.PREFERRED))
@@ -395,9 +434,9 @@ class TestOntologyManager:
         assert [r.catalog_version for r in rows] == [after.version]
         assert report.unmatched == tuple(rows)
 
-    async def test_stale_episodes_reads_the_graph(self):
+    async def test_stale_episodes_reads_the_graph(self, graph_backend: GraphBackend):
         """Stale episodes reads the graph."""
-        manager = await make_manager(base())
+        manager = await make_manager(graph_backend, base())
         items = ExtractedItems(entities=(EntityItem("a", raw_type="Gadget"),))
         await manager.process_extraction(items, Context("ep1"))
         await manager.process_extraction(

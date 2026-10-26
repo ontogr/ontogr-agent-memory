@@ -10,14 +10,19 @@ from ontogr_mem.service.forget.workflow import EraseWorkflow
 from ontogr_mem.service.runtime import TenantRuntime
 from ontogr_mem.vectorstore.models import VectorKind
 from tests.support.erase_workflow import EraseWorld, make_erase_world
+from tests.support.graph_backend import GraphBackend
 
 
 class TestEraseWorkflow:
     """Exercise Erase through memory-backed stores and their public ports."""
 
-    async def test_erase_reports_effects_and_prunes_surviving_entity(self):
+    async def test_erase_reports_effects_and_prunes_surviving_entity(
+        self, graph_backend: GraphBackend
+    ):
         """Counts reflect storage changes and unsupported entity text is removed."""
-        world = await make_erase_world()
+        world = await make_erase_world(
+            graph_backend,
+        )
         before_vector = await world.runtime.stores.vectors.fetch_vectors(
             VectorKind.NODE, ["person"]
         )
@@ -91,7 +96,9 @@ class TestEraseWorkflow:
         assert journal_row is not None
         assert journal_row.status is ErasureStatus.COMPLETED
 
-    async def test_text_residue_fails_erase_after_cleanup(self):
+    async def test_text_residue_fails_erase_after_cleanup(
+        self, graph_backend: GraphBackend
+    ):
         """A cache entry that retains erased text is reported as residue."""
 
         class RetainingCache(MemoryResponseCache):
@@ -100,7 +107,7 @@ class TestEraseWorkflow:
                 return 0
 
         cache = RetainingCache()
-        world = await make_erase_world(cache=cache)
+        world = await make_erase_world(graph_backend, cache=cache)
         await cache.put(
             "untagged-entry",
             CacheEntry(
@@ -133,9 +140,13 @@ class TestEraseWorkflow:
         assert record.status is ErasureStatus.FAILED
         assert record.residue == ("model_cache",)
 
-    async def test_recovery_finishes_cleanup_once_and_skips_closed_rows(self):
+    async def test_recovery_finishes_cleanup_once_and_skips_closed_rows(
+        self, graph_backend: GraphBackend
+    ):
         """Recovery repeats completed steps safely and closes the journal row."""
-        world = await make_erase_world()
+        world = await make_erase_world(
+            graph_backend,
+        )
 
         def crash_after_entities(step: str) -> None:
             if step == "entities":

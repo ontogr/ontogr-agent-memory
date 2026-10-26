@@ -1,4 +1,4 @@
-"""Lineage reads on the in-memory twin: evidence, episode effects, belief chains."""
+"""Lineage reads on a live graph tenant: evidence, episode effects, belief chains."""
 
 from ontogr_mem.data_models.fact_versions import FactStatus
 from ontogr_mem.temporal.lineage import (
@@ -8,10 +8,12 @@ from ontogr_mem.temporal.lineage import (
     episode_effects,
     why,
 )
+from tests.integration.temporal.test_engine import make_engine, typed
 from tests.support.clock import FixedClock
 from tests.support.episodes import make_episode
+from tests.support.graph_backend import GraphBackend
+from tests.support.temporal import open_temporal
 from tests.unit.temporal.helpers import at
-from tests.unit.temporal.test_engine import make_engine, twin, typed
 
 
 NOW = FixedClock().now()
@@ -20,9 +22,17 @@ NOW = FixedClock().now()
 class TestTemporalLineage:
     """Who supports a fact, what an episode changed, and how belief moved."""
 
-    async def test_why_lists_creator_then_confirmer_with_their_episodes(self):
+    async def test_why_lists_creator_then_confirmer_with_their_episodes(
+        self, graph_backend: GraphBackend
+    ):
         """The first episode is the creator and the repeat is a confirmer."""
-        episodes, store = twin("ana", "paris")
+        episodes, store = await open_temporal(
+            graph_backend,
+            (
+                "ana",
+                "paris",
+            ),
+        )
         engine = make_engine(store)
         await episodes.write_episodes(
             [make_episode("ep1"), make_episode("ep2", minutes=5)]
@@ -39,15 +49,29 @@ class TestTemporalLineage:
             (Role.CONFIRMER, "ep2"),
         ]
 
-    async def test_why_of_an_unknown_fact_is_none(self):
+    async def test_why_of_an_unknown_fact_is_none(self, graph_backend: GraphBackend):
         """A fact that is not live has no evidence to show."""
-        _, store = twin("ana", "paris")
+        _, store = await open_temporal(
+            graph_backend,
+            (
+                "ana",
+                "paris",
+            ),
+        )
 
         assert await why(store, "missing") is None
 
-    async def test_episode_effects_lists_what_the_episode_confirmed(self):
+    async def test_episode_effects_lists_what_the_episode_confirmed(
+        self, graph_backend: GraphBackend
+    ):
         """A repeat episode is reported as confirming the fact it restated."""
-        episodes, store = twin("ana", "paris")
+        episodes, store = await open_temporal(
+            graph_backend,
+            (
+                "ana",
+                "paris",
+            ),
+        )
         engine = make_engine(store)
         await episodes.write_episodes(
             [make_episode("ep1"), make_episode("ep2", minutes=5)]
@@ -62,9 +86,18 @@ class TestTemporalLineage:
             Effect(fact.fact_id, fact.slot_key, Role.CONFIRMER, FactStatus.ACTIVE),
         )
 
-    async def test_belief_chain_orders_versions_and_links_the_closing_audit_row(self):
+    async def test_belief_chain_orders_versions_and_links_the_closing_audit_row(
+        self, graph_backend: GraphBackend
+    ):
         """A replacement shows the old value closed by the new one."""
-        episodes, store = twin("ana", "paris", "rome")
+        episodes, store = await open_temporal(
+            graph_backend,
+            (
+                "ana",
+                "paris",
+                "rome",
+            ),
+        )
         engine = make_engine(store)
         await episodes.write_episodes(
             [make_episode("ep1"), make_episode("ep2", minutes=5)]
