@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Literal
 
-from ontogr_mem.graphstore import GraphHandle
+from ontogr_mem.graphstore import GraphHandle, QuerySpec
 from ontogr_mem.graphstore.protocol import GraphStore
 from ontogr_mem.graphstore.schemas import (
     CONSOLIDATION,
@@ -85,3 +85,29 @@ class GraphBackend:
         for tenant in self.tenants:
             await self.store.erase_tenant(tenant)
         self.tenants.clear()
+
+    async def seed_fact_edge(
+        self,
+        stores: TenantStores,
+        entity_id: str,
+        *,
+        status: str = "active",
+        expired_at: int | None = None,
+    ) -> None:
+        """Write one `FACT` edge on the entity, as an earlier fact write would."""
+        handle = await self.store.open(stores.tenant_id, ALL_SCHEMAS)
+        scope = "{_tenant: $tenant, " if self.tenant_keyed else "{"
+        edge_stamp = ", r._tenant = $tenant" if self.tenant_keyed else ""
+        await self.store.runner(handle).run(
+            QuerySpec(
+                f"MATCH (e:Entity {scope}id: $id}}) "
+                "CREATE (e)-[r:FACT]->(e) "
+                f"SET r.status = $status, r.expired_at = $expired_at{edge_stamp}",
+                {
+                    "id": entity_id,
+                    "status": status,
+                    "expired_at": expired_at,
+                },
+                tag="seed_fact_edge",
+            )
+        )

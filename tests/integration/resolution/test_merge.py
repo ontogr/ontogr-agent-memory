@@ -98,11 +98,12 @@ async def test_remove_episode_mentions_deletes_an_orphan_entity(
 
 async def test_delete_refuses_an_entity_with_a_live_fact(graph_backend: GraphBackend):
     """A live fact is never deleted with its entity."""
-    store = (await graph_backend.open_stores()).resolver_store
+    stores = await graph_backend.open_stores()
+    store = stores.resolver_store
     resolver = await make(store)
     result = await resolver.resolve([ex("1", "Acme", "Company")])
     entity_id = result.entities[0].entity_id
-    store.seed_fact_edge(entity_id, "other", "RELATED_TO", {"status": "active"})
+    await graph_backend.seed_fact_edge(stores, entity_id)
 
     with pytest.raises(EntityHasFactsError):
         await resolver.delete(entity_id)
@@ -114,14 +115,13 @@ async def test_an_expired_fact_version_does_not_block_a_delete(
     graph_backend: GraphBackend,
 ):
     """Only the current version of a fact counts as a live edge."""
-    store = (await graph_backend.open_stores()).resolver_store
+    stores = await graph_backend.open_stores()
+    store = stores.resolver_store
     resolver = await make(store)
     result = await resolver.resolve([ex("1", "Acme", "Company")])
     entity_id = result.entities[0].entity_id
-    store.seed_fact_edge(
-        entity_id, "other", "RELATED_TO", {"status": "active", "expired_at": 5}
-    )
-    store.seed_fact_edge(entity_id, "other", "RELATED_TO", {"status": "withdrawn"})
+    await graph_backend.seed_fact_edge(stores, entity_id, expired_at=5)
+    await graph_backend.seed_fact_edge(stores, entity_id, status="withdrawn")
 
     await resolver.delete(entity_id)
 
