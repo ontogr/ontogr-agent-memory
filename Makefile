@@ -24,7 +24,7 @@ help:
 	@echo "  make security         - Run all security scans"
 	@echo "  make build            - Build sdist and wheel into dist/"
 	@echo "  make wheel-test       - Install the built wheel in a clean env and import it"
-	@echo "  make changelog        - Rebuild CHANGELOG.md from the git history"
+	@echo "  make changelog        - Add a release section to CHANGELOG.md (VERSION=x.y.z)"
 	@echo "  make clean            - Clean build artifacts and cache"
 
 sync:
@@ -104,10 +104,12 @@ wheel-test: build
 	cd /tmp && "$(CURDIR)/.wheelenv/bin/python" -c "import ontogr_mem, ontogr_mem.consolidation, ontogr_mem.data_models, ontogr_mem.entity_extraction, ontogr_mem.fact_extraction, ontogr_mem.graphstore, ontogr_mem.ingestion, ontogr_mem.llm, ontogr_mem.observability, ontogr_mem.ontology, ontogr_mem.relational_store, ontogr_mem.resolution, ontogr_mem.resilience, ontogr_mem.retrieval, ontogr_mem.service, ontogr_mem.temporal, ontogr_mem.vectorstore; print(ontogr_mem.__version__)"
 
 changelog:
-	@# git-cliff groups commits into releases by tag, so a shallow or tagless clone gives a wrong file.
+	@test -n "$(VERSION)" || { echo "Usage: make changelog VERSION=x.y.z"; exit 1; }
+	@# git-cliff groups commits by tag, so a shallow or tagless clone gives a wrong section.
 	@test "$$(git rev-parse --is-shallow-repository)" = false && git describe --tags --abbrev=0 >/dev/null 2>&1 \
 	  || { echo "Fetch the full history and tags first: git fetch --unshallow --tags"; exit 1; }
-	uvx git-cliff@2.14.2 --output CHANGELOG.md
+	@# Prepending keeps the earlier sections, including the hand-written first release.
+	uvx git-cliff@2.14.2 --unreleased --tag v$(VERSION) --prepend CHANGELOG.md
 	@# git-cliff ends the file with a blank line, which the end-of-file hook removes.
 	@printf '%s\n' "$$(cat CHANGELOG.md)" > CHANGELOG.md.tmp && mv CHANGELOG.md.tmp CHANGELOG.md
 
