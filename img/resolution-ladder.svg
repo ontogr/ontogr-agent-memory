@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 960 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="resolution-ladder-title resolution-ladder-desc" id="resolution-ladder-root">
+<title id="resolution-ladder-title">Entity resolution ladder</title>
+<desc id="resolution-ladder-desc">An extracted name goes down four steps: URI match, strict key or alias match, fuzzy match, and a model verdict. The first step that is sure links the name to a canonical entity. The model can also call a pair distinct, which creates a new entity, or leave it uncertain, which creates a provisional one.</desc>
+<defs>
+      <style>#resolution-ladder-root { --color-paper:#f5f5f5; --color-ink:#2d3142; --color-muted:#4f5d75; --color-accent:#bf4520; --font-sans:'Geist', system-ui, sans-serif; --font-serif:'Instrument Serif', serif; --font-mono:'Geist Mono', ui-monospace, monospace; }
+      #resolution-ladder-root { font-family: var(--font-sans); color: var(--color-ink); }
+      #resolution-ladder-root .diagram-container { width: 100%; overflow-x: auto; }
+      #resolution-ladder-root .diagram-container { overflow-x: visible; }
+      #resolution-ladder-root .n-name { font:600 12px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #resolution-ladder-root .n-name-sm { font:500 11px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #resolution-ladder-root .n-sub { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#5a6580 }
+      #resolution-ladder-root .ey { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.18em;fill:#5a6580 }
+      #resolution-ladder-root .al { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#4f5d75 }
+      #resolution-ladder-root .al-accent { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#bf4520 }
+      #resolution-ladder-root .callout { font:italic 400 14px 'Instrument Serif', serif;fill:#4f5d75 }
+      #resolution-ladder-root .tag-t { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.08em;fill:#4f5d75 }
+      #resolution-ladder-root .k-backend { fill:#ffffff;stroke:#2d3142;stroke-width:1 }
+      #resolution-ladder-root .k-store { fill:rgba(45,49,66,0.05);stroke:#4f5d75;stroke-width:1 }
+      #resolution-ladder-root .k-focal { fill:rgba(191,69,32,0.08);stroke:#bf4520;stroke-width:1.2 }
+      #resolution-ladder-root .k-input { fill:rgba(79,93,117,0.10);stroke:#5a6580;stroke-width:1 }
+      #resolution-ladder-root .k-external { fill:rgba(45,49,66,0.03);stroke:rgba(45,49,66,0.30);stroke-width:1 }
+      #resolution-ladder-root .k-optional { fill:rgba(45,49,66,0.02);stroke:rgba(45,49,66,0.20);stroke-width:1;stroke-dasharray:4 3 }
+      #resolution-ladder-root .k-security { fill:rgba(191,69,32,0.05);stroke:rgba(191,69,32,0.50);stroke-width:1;stroke-dasharray:4 4 }
+      #resolution-ladder-root .zone { fill:rgba(45,49,66,0.03);stroke:#bfc0c0;stroke-width:1 }
+      #resolution-ladder-root .zone-dash { fill:none;stroke:#bfc0c0;stroke-width:1;stroke-dasharray:4 4 }
+      #resolution-ladder-root .row { fill:#ffffff;stroke:rgba(45,49,66,0.12);stroke-width:1 }
+      #resolution-ladder-root .tag { fill:rgba(45,49,66,0.04);stroke:rgba(45,49,66,0.30);stroke-width:0.8 }
+      #resolution-ladder-root .e { fill:none;stroke:#4f5d75;stroke-width:1 }
+      #resolution-ladder-root .e-accent { fill:none;stroke:#bf4520;stroke-width:1.2 }
+      #resolution-ladder-root .e-link { fill:none;stroke:#2e5aa8;stroke-width:1 }
+      #resolution-ladder-root .e-dash { fill:none;stroke:#4f5d75;stroke-width:1;stroke-dasharray:5 4 }
+      #resolution-ladder-root .e-dash-accent { fill:none;stroke:#bf4520;stroke-width:1.2;stroke-dasharray:5 4 }
+      #resolution-ladder-root .guide { fill:none;stroke:#2e5aa8;stroke-width:1;stroke-dasharray:2 4 }
+      #resolution-ladder-root .tick { fill:none;stroke:#bf4520;stroke-width:2 }
+      #resolution-ladder-root .mask { fill:#f5f5f5 }
+      #resolution-ladder-root .dot { fill:#2d3142 }
+      #resolution-ladder-root .n-sub-accent { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#bf4520 }</style><marker id="resolution-ladder-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker><marker id="resolution-ladder-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker><marker id="resolution-ladder-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<rect width="100%" height="100%" fill="#f5f5f5"/>
+<path class="e" d="M360 132L592 132" marker-end="url(#resolution-ladder-arrow)"/>
+<path class="e" d="M360 212L592 212" marker-end="url(#resolution-ladder-arrow)"/>
+<path class="e" d="M360 292L592 292" marker-end="url(#resolution-ladder-arrow)"/>
+<path class="e" d="M360 372L592 372" marker-end="url(#resolution-ladder-arrow)"/>
+<g><rect class="mask" x="458.25" y="113" width="35.5" height="12"/><text class="al" x="476" y="122" text-anchor="middle">MATCH</text></g>
+<g><rect class="mask" x="458.25" y="193" width="35.5" height="12"/><text class="al" x="476" y="202" text-anchor="middle">MATCH</text></g>
+<g><rect class="mask" x="458.25" y="273" width="35.5" height="12"/><text class="al" x="476" y="282" text-anchor="middle">MATCH</text></g>
+<g><rect class="mask" x="461" y="353" width="30" height="12"/><text class="al" x="476" y="362" text-anchor="middle">SAME</text></g>
+<path class="e" d="M228 64L228 104" marker-end="url(#resolution-ladder-arrow)"/>
+<path class="e" d="M228 160L228 184" marker-end="url(#resolution-ladder-arrow)"/>
+<text class="al" x="236" y="180" text-anchor="start">NO MATCH</text>
+<path class="e" d="M228 240L228 264" marker-end="url(#resolution-ladder-arrow)"/>
+<text class="al" x="236" y="260" text-anchor="start">NO MATCH</text>
+<path class="e" d="M228 320L228 344" marker-end="url(#resolution-ladder-arrow)"/>
+<text class="al" x="236" y="340" text-anchor="start">NO MATCH</text>
+<path class="e" d="M228 400L228 440" marker-end="url(#resolution-ladder-arrow)"/>
+<text class="al" x="236" y="424" text-anchor="start">DISTINCT</text>
+<path class="e" d="M360 388L384 388Q392 388 392 396L392 460Q392 468 400 468L592 468" marker-end="url(#resolution-ladder-arrow)"/>
+<g><rect class="mask" x="463.25" y="449" width="57.5" height="12"/><text class="al" x="492" y="458" text-anchor="middle">UNCERTAIN</text></g>
+<g><rect class="k-input" x="96" y="24" width="264" height="40" rx="20"/><text class="n-name" x="228" y="48" text-anchor="middle">Extracted name</text></g>
+<g><rect class="k-backend" x="96" y="104" width="264" height="56" rx="6"/><text class="n-name" x="108" y="130">URI match</text><text class="n-sub" x="108" y="144">same URI, same entity</text></g>
+<g><rect class="k-backend" x="96" y="184" width="264" height="56" rx="6"/><text class="n-name" x="108" y="210">Strict key or alias match</text><text class="n-sub" x="108" y="224">normalized name or known alias</text></g>
+<g><rect class="k-backend" x="96" y="264" width="264" height="56" rx="6"/><text class="n-name" x="108" y="290">Fuzzy match</text><text class="n-sub" x="108" y="304">close spelling or word order</text></g>
+<g><rect class="k-focal" x="96" y="344" width="264" height="56" rx="6"/><text class="n-name" x="108" y="370">Model verdict</text><text class="n-sub" x="108" y="384">asked only about ambiguous pairs</text></g>
+<g><rect class="k-store" x="592" y="104" width="288" height="296" rx="6"/><text class="n-name" x="604" y="215">Linked to a canonical entity</text><text class="n-sub" x="604" y="229"></text><text class="n-sub" x="604" y="243">the first sure step decides</text><text class="n-sub" x="604" y="257"></text><text class="n-sub" x="604" y="271">a merge keeps merged_into and</text><text class="n-sub" x="604" y="285">a snapshot, so an unmerge can</text><text class="n-sub" x="604" y="299">restore both sides</text></g>
+<g><rect class="k-backend" x="96" y="440" width="264" height="56" rx="6"/><text class="n-name" x="108" y="466">New entity</text><text class="n-sub" x="108" y="480">no candidate, or all distinct</text></g>
+<g><rect class="k-optional" x="592" y="440" width="288" height="56" rx="6"/><text class="n-name" x="604" y="466">Provisional entity</text><text class="n-sub" x="604" y="480">ambiguous or unverified, checked later</text></g>
+</svg>

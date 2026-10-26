@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 960 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="time-axes-title time-axes-desc" id="time-axes-root">
+<title id="time-axes-title">Two time axes</title>
+<desc id="time-axes-desc">Two rows show one slot over time. Valid time shows when each fact was true in the world. System time shows when the system recorded each version. A change writes a closed copy of the old fact and a new fact, and stamps expired_at on the old version, so a read can ask what was true or what was known on a date.</desc>
+<defs>
+      <style>#time-axes-root { --color-paper:#f5f5f5; --color-ink:#2d3142; --color-muted:#4f5d75; --color-accent:#bf4520; --font-sans:'Geist', system-ui, sans-serif; --font-serif:'Instrument Serif', serif; --font-mono:'Geist Mono', ui-monospace, monospace; }
+      #time-axes-root { font-family: var(--font-sans); color: var(--color-ink); }
+      #time-axes-root .diagram-container { width: 100%; overflow-x: auto; }
+      #time-axes-root .diagram-container { overflow-x: visible; }
+      #time-axes-root .n-name { font:600 12px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #time-axes-root .n-name-sm { font:500 11px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #time-axes-root .n-sub { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#5a6580 }
+      #time-axes-root .ey { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.18em;fill:#5a6580 }
+      #time-axes-root .al { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#4f5d75 }
+      #time-axes-root .al-accent { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#bf4520 }
+      #time-axes-root .callout { font:italic 400 14px 'Instrument Serif', serif;fill:#4f5d75 }
+      #time-axes-root .tag-t { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.08em;fill:#4f5d75 }
+      #time-axes-root .k-backend { fill:#ffffff;stroke:#2d3142;stroke-width:1 }
+      #time-axes-root .k-store { fill:rgba(45,49,66,0.05);stroke:#4f5d75;stroke-width:1 }
+      #time-axes-root .k-focal { fill:rgba(191,69,32,0.08);stroke:#bf4520;stroke-width:1.2 }
+      #time-axes-root .k-input { fill:rgba(79,93,117,0.10);stroke:#5a6580;stroke-width:1 }
+      #time-axes-root .k-external { fill:rgba(45,49,66,0.03);stroke:rgba(45,49,66,0.30);stroke-width:1 }
+      #time-axes-root .k-optional { fill:rgba(45,49,66,0.02);stroke:rgba(45,49,66,0.20);stroke-width:1;stroke-dasharray:4 3 }
+      #time-axes-root .k-security { fill:rgba(191,69,32,0.05);stroke:rgba(191,69,32,0.50);stroke-width:1;stroke-dasharray:4 4 }
+      #time-axes-root .zone { fill:rgba(45,49,66,0.03);stroke:#bfc0c0;stroke-width:1 }
+      #time-axes-root .zone-dash { fill:none;stroke:#bfc0c0;stroke-width:1;stroke-dasharray:4 4 }
+      #time-axes-root .row { fill:#ffffff;stroke:rgba(45,49,66,0.12);stroke-width:1 }
+      #time-axes-root .tag { fill:rgba(45,49,66,0.04);stroke:rgba(45,49,66,0.30);stroke-width:0.8 }
+      #time-axes-root .e { fill:none;stroke:#4f5d75;stroke-width:1 }
+      #time-axes-root .e-accent { fill:none;stroke:#bf4520;stroke-width:1.2 }
+      #time-axes-root .e-link { fill:none;stroke:#2e5aa8;stroke-width:1 }
+      #time-axes-root .e-dash { fill:none;stroke:#4f5d75;stroke-width:1;stroke-dasharray:5 4 }
+      #time-axes-root .e-dash-accent { fill:none;stroke:#bf4520;stroke-width:1.2;stroke-dasharray:5 4 }
+      #time-axes-root .guide { fill:none;stroke:#2e5aa8;stroke-width:1;stroke-dasharray:2 4 }
+      #time-axes-root .tick { fill:none;stroke:#bf4520;stroke-width:2 }
+      #time-axes-root .mask { fill:#f5f5f5 }
+      #time-axes-root .dot { fill:#2d3142 }
+      #time-axes-root .n-sub-accent { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#bf4520 }</style><marker id="time-axes-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker><marker id="time-axes-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker><marker id="time-axes-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<rect width="100%" height="100%" fill="#f5f5f5"/>
+<g><rect class="zone" x="24" y="40" width="912" height="136" rx="8"/><text class="ey" x="36" y="60">VALID TIME: WHEN THE FACT WAS TRUE IN THE WORLD</text></g>
+<g><rect class="zone" x="24" y="216" width="912" height="256" rx="8"/><text class="ey" x="36" y="236">SYSTEM TIME: WHEN THE SYSTEM RECORDED EACH VERSION</text></g>
+<g><rect class="k-backend" x="200" y="96" width="360" height="44" rx="6"/><text class="n-name" x="380" y="122" text-anchor="middle">Ana works at Acme</text></g>
+<g><rect class="k-backend" x="560" y="96" width="336" height="44" rx="6"/><text class="n-name" x="728" y="122" text-anchor="middle">Ana works at Beta</text></g>
+<text class="n-sub" x="200" y="164" text-anchor="start">valid_from</text>
+<text class="n-sub" x="560" y="164" text-anchor="middle">valid_to = valid_from</text>
+<text class="n-sub" x="896" y="164" text-anchor="end">open</text>
+<g><rect class="k-store" x="260" y="272" width="360" height="40" rx="6"/><text class="n-name" x="272" y="290">Acme, version 1</text><text class="n-sub" x="272" y="304">valid_to open</text></g>
+<g><rect class="k-backend" x="620" y="328" width="276" height="40" rx="6"/><text class="n-name" x="632" y="346">Acme, version 2</text><text class="n-sub" x="632" y="360">valid_to set</text></g>
+<g><rect class="k-backend" x="620" y="384" width="276" height="40" rx="6"/><text class="n-name" x="632" y="402">Beta, version 1</text><text class="n-sub" x="632" y="416">valid_from set</text></g>
+<path class="guide" d="M380 88L380 152"/>
+<text class="n-sub" x="380" y="80" text-anchor="middle">valid_at</text>
+<path class="guide" d="M500 256L500 316"/>
+<text class="n-sub" x="500" y="248" text-anchor="middle">known_at</text>
+<path class="tick" d="M620 264V320"/>
+<text class="n-sub" x="260" y="444" text-anchor="start">recorded_at</text>
+<text class="n-sub-accent" x="620" y="444" text-anchor="middle">expired_at = recorded_at</text>
+<text class="n-sub" x="896" y="444" text-anchor="end">open</text>
+<text class="callout" x="24" y="500" text-anchor="start">A change never edits a version. It writes new ones and stamps expired_at on the old one.</text>
+</svg>

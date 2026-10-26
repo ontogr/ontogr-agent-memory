@@ -1,4 +1,4 @@
-"""Agent Memory: durable, traceable memory for AI agents."""
+"""OntoGr Agent Memory: durable, traceable memory for AI agents."""
 
 from importlib.metadata import PackageNotFoundError, version
 

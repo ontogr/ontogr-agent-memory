@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 960 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="storage-layer-title storage-layer-desc" id="storage-layer-root">
+<title id="storage-layer-title">Storage layer</title>
+<desc id="storage-layer-desc">Components reach storage through async ports. The graph store holds entities and facts, and it holds episodes with their raw content. The vector store holds embeddings keyed by graph ids, on the graph or in pgvector. The state store holds jobs, operation rows, audit rows, and the erase journal in SQLite or Postgres.</desc>
+<defs>
+      <style>#storage-layer-root { --color-paper:#f5f5f5; --color-ink:#2d3142; --color-muted:#4f5d75; --color-accent:#bf4520; --font-sans:'Geist', system-ui, sans-serif; --font-serif:'Instrument Serif', serif; --font-mono:'Geist Mono', ui-monospace, monospace; }
+      #storage-layer-root { font-family: var(--font-sans); color: var(--color-ink); }
+      #storage-layer-root .diagram-container { width: 100%; overflow-x: auto; }
+      #storage-layer-root .diagram-container { overflow-x: visible; }
+      #storage-layer-root .n-name { font:600 12px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #storage-layer-root .n-name-sm { font:500 11px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #storage-layer-root .n-sub { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#5a6580 }
+      #storage-layer-root .ey { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.18em;fill:#5a6580 }
+      #storage-layer-root .al { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#4f5d75 }
+      #storage-layer-root .al-accent { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#bf4520 }
+      #storage-layer-root .callout { font:italic 400 14px 'Instrument Serif', serif;fill:#4f5d75 }
+      #storage-layer-root .tag-t { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.08em;fill:#4f5d75 }
+      #storage-layer-root .k-backend { fill:#ffffff;stroke:#2d3142;stroke-width:1 }
+      #storage-layer-root .k-store { fill:rgba(45,49,66,0.05);stroke:#4f5d75;stroke-width:1 }
+      #storage-layer-root .k-focal { fill:rgba(191,69,32,0.08);stroke:#bf4520;stroke-width:1.2 }
+      #storage-layer-root .k-input { fill:rgba(79,93,117,0.10);stroke:#5a6580;stroke-width:1 }
+      #storage-layer-root .k-external { fill:rgba(45,49,66,0.03);stroke:rgba(45,49,66,0.30);stroke-width:1 }
+      #storage-layer-root .k-optional { fill:rgba(45,49,66,0.02);stroke:rgba(45,49,66,0.20);stroke-width:1;stroke-dasharray:4 3 }
+      #storage-layer-root .k-security { fill:rgba(191,69,32,0.05);stroke:rgba(191,69,32,0.50);stroke-width:1;stroke-dasharray:4 4 }
+      #storage-layer-root .zone { fill:rgba(45,49,66,0.03);stroke:#bfc0c0;stroke-width:1 }
+      #storage-layer-root .zone-dash { fill:none;stroke:#bfc0c0;stroke-width:1;stroke-dasharray:4 4 }
+      #storage-layer-root .row { fill:#ffffff;stroke:rgba(45,49,66,0.12);stroke-width:1 }
+      #storage-layer-root .tag { fill:rgba(45,49,66,0.04);stroke:rgba(45,49,66,0.30);stroke-width:0.8 }
+      #storage-layer-root .e { fill:none;stroke:#4f5d75;stroke-width:1 }
+      #storage-layer-root .e-accent { fill:none;stroke:#bf4520;stroke-width:1.2 }
+      #storage-layer-root .e-link { fill:none;stroke:#2e5aa8;stroke-width:1 }
+      #storage-layer-root .e-dash { fill:none;stroke:#4f5d75;stroke-width:1;stroke-dasharray:5 4 }
+      #storage-layer-root .e-dash-accent { fill:none;stroke:#bf4520;stroke-width:1.2;stroke-dasharray:5 4 }
+      #storage-layer-root .guide { fill:none;stroke:#2e5aa8;stroke-width:1;stroke-dasharray:2 4 }
+      #storage-layer-root .tick { fill:none;stroke:#bf4520;stroke-width:2 }
+      #storage-layer-root .mask { fill:#f5f5f5 }
+      #storage-layer-root .dot { fill:#2d3142 }
+      #storage-layer-root .n-sub-accent { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#bf4520 }</style><marker id="storage-layer-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker><marker id="storage-layer-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker><marker id="storage-layer-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<rect width="100%" height="100%" fill="#f5f5f5"/>
+<path class="e" d="M200 196L280 196Q288 196 288 188L288 136Q288 128 296 128L392 128" marker-end="url(#storage-layer-arrow)"/>
+<g><rect class="mask" x="314" y="109" width="52" height="12"/><text class="al" x="340" y="118" text-anchor="middle">ENTITIES</text></g>
+<path class="e" d="M200 228L320 228Q328 228 328 236L328 304Q328 312 336 312L392 312" marker-end="url(#storage-layer-arrow)"/>
+<g><rect class="mask" x="336.75" y="293" width="46.5" height="12"/><text class="al" x="360" y="302" text-anchor="middle">VECTORS</text></g>
+<path class="e" d="M200 260L296 260Q304 260 304 268L304 440Q304 448 312 448L392 448" marker-end="url(#storage-layer-arrow)"/>
+<g><rect class="mask" x="313.75" y="429" width="68.5" height="12"/><text class="al" x="348" y="438" text-anchor="middle">JOBS, AUDIT</text></g>
+<path class="e-dash" d="M672 264L672 216" marker-end="url(#storage-layer-arrow)"/>
+<text class="al" x="680" y="244" text-anchor="start">KEYED BY ID</text>
+<g><rect class="k-backend" x="24" y="176" width="176" height="104" rx="6"/><text class="n-name" x="36" y="219">Components</text><text class="n-sub" x="36" y="233">async ports,</text><text class="n-sub" x="36" y="247">domain verbs only</text></g>
+<g><rect class="k-store" x="392" y="40" width="544" height="176" rx="6"/><text class="n-name" x="404" y="64">Graph store</text></g>
+<text class="n-sub" x="408" y="84" text-anchor="start">one graph per tenant</text>
+<g><rect class="k-backend" x="408" y="104" width="240" height="100" rx="6"/><text class="n-name" x="420" y="138">Episodes</text><text class="n-sub" x="420" y="152">raw content and metadata</text><text class="n-sub" x="420" y="166">source, actor, content hash</text><text class="n-sub" x="420" y="180">temporal status</text></g>
+<g><rect class="tag" x="800" y="64" width="120" height="20" rx="2"/><text class="tag-t" x="860" y="77" text-anchor="middle">FALKORDB (DEFAULT)</text></g>
+<g><rect class="tag" x="800" y="96" width="120" height="20" rx="2"/><text class="tag-t" x="860" y="109" text-anchor="middle">NEO4J</text></g>
+<g><rect class="k-store" x="392" y="264" width="544" height="96" rx="6"/><text class="n-name" x="404" y="288">Vector store</text></g>
+<text class="n-sub" x="408" y="308" text-anchor="start">entity names, fact statements,</text>
+<text class="n-sub" x="408" y="322" text-anchor="start">and episode text</text>
+<g><rect class="tag" x="776" y="284" width="144" height="20" rx="2"/><text class="tag-t" x="848" y="297" text-anchor="middle">GRAPH-NATIVE (DEFAULT)</text></g>
+<g><rect class="tag" x="776" y="316" width="144" height="20" rx="2"/><text class="tag-t" x="848" y="329" text-anchor="middle">PGVECTOR</text></g>
+<g><rect class="k-store" x="392" y="400" width="544" height="96" rx="6"/><text class="n-name" x="404" y="424">State store</text></g>
+<text class="n-sub" x="408" y="444" text-anchor="start">jobs, operation rows,</text>
+<text class="n-sub" x="408" y="458" text-anchor="start">audit rows, erase journal</text>
+<g><rect class="tag" x="800" y="420" width="120" height="20" rx="2"/><text class="tag-t" x="860" y="433" text-anchor="middle">SQLITE (DEFAULT)</text></g>
+<g><rect class="tag" x="800" y="452" width="120" height="20" rx="2"/><text class="tag-t" x="860" y="465" text-anchor="middle">POSTGRES</text></g>
+</svg>

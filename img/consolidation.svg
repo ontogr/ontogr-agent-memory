@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 960 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="consolidation-title consolidation-desc" id="consolidation-root">
+<title id="consolidation-title">Consolidation</title>
+<desc id="consolidation-desc">One consolidation run takes a per-tenant lease and runs nine stages in order. A failure in the first stage stops the run. A watermark is stored for a stage only when it finishes without failure, and a run can request another pass while it holds the lease.</desc>
+<defs>
+      <style>#consolidation-root { --color-paper:#f5f5f5; --color-ink:#2d3142; --color-muted:#4f5d75; --color-accent:#bf4520; --font-sans:'Geist', system-ui, sans-serif; --font-serif:'Instrument Serif', serif; --font-mono:'Geist Mono', ui-monospace, monospace; }
+      #consolidation-root { font-family: var(--font-sans); color: var(--color-ink); }
+      #consolidation-root .diagram-container { width: 100%; overflow-x: auto; }
+      #consolidation-root .diagram-container { overflow-x: visible; }
+      #consolidation-root .n-name { font:600 12px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #consolidation-root .n-name-sm { font:500 11px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #consolidation-root .n-sub { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#5a6580 }
+      #consolidation-root .ey { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.18em;fill:#5a6580 }
+      #consolidation-root .al { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#4f5d75 }
+      #consolidation-root .al-accent { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#bf4520 }
+      #consolidation-root .callout { font:italic 400 14px 'Instrument Serif', serif;fill:#4f5d75 }
+      #consolidation-root .tag-t { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.08em;fill:#4f5d75 }
+      #consolidation-root .k-backend { fill:#ffffff;stroke:#2d3142;stroke-width:1 }
+      #consolidation-root .k-store { fill:rgba(45,49,66,0.05);stroke:#4f5d75;stroke-width:1 }
+      #consolidation-root .k-focal { fill:rgba(191,69,32,0.08);stroke:#bf4520;stroke-width:1.2 }
+      #consolidation-root .k-input { fill:rgba(79,93,117,0.10);stroke:#5a6580;stroke-width:1 }
+      #consolidation-root .k-external { fill:rgba(45,49,66,0.03);stroke:rgba(45,49,66,0.30);stroke-width:1 }
+      #consolidation-root .k-optional { fill:rgba(45,49,66,0.02);stroke:rgba(45,49,66,0.20);stroke-width:1;stroke-dasharray:4 3 }
+      #consolidation-root .k-security { fill:rgba(191,69,32,0.05);stroke:rgba(191,69,32,0.50);stroke-width:1;stroke-dasharray:4 4 }
+      #consolidation-root .zone { fill:rgba(45,49,66,0.03);stroke:#bfc0c0;stroke-width:1 }
+      #consolidation-root .zone-dash { fill:none;stroke:#bfc0c0;stroke-width:1;stroke-dasharray:4 4 }
+      #consolidation-root .row { fill:#ffffff;stroke:rgba(45,49,66,0.12);stroke-width:1 }
+      #consolidation-root .tag { fill:rgba(45,49,66,0.04);stroke:rgba(45,49,66,0.30);stroke-width:0.8 }
+      #consolidation-root .e { fill:none;stroke:#4f5d75;stroke-width:1 }
+      #consolidation-root .e-accent { fill:none;stroke:#bf4520;stroke-width:1.2 }
+      #consolidation-root .e-link { fill:none;stroke:#2e5aa8;stroke-width:1 }
+      #consolidation-root .e-dash { fill:none;stroke:#4f5d75;stroke-width:1;stroke-dasharray:5 4 }
+      #consolidation-root .e-dash-accent { fill:none;stroke:#bf4520;stroke-width:1.2;stroke-dasharray:5 4 }
+      #consolidation-root .guide { fill:none;stroke:#2e5aa8;stroke-width:1;stroke-dasharray:2 4 }
+      #consolidation-root .tick { fill:none;stroke:#bf4520;stroke-width:2 }
+      #consolidation-root .mask { fill:#f5f5f5 }
+      #consolidation-root .dot { fill:#2d3142 }
+      #consolidation-root .n-sub-accent { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#bf4520 }</style><marker id="consolidation-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker><marker id="consolidation-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker><marker id="consolidation-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<rect width="100%" height="100%" fill="#f5f5f5"/>
+<g><rect class="zone-dash" x="24" y="48" width="912" height="296" rx="8"/><text class="ey" x="36" y="68">ONE RUN AT A TIME PER TENANT LEASE</text></g>
+<path class="e" d="M200 136L224 136" marker-end="url(#consolidation-arrow)"/>
+<path class="e" d="M376 136L400 136" marker-end="url(#consolidation-arrow)"/>
+<path class="e" d="M552 136L576 136" marker-end="url(#consolidation-arrow)"/>
+<path class="e" d="M728 136L752 136" marker-end="url(#consolidation-arrow)"/>
+<path class="e" d="M828 168L828 248" marker-end="url(#consolidation-arrow)"/>
+<path class="e" d="M752 280L728 280" marker-end="url(#consolidation-arrow)"/>
+<path class="e" d="M576 280L552 280" marker-end="url(#consolidation-arrow)"/>
+<path class="e" d="M400 280L376 280" marker-end="url(#consolidation-arrow)"/>
+<path class="e-dash" d="M224 288L132 288Q124 288 124 280L124 168" marker-end="url(#consolidation-arrow)"/>
+<text class="al" x="132" y="232" text-anchor="start">ANOTHER PASS</text>
+<g><rect class="k-focal" x="48" y="104" width="152" height="64" rx="6"/><text class="n-name-sm" x="60" y="134">1. Ingest cleanup</text><text class="n-sub" x="60" y="148">fatal on failure</text></g>
+<path class="dot" d="M188 112L192 116L188 120L184 116Z"/>
+<g><rect class="k-backend" x="224" y="104" width="152" height="64" rx="6"/><text class="n-name-sm" x="236" y="134">2. Deduplication</text><text class="n-sub" x="236" y="148">runs resolution</text></g>
+<path class="dot" d="M364 112L368 116L364 120L360 116Z"/>
+<g><rect class="k-backend" x="400" y="104" width="152" height="64" rx="6"/><text class="n-name-sm" x="412" y="134">3. Feedback weights</text><text class="n-sub" x="412" y="148">drops neutral ones</text></g>
+<path class="dot" d="M540 112L544 116L540 120L536 116Z"/>
+<g><rect class="k-backend" x="576" y="104" width="152" height="64" rx="6"/><text class="n-name-sm" x="588" y="134">4. Descriptions</text><text class="n-sub" x="588" y="148">stale summaries</text></g>
+<path class="dot" d="M716 112L720 116L716 120L712 116Z"/>
+<g><rect class="k-backend" x="752" y="104" width="152" height="64" rx="6"/><text class="n-name-sm" x="764" y="134">5. Communities</text><text class="n-sub" x="764" y="148">label propagation</text></g>
+<path class="dot" d="M892 112L896 116L892 120L888 116Z"/>
+<g><rect class="k-backend" x="752" y="248" width="152" height="64" rx="6"/><text class="n-name-sm" x="764" y="278">6. Reflection</text><text class="n-sub" x="764" y="292">lesson proposals</text></g>
+<path class="dot" d="M892 256L896 260L892 264L888 260Z"/>
+<g><rect class="k-backend" x="576" y="248" width="152" height="64" rx="6"/><text class="n-name-sm" x="588" y="278">7. Scoring</text><text class="n-sub" x="588" y="292">importance scores</text></g>
+<path class="dot" d="M716 256L720 260L716 264L712 260Z"/>
+<g><rect class="k-backend" x="400" y="248" width="152" height="64" rx="6"/><text class="n-name-sm" x="412" y="278">8. Prune and archive</text><text class="n-sub" x="412" y="292">reversible</text></g>
+<path class="dot" d="M540 256L544 260L540 264L536 260Z"/>
+<g><rect class="k-backend" x="224" y="248" width="152" height="64" rx="6"/><text class="n-name-sm" x="236" y="278">9. Report</text><text class="n-sub" x="236" y="292">near misses, disputes</text></g>
+<path class="dot" d="M364 256L368 260L364 264L360 260Z"/>
+<path class="dot" d="M32 376L36 380L32 384L28 380Z"/>
+<text class="n-sub" x="44" y="384" text-anchor="start">A watermark is stored only when the stage finishes without failure.</text>
+</svg>

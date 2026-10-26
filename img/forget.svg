@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 960 384" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="forget-title forget-desc" id="forget-root">
+<title id="forget-title">Hard forget</title>
+<desc id="forget-desc">A hard forget starts with a preview that returns a confirmation token. The confirmed call writes a journal row first, runs the removal steps in order while it updates the row after each one, scans for residue, closes the row as completed or failed, and writes an audit row. Startup resumes any row that is still running.</desc>
+<defs>
+      <style>#forget-root { --color-paper:#f5f5f5; --color-ink:#2d3142; --color-muted:#4f5d75; --color-accent:#bf4520; --font-sans:'Geist', system-ui, sans-serif; --font-serif:'Instrument Serif', serif; --font-mono:'Geist Mono', ui-monospace, monospace; }
+      #forget-root { font-family: var(--font-sans); color: var(--color-ink); }
+      #forget-root .diagram-container { width: 100%; overflow-x: auto; }
+      #forget-root .diagram-container { overflow-x: visible; }
+      #forget-root .n-name { font:600 12px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #forget-root .n-name-sm { font:500 11px 'Geist', system-ui, sans-serif;fill:#2d3142 }
+      #forget-root .n-sub { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#5a6580 }
+      #forget-root .ey { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.18em;fill:#5a6580 }
+      #forget-root .al { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#4f5d75 }
+      #forget-root .al-accent { font:400 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.06em;fill:#bf4520 }
+      #forget-root .callout { font:italic 400 14px 'Instrument Serif', serif;fill:#4f5d75 }
+      #forget-root .tag-t { font:500 8px 'Geist Mono', ui-monospace, monospace;letter-spacing:.08em;fill:#4f5d75 }
+      #forget-root .k-backend { fill:#ffffff;stroke:#2d3142;stroke-width:1 }
+      #forget-root .k-store { fill:rgba(45,49,66,0.05);stroke:#4f5d75;stroke-width:1 }
+      #forget-root .k-focal { fill:rgba(191,69,32,0.08);stroke:#bf4520;stroke-width:1.2 }
+      #forget-root .k-input { fill:rgba(79,93,117,0.10);stroke:#5a6580;stroke-width:1 }
+      #forget-root .k-external { fill:rgba(45,49,66,0.03);stroke:rgba(45,49,66,0.30);stroke-width:1 }
+      #forget-root .k-optional { fill:rgba(45,49,66,0.02);stroke:rgba(45,49,66,0.20);stroke-width:1;stroke-dasharray:4 3 }
+      #forget-root .k-security { fill:rgba(191,69,32,0.05);stroke:rgba(191,69,32,0.50);stroke-width:1;stroke-dasharray:4 4 }
+      #forget-root .zone { fill:rgba(45,49,66,0.03);stroke:#bfc0c0;stroke-width:1 }
+      #forget-root .zone-dash { fill:none;stroke:#bfc0c0;stroke-width:1;stroke-dasharray:4 4 }
+      #forget-root .row { fill:#ffffff;stroke:rgba(45,49,66,0.12);stroke-width:1 }
+      #forget-root .tag { fill:rgba(45,49,66,0.04);stroke:rgba(45,49,66,0.30);stroke-width:0.8 }
+      #forget-root .e { fill:none;stroke:#4f5d75;stroke-width:1 }
+      #forget-root .e-accent { fill:none;stroke:#bf4520;stroke-width:1.2 }
+      #forget-root .e-link { fill:none;stroke:#2e5aa8;stroke-width:1 }
+      #forget-root .e-dash { fill:none;stroke:#4f5d75;stroke-width:1;stroke-dasharray:5 4 }
+      #forget-root .e-dash-accent { fill:none;stroke:#bf4520;stroke-width:1.2;stroke-dasharray:5 4 }
+      #forget-root .guide { fill:none;stroke:#2e5aa8;stroke-width:1;stroke-dasharray:2 4 }
+      #forget-root .tick { fill:none;stroke:#bf4520;stroke-width:2 }
+      #forget-root .mask { fill:#f5f5f5 }
+      #forget-root .dot { fill:#2d3142 }
+      #forget-root .n-sub-accent { font:400 9px 'Geist Mono', ui-monospace, monospace;fill:#bf4520 }</style><marker id="forget-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker><marker id="forget-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker><marker id="forget-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker></defs>
+<rect width="100%" height="100%" fill="#f5f5f5"/>
+<text class="ey" x="24" y="32" text-anchor="start">HARD FORGET: DELETE, MEMORY_ONLY, ERASE</text>
+<path class="e" d="M168 104L216 104" marker-end="url(#forget-arrow)"/>
+<g><rect class="mask" x="174.25" y="85" width="35.5" height="12"/><text class="al" x="192" y="94" text-anchor="middle">TOKEN</text></g>
+<path class="e" d="M360 104L408 104" marker-end="url(#forget-arrow)"/>
+<path class="e" d="M552 104L600 104" marker-end="url(#forget-arrow)"/>
+<path class="e-dash" d="M768 72L768 56Q768 48 760 48L488 48Q480 48 480 56L480 72" marker-end="url(#forget-arrow)"/>
+<g><rect class="mask" x="595.25" y="29" width="57.5" height="12"/><text class="al" x="624" y="38" text-anchor="middle">EACH STEP</text></g>
+<path class="e" d="M672 136L672 240" marker-end="url(#forget-arrow)"/>
+<path class="e" d="M600 272L552 272" marker-end="url(#forget-arrow)"/>
+<path class="e" d="M408 272L360 272" marker-end="url(#forget-arrow)"/>
+<path class="e-dash" d="M864 240L864 136" marker-end="url(#forget-arrow)"/>
+<text class="al" x="872" y="192" text-anchor="start">RESUMES</text>
+<g><rect class="k-backend" x="24" y="72" width="144" height="64" rx="6"/><text class="n-name" x="36" y="102">Preview</text><text class="n-sub" x="36" y="116">dry run, no changes</text></g>
+<g><rect class="k-backend" x="216" y="72" width="144" height="64" rx="6"/><text class="n-name" x="228" y="102">Confirm</text><text class="n-sub" x="228" y="116">HMAC token required</text></g>
+<g><rect class="k-focal" x="408" y="72" width="144" height="64" rx="6"/><text class="n-name" x="420" y="102">Journal row</text><text class="n-sub" x="420" y="116">written first, running</text></g>
+<g><rect class="k-backend" x="600" y="72" width="336" height="64" rx="6"/><text class="n-name" x="612" y="95">Removal steps</text><text class="n-sub" x="612" y="109">1 temporal evidence, 2 vectors, 3 entity text</text><text class="n-sub" x="612" y="123">4 model cache, 5 episodes</text></g>
+<g><rect class="k-backend" x="600" y="240" width="144" height="64" rx="6"/><text class="n-name" x="612" y="270">Residue scan</text><text class="n-sub" x="612" y="284">graph, indexes, cache</text></g>
+<g><rect class="k-store" x="408" y="240" width="144" height="64" rx="6"/><text class="n-name" x="420" y="270">Journal closed</text><text class="n-sub" x="420" y="284">completed, or failed</text></g>
+<g><rect class="k-store" x="216" y="240" width="144" height="64" rx="6"/><text class="n-name" x="228" y="270">Audit row</text><text class="n-sub" x="228" y="284">result recorded</text></g>
+<g><rect class="k-optional" x="792" y="240" width="144" height="64" rx="6"/><text class="n-name" x="804" y="270">Startup</text><text class="n-sub" x="804" y="284">resumes running rows</text></g>
+<text class="callout" x="24" y="360" text-anchor="start">invalidate closes a fact now, keeps its history, and needs no preview.</text>
+</svg>
