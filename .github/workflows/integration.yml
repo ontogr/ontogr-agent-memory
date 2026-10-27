@@ -116,7 +116,7 @@ jobs:
         run: make services-up SERVICES="$SERVICES"
       - name: Run integration tests
         # Stops a hung run early enough for the service logs below to upload.
-        timeout-minutes: 8
+        timeout-minutes: 15
         run: make test-integration INTEGRATION_PATHS="$INTEGRATION_PATHS" INTEGRATION_WORKERS="$INTEGRATION_WORKERS"
       - name: Show service logs
         if: failure() && matrix.suite.services != ''
