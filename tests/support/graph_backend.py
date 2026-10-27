@@ -84,18 +84,21 @@ class GraphBackend:
     async def erase(self) -> None:
         """Erase every tenant opened through this backend.
 
-        A failed erase does not stop the others.
+        A failed erase does not stop the others. Tenants that failed stay tracked,
+        so a later call retries them.
 
         Raises:
             ExceptionGroup: If any tenant could not be erased.
         """
         failures: list[Exception] = []
+        remaining: list[str] = []
         for tenant in self.tenants:
             try:
                 await self.store.erase_tenant(tenant)
             except Exception as error:
                 failures.append(error)
-        self.tenants.clear()
+                remaining.append(tenant)
+        self.tenants[:] = remaining
         if failures:
             raise ExceptionGroup("tenant erase failed", failures)
 
