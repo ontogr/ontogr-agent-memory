@@ -82,10 +82,22 @@ class GraphBackend:
         )
 
     async def erase(self) -> None:
-        """Erase every tenant opened through this backend."""
+        """Erase every tenant opened through this backend.
+
+        A failed erase does not stop the others.
+
+        Raises:
+            ExceptionGroup: If any tenant could not be erased.
+        """
+        failures: list[Exception] = []
         for tenant in self.tenants:
-            await self.store.erase_tenant(tenant)
+            try:
+                await self.store.erase_tenant(tenant)
+            except Exception as error:
+                failures.append(error)
         self.tenants.clear()
+        if failures:
+            raise ExceptionGroup("tenant erase failed", failures)
 
     async def seed_fact_edge(
         self,
