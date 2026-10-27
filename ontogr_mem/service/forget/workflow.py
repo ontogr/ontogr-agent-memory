@@ -464,8 +464,13 @@ class EraseWorkflow:
         for episode_id in plan.episode_ids:
             touched.update(await resolver.remove_episode_mentions(episode_id))
         candidates = touched | target_entity_ids | set(plan.entity_ids)
+        existing_vectors = await runtime.stores.vectors.exists(
+            VectorKind.NODE, sorted(candidates)
+        )
         deleted = tuple(await resolver.delete_orphans(sorted(candidates)))
-        vector_count = await runtime.stores.vectors.delete(VectorKind.NODE, deleted)
+        # Graph-native vectors disappear with their entity rows.
+        await runtime.stores.vectors.delete(VectorKind.NODE, deleted)
+        vector_count = len(existing_vectors.intersection(deleted))
         blanked = tuple(await resolver.prune_entity_text(sorted(candidates)))
         entities = await resolver.get_entities(blanked)
         items = [

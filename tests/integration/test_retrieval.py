@@ -18,17 +18,14 @@ from ontogr_mem.temporal import FactStatus, TemporalError
 from ontogr_mem.temporal.render import ANSWER_RULE
 from ontogr_mem.vectorstore import Hit, VectorKind
 from ontogr_mem.vectorstore.errors import VectorStoreError
-from tests.support.retrieval_world import QUERY, build_world
+from tests.support.retrieval_world import QUERY
 
 
-@pytest.fixture(scope="module")
-async def retrieval_world():
-    """Build the pipeline-backed tenant once for the read-only scenarios."""
-    return await build_world()
+class RetrievalContract:
+    """Retrieval scenarios over a tenant built by ``build_world``.
 
-
-class TestRetrieval:
-    """Retrieve facts, episodes and entities from the memory twin."""
+    Subclasses provide the ``retrieval_world`` fixture for one backend.
+    """
 
     async def test_primary_query_ranks_expected_facts_and_episodes(
         self, retrieval_world

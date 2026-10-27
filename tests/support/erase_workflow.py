@@ -1,4 +1,4 @@
-"""Build a memory-backed Erase workflow scenario."""
+"""Build an Erase workflow scenario on a live graph backend."""
 
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -11,7 +11,6 @@ from ontogr_mem.data_models import (
     Mention,
     Outcome,
 )
-from ontogr_mem.graphstore.memory.tenant_stacks import memory_stores
 from ontogr_mem.llm.cache import MemoryResponseCache
 from ontogr_mem.relational_store.memory import MemoryJobStore
 from ontogr_mem.resolution.config import ResolverSettings
@@ -29,6 +28,7 @@ from ontogr_mem.vectorstore.episode_vectors import write_episode_vectors
 from tests.support.clock import FixedClock
 from tests.support.embedder import MockEmbedder
 from tests.support.episodes import make_episode
+from tests.support.graph_backend import GraphBackend
 from tests.unit.temporal.helpers import at, obs
 
 
@@ -46,11 +46,13 @@ class EraseWorld:
     needle: str
 
 
-async def make_erase_world(*, cache: MemoryResponseCache | None = None) -> EraseWorld:
+async def make_erase_world(
+    backend: GraphBackend, *, cache: MemoryResponseCache | None = None
+) -> EraseWorld:
     """Create episodes, mentions, one Fact and their search vectors."""
     clock = FixedClock(datetime(2026, 10, 22, tzinfo=UTC))
     embedder: Embedder = MockEmbedder()
-    stores = await memory_stores("erase-test", embedder)
+    stores = await backend.open_stores(embedder)
     runtime = build_tenant_runtime(
         stores,
         llm=None,

@@ -10,9 +10,7 @@ import pytest
 from ontogr_mem.data_models import Episode
 from ontogr_mem.entity_extraction import EntityExtraction, EntityExtractionSettings
 from ontogr_mem.entity_extraction.extractors import LLMExtractor, RecordMapper
-from ontogr_mem.graphstore.memory import MemoryOntologyStore
 from ontogr_mem.graphstore.ontology_store import GraphOntologyStore
-from ontogr_mem.graphstore.schemas import ONTOLOGY
 from ontogr_mem.ontology.extraction_items import items_from_entities
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import UNKNOWN_ID, Mode, Reason, SetModes
@@ -21,9 +19,9 @@ from ontogr_mem.ontology.settings import OntologySettings
 from ontogr_mem.ontology.validate import Context, ValidationReport
 from tests.support.clock import FixedClock
 from tests.support.extraction import gate, text_episode
+from tests.support.graph_backend import GraphBackend
 from tests.support.llm import ScriptedLLM
 from tests.support.ontology import base, cs
-from tests.support.tenants import new_tenant
 
 
 DRAFT = json.dumps(
@@ -58,21 +56,16 @@ class World:
         )
 
 
-@pytest.fixture(params=["memory", "falkordb", "neo4j"])
-async def world(request, falkordb_store, neo4j_store) -> AsyncGenerator[World]:
-    """An ontology store on the twin and on each real backend."""
-    if request.param == "memory":
-        yield World(MemoryOntologyStore(set[str]), ScriptedLLM([DRAFT]))
-        return
-    store = falkordb_store if request.param == "falkordb" else neo4j_store
-    handle = await store.open(new_tenant(), [ONTOLOGY])
-    keyed = request.param == "neo4j"
-    try:
-        yield World(
-            GraphOntologyStore(store, handle, tenant_keyed=keyed), ScriptedLLM([DRAFT])
-        )
-    finally:
-        await store.erase_tenant(handle.tenant)
+@pytest.fixture
+async def world(graph_backend: GraphBackend) -> AsyncGenerator[World]:
+    """An ontology store on each real backend."""
+    handle = await graph_backend.open_tenant()
+    yield World(
+        GraphOntologyStore(
+            graph_backend.store, handle, tenant_keyed=graph_backend.tenant_keyed
+        ),
+        ScriptedLLM([DRAFT]),
+    )
 
 
 async def extract_and_validate(

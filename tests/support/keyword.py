@@ -1,15 +1,9 @@
-"""Keyword contract harnesses sharing the same tenant's three public stores."""
+"""Keyword harnesses sharing one tenant's public stores."""
 
 from dataclasses import dataclass
 
 from ontogr_mem.graphstore.episode_store import GraphEpisodeStore
 from ontogr_mem.graphstore.keyword_search import GraphKeywordSearch
-from ontogr_mem.graphstore.memory import (
-    MemoryEpisodeStore,
-    MemoryResolverStore,
-    MemoryTemporalStore,
-)
-from ontogr_mem.graphstore.memory.keyword_search import MemoryKeywordSearch
 from ontogr_mem.graphstore.protocol import GraphStore
 from ontogr_mem.graphstore.resolver_store import GraphResolverStore
 from ontogr_mem.graphstore.temporal.store import GraphTemporalStore
@@ -28,16 +22,6 @@ class KeywordHarness:
     resolver: ResolverStore
     temporal: TemporalStore
     episodes: EpisodeStore
-
-
-def memory_keyword_harness() -> KeywordHarness:
-    """Return an isolated in-memory tenant."""
-    episodes = MemoryEpisodeStore()
-    resolver = MemoryResolverStore()
-    temporal = MemoryTemporalStore(episodes, resolver)
-    return KeywordHarness(
-        MemoryKeywordSearch(resolver, temporal, episodes), resolver, temporal, episodes
-    )
 
 
 def graph_keyword_harness(store: GraphStore, handle: GraphHandle) -> KeywordHarness:

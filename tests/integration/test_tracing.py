@@ -20,6 +20,7 @@ from ontogr_mem.service.contracts import (
 )
 from ontogr_mem.service.errors import ObjectNotFoundError
 from ontogr_mem.service.principal import Grant
+from tests.support.graph_backend import GraphBackend
 from tests.support.llm import ScriptedLLM
 from tests.support.memory_service import memory_service_harness
 
@@ -27,10 +28,12 @@ from tests.support.memory_service import memory_service_harness
 class TestOperationSpans:
     """Exercise tracing through real service verbs and in-memory adapters."""
 
-    async def test_write_records_its_authorization_child_and_trace_id(self, caplog):
+    async def test_write_records_its_authorization_child_and_trace_id(
+        self, graph_backend: GraphBackend, caplog
+    ):
         """A write span owns its auth check and carries the accepted trace id."""
         tracer = InMemoryTracer()
-        harness = await memory_service_harness(tracer=tracer)
+        harness = await memory_service_harness(graph_backend, tracer=tracer)
         caplog.set_level(logging.INFO)
 
         receipt = await harness.service.add_memory(
@@ -73,11 +76,11 @@ class TestOperationSpans:
         assert all(span.error is None for span in spans)
 
     async def test_invalid_trace_id_is_replaced_before_storage_and_logging(
-        self, caplog
+        self, graph_backend: GraphBackend, caplog
     ):
         """A trace id with whitespace cannot forge another log line."""
         tracer = InMemoryTracer()
-        harness = await memory_service_harness(tracer=tracer)
+        harness = await memory_service_harness(graph_backend, tracer=tracer)
         caplog.set_level(logging.INFO)
 
         receipt = await harness.service.add_memory(
@@ -102,10 +105,12 @@ class TestOperationSpans:
         assert f"trace={job.trace_id}" in messages
         assert "forged" not in messages
 
-    async def test_retrieve_span_does_not_contain_query_text(self):
+    async def test_retrieve_span_does_not_contain_query_text(
+        self, graph_backend: GraphBackend
+    ):
         """The embedding span reports a count without retaining search text."""
         tracer = InMemoryTracer()
-        harness = await memory_service_harness(tracer=tracer)
+        harness = await memory_service_harness(graph_backend, tracer=tracer)
         marker = "PRIVATE-EPISODE-TEXT"
         await harness.service.add_memory(
             harness.principal,
@@ -133,10 +138,12 @@ class TestOperationSpans:
         assert marker not in repr([span.attributes for span in spans])
         assert marker not in repr([span.error for span in spans])
 
-    async def test_denied_write_records_a_denied_auth_child(self):
+    async def test_denied_write_records_a_denied_auth_child(
+        self, graph_backend: GraphBackend
+    ):
         """A grant denial remains visible on the failed verb span."""
         tracer = InMemoryTracer()
-        harness = await memory_service_harness(tracer=tracer)
+        harness = await memory_service_harness(graph_backend, tracer=tracer)
         principal = harness.principal.model_copy(update={"grants": {}})
 
         with pytest.raises(ObjectNotFoundError):
@@ -174,7 +181,9 @@ class TestOperationSpans:
             for write in failed_writes
         )
 
-    async def test_a_failing_tracer_does_not_change_a_write_result(self):
+    async def test_a_failing_tracer_does_not_change_a_write_result(
+        self, graph_backend: GraphBackend
+    ):
         """Tracer creation failures leave the operation running normally."""
 
         class BrokenTracer:
@@ -183,7 +192,7 @@ class TestOperationSpans:
             ) -> AbstractContextManager[Span]:
                 raise RuntimeError("tracer unavailable")
 
-        harness = await memory_service_harness(tracer=BrokenTracer())
+        harness = await memory_service_harness(graph_backend, tracer=BrokenTracer())
 
         receipt = await harness.service.add_memory(
             harness.principal,
@@ -205,7 +214,9 @@ class TestOperationSpans:
         )
         assert isinstance(result, MemoryContext)
 
-    async def test_span_exit_failure_does_not_replace_the_verb_error(self):
+    async def test_span_exit_failure_does_not_replace_the_verb_error(
+        self, graph_backend: GraphBackend
+    ):
         """Tracer shutdown failures do not hide a denied operation's error."""
 
         class BrokenExitTracer:
@@ -232,7 +243,7 @@ class TestOperationSpans:
 
                 return SpanContext()
 
-        harness = await memory_service_harness(tracer=BrokenExitTracer())
+        harness = await memory_service_harness(graph_backend, tracer=BrokenExitTracer())
         principal = harness.principal.model_copy(update={"grants": {}})
 
         with pytest.raises(ObjectNotFoundError):
@@ -247,10 +258,12 @@ class TestOperationSpans:
                 ),
             )
 
-    async def test_concurrent_tenant_writes_keep_separate_span_trees(self):
+    async def test_concurrent_tenant_writes_keep_separate_span_trees(
+        self, graph_backend: GraphBackend
+    ):
         """Concurrent operations do not attach checks to another Tenant's root."""
         tracer = InMemoryTracer()
-        harness = await memory_service_harness(tracer=tracer)
+        harness = await memory_service_harness(graph_backend, tracer=tracer)
         principal = harness.principal.model_copy(
             update={
                 "grants": {

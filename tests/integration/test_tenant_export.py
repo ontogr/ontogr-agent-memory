@@ -1,4 +1,4 @@
-"""Tenant export rows and deterministic JSONL output on the in-memory twins."""
+"""Tenant export rows and deterministic JSONL output on live graph tenants."""
 
 import json
 from dataclasses import replace
@@ -7,6 +7,7 @@ from ontogr_mem.data_models import EntityStatus
 from ontogr_mem.export import export_tenant
 from ontogr_mem.temporal.reader import FactReader
 from tests.support.episodes import make_episode
+from tests.support.graph_backend import GraphBackend
 from tests.support.p9i import alias, entity, make_world
 from tests.unit.temporal.helpers import at, obs
 
@@ -14,10 +15,12 @@ from tests.unit.temporal.helpers import at, obs
 class TestTenantExport:
     """Export each tenant-owned domain row without losing structured fields."""
 
-    async def test_rows_are_sorted_complete_and_repeatable(self):
+    async def test_rows_are_sorted_complete_and_repeatable(
+        self, graph_backend: GraphBackend
+    ):
         """Repeated fixed-clock exports preserve content, order and UTC times."""
-        episodes, resolver, store, clock, engine = await make_world(
-            ("ana", "absorbed", "archived")
+        episodes, resolver, store, clock, engine, _ = await make_world(
+            graph_backend, ("ana", "absorbed", "archived")
         )
         await resolver.write_entity_batch(
             [

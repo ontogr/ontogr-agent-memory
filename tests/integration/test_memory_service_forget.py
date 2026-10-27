@@ -13,15 +13,20 @@ from ontogr_mem.service.contracts import (
 from ontogr_mem.service.errors import ConfirmationRequiredError, ObjectNotFoundError
 from ontogr_mem.service.forget.selector import ForgetSelector
 from ontogr_mem.service.principal import Grant
+from tests.support.graph_backend import GraphBackend
 from tests.support.memory_service import memory_service_harness
 
 
 class TestMemoryServiceForget:
     """Exercise confirmation, cleanup, and audit through the service API."""
 
-    async def test_forget_requires_a_matching_preview_and_removes_episode(self):
+    async def test_forget_requires_a_matching_preview_and_removes_episode(
+        self, graph_backend: GraphBackend
+    ):
         """A fact selector can be previewed and then deleted with its token."""
-        harness = await memory_service_harness()
+        harness = await memory_service_harness(
+            graph_backend,
+        )
         receipt = await harness.service.add_memory(
             harness.principal,
             AddMemory(
@@ -71,9 +76,13 @@ class TestMemoryServiceForget:
         )
         assert page.episodes == []
 
-    async def test_clear_removes_memory_jobs_but_keeps_grants_and_audits(self):
+    async def test_clear_removes_memory_jobs_but_keeps_grants_and_audits(
+        self, graph_backend: GraphBackend
+    ):
         """Admin clear removes tenant data and job rows, not access grants."""
-        harness = await memory_service_harness()
+        harness = await memory_service_harness(
+            graph_backend,
+        )
         admin = harness.principal.model_copy(
             update={"grants": {"t1": frozenset({Grant.ADMIN})}}
         )
@@ -115,9 +124,13 @@ class TestMemoryServiceForget:
         assert clear_rows[0].entry.detail["status"] == "completed"
         assert admin.holds("t1", Grant.ADMIN)
 
-    async def test_clear_rejects_a_token_after_new_episode_is_added(self):
+    async def test_clear_rejects_a_token_after_new_episode_is_added(
+        self, graph_backend: GraphBackend
+    ):
         """The clear token stops applying when tenant contents change."""
-        harness = await memory_service_harness()
+        harness = await memory_service_harness(
+            graph_backend,
+        )
         admin = harness.principal.model_copy(
             update={"grants": {"t1": frozenset({Grant.ADMIN})}}
         )

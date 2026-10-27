@@ -203,10 +203,10 @@ Every fact can be traced back to the text that supports it, and every temporal w
 
 ### Storage layer
 
-*The graph holds the memory, vectors have their own store, and a separate state store holds jobs and audit rows.*
+*The graph holds the memory, vectors have their own store, and a separate relation store holds jobs and audit rows.*
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/storage-layer.svg" alt="Components reach storage through async ports. The graph store holds entities and facts, and it holds episodes with their raw content. The vector store holds embeddings keyed by graph ids, on the graph or in pgvector. The state store holds jobs, operation rows, audit rows, and the erase journal in SQLite or Postgres." width="860">
+  <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/storage-layer.svg" alt="Components reach storage through async ports. The graph store holds entities and facts, and it holds episodes with their raw content. The vector store holds embeddings keyed by graph ids, on the graph or in pgvector. The relation store holds jobs, operation rows, audit rows, and the erase journal in SQLite or Postgres." width="860">
 </p>
 
 Every component talks to storage through its own async port. A port has domain verbs and no raw query method, so domain code sees only ports.
@@ -215,11 +215,11 @@ Every component talks to storage through its own async port. A port has domain v
 | --- | --- | --- |
 | Graph store | Episodes with their sources and actors, entities, aliases, mentions, observations, fact versions, the temporal ledger, the ontology, and consolidation records. | FalkorDB (default) or Neo4j |
 | Vector store | Embeddings of entity names, fact statements, and episode text, each with a hash of the embedded text. | Graph-native (default) or pgvector |
-| State store | Jobs with their request payloads, operation rows, audit rows, and the erase journal. | SQLite (default) or Postgres |
+| Relation store | Jobs with their request payloads, operation rows, audit rows, and the erase journal. | SQLite (default) or Postgres |
 
-A deployment that shares state between processes can use FalkorDB for the graph, pgvector for vectors, and Postgres for the state store. An in-memory backend exists for every layer. It is for tests and local runs, and it requires `allow_ephemeral`.
+A deployment that shares state between processes can use FalkorDB for the graph, pgvector for vectors, and Postgres for the relation store. The relation store and the vector store also have in-memory backends for tests and local runs. The relation store requires `allow_ephemeral` to use one.
 
-- **Contract tests:** Each port has one contract suite. It runs against the in-memory implementation and against the live database adapter, and concurrent tenants and queries are tested on live servers.
+- **Contract tests:** Each port has one contract suite. It runs against each live database adapter, and concurrent tenants and queries are tested on live servers.
 
 #### Graph store
 
@@ -246,7 +246,7 @@ A deployment that shares state between processes can use FalkorDB for the graph,
 - **Commit state:** The episode also records its temporal status and the hash that was committed, which lets startup settle writes that a crash left pending.
 - **Vector copy:** The embedding of the episode text goes to the vector store.
 
-#### State store
+#### Relation store
 
 *Service control data lives apart from memory content, in SQLite or Postgres.*
 
@@ -371,7 +371,7 @@ Forget has four modes:
 
 ## Quickstart
 
-In this example you store one structured fact and read it back. It uses the in-memory backend, so it needs no database and no language model.
+In this example you store one structured fact and read it back. It uses FalkorDB for the graph and SQLite for state, so it needs a running FalkorDB server but no language model.
 
 ### 1. Install
 
@@ -427,8 +427,8 @@ class HashingEmbedder:
 
 
 async def main() -> None:
-    settings = ServiceSettings(backend="memory", allow_ephemeral=True)
-    state = StateSettings(backend="memory", allow_ephemeral=True)
+    settings = ServiceSettings(backend="falkordb")
+    state = StateSettings(backend="sqlite")
 
     async with open_service(
         settings,
@@ -474,7 +474,7 @@ A free-text or message write needs an injected `LLMClient`, because the text mus
 
 ### 3. Move to durable storage
 
-Replace the in-memory settings with a durable backend. A minimal FalkorDB setup:
+The example above already uses FalkorDB for the graph and SQLite for state. The matching environment variables are:
 
 ```bash
 export MEMORY_SERVICE_BACKEND=falkordb
@@ -483,7 +483,7 @@ export MEMORY_FALKORDB_HOST=localhost
 export MEMORY_FALKORDB_PORT=6379
 ```
 
-The service refuses the in-memory backend unless you set `MEMORY_SERVICE_ALLOW_EPHEMERAL=true`. The state store has its own gate, `MEMORY_STATE_ALLOW_EPHEMERAL=true`. See [Configuration](https://github.com/ontogr/ontogr-agent-memory#configuration) and [.env.example](https://github.com/ontogr/ontogr-agent-memory/blob/main/.env.example) for more settings.
+The relation store refuses its in-memory backend unless you set `MEMORY_STATE_ALLOW_EPHEMERAL=true`. See [Configuration](https://github.com/ontogr/ontogr-agent-memory#configuration) and [.env.example](https://github.com/ontogr/ontogr-agent-memory/blob/main/.env.example) for more settings.
 
 ## Core concepts
 
@@ -525,8 +525,8 @@ First, ingestion stores a source item as an episode. Second, entity extraction f
 
 ### A write
 
-1. The service checks the caller's rate limit, opens an operation row in the state store, and checks the write grant for the tenant. Each access decision is appended to the audit log.
-2. The service stores the request as a job in the state store and returns a receipt with the job id. A repeated idempotency key returns the original job, and `wait_seconds` makes the call wait for the job to finish.
+1. The service checks the caller's rate limit, opens an operation row in the relation store, and checks the write grant for the tenant. Each access decision is appended to the audit log.
+2. The service stores the request as a job in the relation store and returns a receipt with the job id. A repeated idempotency key returns the original job, and `wait_seconds` makes the call wait for the job to finish.
 3. The tenant's job lane runs the job. A lane runs one job at a time for its tenant, and lanes for different tenants run in parallel. The job records each attempt.
 4. Ingestion writes the episode with its source and actor to the graph, and records the content hash last.
 5. For a text or message write, extraction finds entities, and resolution links them to canonical entities in the graph. Resolution also writes the entity name vectors. A structured fact skips extraction.
@@ -558,7 +558,7 @@ A read does not create a job. A search that finds nothing reports an `indexing` 
 ### A hard forget
 
 1. The service checks the forget grant and verifies the confirmation token from the preview.
-2. The workflow writes a row to the erase journal in the state store.
+2. The workflow writes a row to the erase journal in the relation store.
 3. The workflow removes temporal evidence, then vectors, entity text, cached model responses, and episodes, and updates the journal row after each step. An erase also scans for residue.
 4. The workflow closes the journal row as completed, or as failed with the residue it found. The service appends an audit row for the result.
 5. After a crash, startup resumes every journal row that is still running. Audit rows and operation rows stay after a forget.
@@ -682,8 +682,8 @@ Settings classes use `pydantic-settings`. They read the repo-root `.env` and use
 
 | Prefix | Area |
 | --- | --- |
-| `MEMORY_SERVICE_` | Service backend and ephemeral-storage policy. |
-| `MEMORY_STATE_` | Job, operation, and audit state backend. |
+| `MEMORY_SERVICE_` | Service graph backend. |
+| `MEMORY_STATE_` | Relation store backend for jobs, operations, and audit rows. |
 | `MEMORY_FALKORDB_` | FalkorDB connection and resilience. |
 | `MEMORY_NEO4J_` | Neo4j connection and resilience. |
 | `MEMORY_PGVECTOR_` | pgvector connection, search, and outbox limits. |

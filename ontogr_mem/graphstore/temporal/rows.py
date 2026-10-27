@@ -51,6 +51,9 @@ _OBSERVATION_COLUMNS = (
     "statement",
     "quote",
     "inverse",
+    "source_system",
+    "connector",
+    "actor_role",
 )
 _FACT_COLUMNS = (
     "fact_id",
@@ -198,6 +201,9 @@ def _observation_props(observation: Observation) -> dict[str, Any]:
             "statement": observation.statement,
             "quote": observation.quote,
             "inverse": observation.inverse,
+            "source_system": observation.source_system,
+            "connector": observation.connector,
+            "actor_role": observation.actor_role,
         }
     )
 
@@ -226,6 +232,9 @@ def _observation_from(row: dict[str, Any]) -> Observation:
         statement=row["statement"] or "",
         quote=row["quote"] or "",
         inverse=bool(row["inverse"]),
+        source_system=row["source_system"] or "",
+        connector=row["connector"] or "",
+        actor_role=row["actor_role"] or "",
     )
 
 

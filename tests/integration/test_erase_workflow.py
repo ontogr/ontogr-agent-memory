@@ -2,7 +2,6 @@
 
 import pytest
 
-from ontogr_mem.data_models import FactStatus
 from ontogr_mem.llm.cache import CacheEntry, MemoryResponseCache
 from ontogr_mem.relational_store.jobs.erase_journal import ErasureStatus
 from ontogr_mem.service.contracts import ForgetMode
@@ -10,17 +9,25 @@ from ontogr_mem.service.forget.workflow import EraseWorkflow
 from ontogr_mem.service.runtime import TenantRuntime
 from ontogr_mem.vectorstore.models import VectorKind
 from tests.support.erase_workflow import EraseWorld, make_erase_world
+from tests.support.graph_backend import GraphBackend
 
 
 class TestEraseWorkflow:
-    """Exercise Erase through memory-backed stores and their public ports."""
+    """Exercise Erase through live graph stores and their public ports."""
 
-    async def test_erase_reports_effects_and_prunes_surviving_entity(self):
+    async def test_erase_reports_effects_and_prunes_surviving_entity(
+        self, graph_backend: GraphBackend
+    ):
         """Counts reflect storage changes and unsupported entity text is removed."""
-        world = await make_erase_world()
+        world = await make_erase_world(
+            graph_backend,
+        )
         before_vector = await world.runtime.stores.vectors.fetch_vectors(
             VectorKind.NODE, ["person"]
         )
+        assert await world.runtime.stores.vectors.exists(
+            VectorKind.NODE, ["organization"]
+        ) == {"organization"}
         await world.cache.put(
             "tagged-entry",
             CacheEntry(
@@ -70,9 +77,9 @@ class TestEraseWorkflow:
         assert await stores.episodes.get_episode("e1") is None
         assert await stores.temporal_store.observations_of_episode("e1") == []
         facts = await stores.temporal_store.facts_by_ids(world.plan.fact_ids)
-        assert len(facts) == 2
-        assert facts[-1].status is FactStatus.WITHDRAWN
+        assert facts == []
         assert await stores.resolver_store.has_entity("organization") is False
+        assert await stores.vectors.exists(VectorKind.NODE, ["organization"]) == set()
         person_rows = await stores.resolver_store.get_entities(["person"])
         assert len(person_rows) == 1
         person = person_rows[0]
@@ -91,7 +98,9 @@ class TestEraseWorkflow:
         assert journal_row is not None
         assert journal_row.status is ErasureStatus.COMPLETED
 
-    async def test_text_residue_fails_erase_after_cleanup(self):
+    async def test_text_residue_fails_erase_after_cleanup(
+        self, graph_backend: GraphBackend
+    ):
         """A cache entry that retains erased text is reported as residue."""
 
         class RetainingCache(MemoryResponseCache):
@@ -100,7 +109,7 @@ class TestEraseWorkflow:
                 return 0
 
         cache = RetainingCache()
-        world = await make_erase_world(cache=cache)
+        world = await make_erase_world(graph_backend, cache=cache)
         await cache.put(
             "untagged-entry",
             CacheEntry(
@@ -133,9 +142,13 @@ class TestEraseWorkflow:
         assert record.status is ErasureStatus.FAILED
         assert record.residue == ("model_cache",)
 
-    async def test_recovery_finishes_cleanup_once_and_skips_closed_rows(self):
+    async def test_recovery_finishes_cleanup_once_and_skips_closed_rows(
+        self, graph_backend: GraphBackend
+    ):
         """Recovery repeats completed steps safely and closes the journal row."""
-        world = await make_erase_world()
+        world = await make_erase_world(
+            graph_backend,
+        )
 
         def crash_after_entities(step: str) -> None:
             if step == "entities":

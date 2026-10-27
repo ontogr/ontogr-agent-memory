@@ -111,7 +111,7 @@ class TestNeo4jVectorStore(GraphVectorStoreContract):
             await neo4j_store.erase_tenant(handle.tenant)
 
     async def test_quantization_none_gives_exact_scores(self, make_harness):
-        """Scores match the exact in-memory twin to a tight tolerance."""
+        """Scores match the exact live graph tenant to a tight tolerance."""
         h = await ready(make_harness)
         items = [
             node_item("i-a", "a"),

@@ -1,4 +1,4 @@
-"""Entity cards and tenant statistics on the in-memory twins."""
+"""Entity cards and tenant statistics on live graph tenants."""
 
 from datetime import timedelta
 
@@ -10,6 +10,7 @@ from ontogr_mem.summaries import entity_card, tenant_stats
 from ontogr_mem.temporal.query import TemporalQuery
 from ontogr_mem.temporal.reader import FactReader
 from tests.support.episodes import make_episode
+from tests.support.graph_backend import GraphBackend
 from tests.support.p9i import NOW, add_fact, alias, entity, make_world
 from tests.unit.temporal.helpers import at
 
@@ -17,9 +18,13 @@ from tests.unit.temporal.helpers import at
 class TestEntityCard:
     """Resolve entities and return their aliases and relevant facts."""
 
-    async def test_by_id_returns_card_fields_and_sorted_aliases(self):
+    async def test_by_id_returns_card_fields_and_sorted_aliases(
+        self, graph_backend: GraphBackend
+    ):
         """The card includes canonical fields and aliases in stable order."""
-        episodes, resolver, store, _, engine = await make_world(("ana", "acme"))
+        episodes, resolver, store, _, engine, _ = await make_world(
+            graph_backend, ("ana", "acme")
+        )
         await resolver.write_entity_batch(
             [entity("ana", name="Ana")],
             [
@@ -57,9 +62,11 @@ class TestEntityCard:
         assert result.aliases == ("Ana", "Annie")
         assert [fact.statement for fact in result.facts] == ["Ana works at Acme."]
 
-    async def test_name_lookup_is_case_insensitive_and_ambiguous_names_list_ids(self):
+    async def test_name_lookup_is_case_insensitive_and_ambiguous_names_list_ids(
+        self, graph_backend: GraphBackend
+    ):
         """Strict alias lookup handles case and reports all colliding entities."""
-        _, resolver, store, _, _ = await make_world(("ana", "ana-2"))
+        _, resolver, store, _, _, _ = await make_world(graph_backend, ("ana", "ana-2"))
         await resolver.write_entity_batch(
             [entity("ana", name="Ana"), entity("ana-2", name="Ana 2")],
             [alias("ana", "Ana", "a1"), alias("ana-2", "ANA", "a2")],
@@ -70,9 +77,13 @@ class TestEntityCard:
 
         assert raised.value.ids == ("ana", "ana-2")
 
-    async def test_name_lookup_follows_a_merged_entity_to_its_survivor(self):
+    async def test_name_lookup_follows_a_merged_entity_to_its_survivor(
+        self, graph_backend: GraphBackend
+    ):
         """An alias on a merged entity resolves to the survivor's card."""
-        _, resolver, store, _, _ = await make_world(("survivor", "absorbed"))
+        _, resolver, store, _, _, _ = await make_world(
+            graph_backend, ("survivor", "absorbed")
+        )
         await resolver.write_entity_batch(
             [
                 entity("survivor", name="Ana"),
@@ -94,10 +105,12 @@ class TestEntityCard:
         assert result.entity_id == "survivor"
         assert result.name == "Ana"
 
-    async def test_fact_limit_reports_truncation_and_unknown_target_returns_none(self):
+    async def test_fact_limit_reports_truncation_and_unknown_target_returns_none(
+        self, graph_backend: GraphBackend
+    ):
         """The card marks a cut list and leaves not-found mapping to its caller."""
-        episodes, resolver, store, _, engine = await make_world(
-            ("ana", "acme", "globex")
+        episodes, resolver, store, _, engine, _ = await make_world(
+            graph_backend, ("ana", "acme", "globex")
         )
         for index, object_id in enumerate(("acme", "globex")):
             await add_fact(
@@ -137,9 +150,11 @@ class TestEntityCard:
         ("entity_id", "name"),
         ((None, None), ("ana", "Ana")),
     )
-    async def test_requires_exactly_one_lookup_key(self, entity_id, name):
+    async def test_requires_exactly_one_lookup_key(
+        self, graph_backend: GraphBackend, entity_id, name
+    ):
         """Missing and competing lookup keys are rejected as invalid input."""
-        _, resolver, store, _, _ = await make_world(("ana",))
+        _, resolver, store, _, _, _ = await make_world(graph_backend, ("ana",))
 
         with pytest.raises(ValueError):
             await entity_card(
@@ -155,10 +170,12 @@ class TestEntityCard:
 class TestTenantStats:
     """Count persisted fact versions, entities and paged episodes."""
 
-    async def test_counts_all_fact_versions_entity_statuses_and_episodes(self):
+    async def test_counts_all_fact_versions_entity_statuses_and_episodes(
+        self, graph_backend: GraphBackend
+    ):
         """Stats use history rows, every entity state and all episode pages."""
-        episodes, resolver, store, clock, engine = await make_world(
-            ("ana", "acme", "globex")
+        episodes, resolver, store, clock, engine, _ = await make_world(
+            graph_backend, ("ana", "acme", "globex")
         )
         await add_fact(
             episodes,

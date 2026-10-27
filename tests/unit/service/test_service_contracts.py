@@ -215,7 +215,7 @@ EXAMPLES = (
     ),
     StatusOut(
         status="degraded",
-        backend="memory",
+        backend="falkordb",
         llm_available=False,
         tenants=["t1"],
         queued_jobs=3,

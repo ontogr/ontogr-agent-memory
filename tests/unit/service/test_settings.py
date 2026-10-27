@@ -1,27 +1,33 @@
-"""Service settings select the graph backend and ephemeral-storage policy."""
+"""Service settings select the graph backend."""
+
+import pytest
+from pydantic import ValidationError
 
 from ontogr_mem.service.bootstrap import ServiceSettings
 
 
 class TestServiceSettings:
-    """Backend and ephemeral settings use the service environment prefix."""
+    """The backend setting uses the service environment prefix."""
 
-    def test_defaults_to_falkordb_without_ephemeral_permission(self, monkeypatch):
-        """Durable graph storage is the default configuration."""
+    def test_defaults_to_falkordb(self, monkeypatch):
+        """FalkorDB is the default graph backend."""
         monkeypatch.delenv("MEMORY_SERVICE_BACKEND", raising=False)
-        monkeypatch.delenv("MEMORY_SERVICE_ALLOW_EPHEMERAL", raising=False)
 
         settings = ServiceSettings(_env_file=None)
 
         assert settings.backend == "falkordb"
-        assert settings.allow_ephemeral is False
 
-    def test_reads_backend_and_ephemeral_environment_values(self, monkeypatch):
-        """The MEMORY_SERVICE_ variables override the durable defaults."""
-        monkeypatch.setenv("MEMORY_SERVICE_BACKEND", "memory")
-        monkeypatch.setenv("MEMORY_SERVICE_ALLOW_EPHEMERAL", "true")
+    def test_reads_backend_environment_value(self, monkeypatch):
+        """The MEMORY_SERVICE_BACKEND variable selects Neo4j."""
+        monkeypatch.setenv("MEMORY_SERVICE_BACKEND", "neo4j")
 
         settings = ServiceSettings(_env_file=None)
 
-        assert settings.backend == "memory"
-        assert settings.allow_ephemeral is True
+        assert settings.backend == "neo4j"
+
+    def test_rejects_a_backend_outside_the_graph_stores(self, monkeypatch):
+        """Only the graph stores are valid backends."""
+        monkeypatch.setenv("MEMORY_SERVICE_BACKEND", "memory")
+
+        with pytest.raises(ValidationError):
+            ServiceSettings(_env_file=None)
