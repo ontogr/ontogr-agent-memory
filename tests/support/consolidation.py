@@ -85,6 +85,7 @@ class ConsWorld:
                 f"(o:Entity {scope}id: $object}}) "
                 f"MERGE (s)-[f:FACT]->(o) SET f.status = 'active'{stamp}",
                 {"subject": subject, "object": obj},
+                read_only=False,
                 idempotent=True,
                 tag="test_seed_live_fact",
             )

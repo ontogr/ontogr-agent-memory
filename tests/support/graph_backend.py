@@ -108,6 +108,8 @@ class GraphBackend:
                     "status": status,
                     "expired_at": expired_at,
                 },
+                read_only=False,
+                idempotent=False,
                 tag="seed_fact_edge",
             )
         )
