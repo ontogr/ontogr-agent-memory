@@ -44,6 +44,7 @@ INTEGRATION_WORKERS ?= auto
 test-integration:
 	uv run pytest $(INTEGRATION_PATHS) -v --maxfail=1 -n $(INTEGRATION_WORKERS) --dist loadscope \
 		-o "addopts=--strict-markers --strict-config --disable-socket --allow-unix-socket -ra" \
+		--cov=ontogr_mem --cov-report=xml:coverage-integration.xml \
 		--junitxml=pytest-integration-results.xml
 
 # SERVICES names the compose services to start: falkordb, neo4j, pgvector and
@@ -114,7 +115,7 @@ changelog:
 	@printf '%s\n' "$$(cat CHANGELOG.md)" > CHANGELOG.md.tmp && mv CHANGELOG.md.tmp CHANGELOG.md
 
 clean:
-	rm -rf .coverage coverage.xml htmlcov dist build .wheelenv *.egg-info pytest-results.xml pytest-integration-results*.xml
+	rm -rf .coverage coverage.xml htmlcov dist build .wheelenv *.egg-info pytest-results.xml pytest-integration-results*.xml coverage-integration.xml
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type d -name .pytest_cache -exec rm -rf {} +
 	find . -type d -name .ruff_cache -exec rm -rf {} +

@@ -126,6 +126,16 @@ jobs:
           free -m
           docker compose -f tests/integration/compose.yaml logs --no-color falkordb | grep -A45 'BUG REPORT START' || true
           docker compose -f tests/integration/compose.yaml logs --no-color --tail 100
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage-integration.xml
+          flags: integration
+          name: codecov-integration-${{ matrix.suite.name }}
+          fail_ci_if_error: false
+          slug: ontogr/ontogr-agent-memory
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
