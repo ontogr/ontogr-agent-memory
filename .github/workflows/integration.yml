@@ -127,7 +127,7 @@ jobs:
           docker compose -f tests/integration/compose.yaml logs --no-color falkordb | grep -A45 'BUG REPORT START' || true
           docker compose -f tests/integration/compose.yaml logs --no-color --tail 100
       - name: Upload coverage to Codecov
-        if: always()
+        if: ${{ !cancelled() }}
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
