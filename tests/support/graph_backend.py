@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from ontogr_mem.graphstore import GraphHandle, QuerySpec
+from ontogr_mem.graphstore.cypher import TenantScope
 from ontogr_mem.graphstore.protocol import GraphStore
 from ontogr_mem.graphstore.schemas import (
     CONSOLIDATION,
@@ -96,13 +97,13 @@ class GraphBackend:
     ) -> None:
         """Write one `FACT` edge on the entity, as an earlier fact write would."""
         handle = await self.store.open(stores.tenant_id, ALL_SCHEMAS)
-        scope = "{_tenant: $tenant, " if self.tenant_keyed else "{"
-        edge_stamp = ", r._tenant = $tenant" if self.tenant_keyed else ""
+        scope = TenantScope.from_mode(self.tenant_keyed)
         await self.store.runner(handle).run(
             QuerySpec(
-                f"MATCH (e:Entity {scope}id: $id}}) "
+                f"MATCH {scope.node_pattern('e', 'Entity', '$id')} "
                 "CREATE (e)-[r:FACT]->(e) "
-                f"SET r.status = $status, r.expired_at = $expired_at{edge_stamp}",
+                "SET r.status = $status, r.expired_at = $expired_at"
+                f"{scope.stamp_clause('r')}",
                 {
                     "id": entity_id,
                     "status": status,

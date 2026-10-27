@@ -7,6 +7,7 @@ from ontogr_mem.consolidation.config import ConsolidationSettings
 from ontogr_mem.consolidation.store import ConsStore
 from ontogr_mem.data_models.entities import Entity
 from ontogr_mem.graphstore import QuerySpec, ScopedRunner
+from ontogr_mem.graphstore.cypher import TenantScope
 from ontogr_mem.ingestion.store import EpisodeStore
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionPolicy
@@ -77,13 +78,13 @@ class ConsWorld:
 
     async def seed_live_fact(self, subject: str, obj: str) -> None:
         """Add an active FACT edge from ``subject`` to ``obj`` that blocks deletion."""
-        stamp = ", f._tenant = $tenant" if self.tenant_keyed else ""
-        scope = "{_tenant: $tenant, " if self.tenant_keyed else "{"
+        scope = TenantScope.from_mode(self.tenant_keyed)
         await self.runner.run(
             QuerySpec(
-                f"MATCH (s:Entity {scope}id: $subject}}), "
-                f"(o:Entity {scope}id: $object}}) "
-                f"MERGE (s)-[f:FACT]->(o) SET f.status = 'active'{stamp}",
+                f"MATCH {scope.node_pattern('s', 'Entity', '$subject')}, "
+                f"{scope.node_pattern('o', 'Entity', '$object')} "
+                "MERGE (s)-[f:FACT]->(o) "
+                f"SET f.status = 'active'{scope.stamp_clause('f')}",
                 {"subject": subject, "object": obj},
                 read_only=False,
                 idempotent=True,
