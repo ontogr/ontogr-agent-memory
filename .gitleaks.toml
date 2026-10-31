@@ -11,3 +11,17 @@ paths = [
     '''(^|/)(__pycache__|\.pytest_cache|\.ruff_cache|\.cache|\.deepeval)/''',
     '''(^|/)\.amp/in/''',
 ]
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Ignore the synthetic API-key fixture in the redaction test."
+condition = "AND"
+paths = [
+    '''^tests/unit/observability/test_redact\.py$''',
+]
+regexTarget = "line"
+regexes = [
+    '''^\s*\("key=mk_[a-z]{26}[0-9]{4}", "key=mk_\*\*\*"\),$''',
+]
