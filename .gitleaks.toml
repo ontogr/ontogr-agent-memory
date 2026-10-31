@@ -23,5 +23,5 @@ paths = [
 ]
 regexTarget = "line"
 regexes = [
-    '''^\s*\("key=mk_abcdefghijklmnopqrstuvwxyz1234", "key=mk_\*\*\*"\),$''',
+    '''^\s*\("key=mk_[a-z]{26}[0-9]{4}", "key=mk_\*\*\*"\),$''',
 ]
