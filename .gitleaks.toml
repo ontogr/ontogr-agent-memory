@@ -2,11 +2,7 @@
 useDefault = true
 
 [allowlist]
-description = "Exclude generated output, local tooling data, result-record hashes, and a test fixture."
-regexTarget = "line"
-regexes = [
-    '''^\s*\("key=mk_abcdefghijklmnopqrstuvwxyz1234", "key=mk_\*\*\*"\),$''',
-]
+description = "Exclude generated output, local tooling data, and result-record hashes."
 paths = [
     '''benchmarks/results/.*/record\.json''',
     '''(^|/)(\.venv|\.wheelenv|venv)/''',
@@ -14,4 +10,18 @@ paths = [
     '''^(\./)?docs/(node_modules|build|\.docusaurus)/''',
     '''(^|/)(__pycache__|\.pytest_cache|\.ruff_cache|\.cache|\.deepeval)/''',
     '''(^|/)\.amp/in/''',
+]
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Ignore the synthetic API-key fixture in the redaction test."
+condition = "AND"
+paths = [
+    '''^tests/unit/observability/test_redact\.py$''',
+]
+regexTarget = "line"
+regexes = [
+    '''^\s*\("key=mk_abcdefghijklmnopqrstuvwxyz1234", "key=mk_\*\*\*"\),$''',
 ]
