@@ -1,16 +1,14 @@
-"""A tenant world on the in-memory twins, for the consolidation tests."""
+"""A tenant world on a live graph backend, for the consolidation tests."""
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from ontogr_mem.consolidation.config import ConsolidationSettings
+from ontogr_mem.consolidation.store import ConsStore
 from ontogr_mem.data_models.entities import Entity
-from ontogr_mem.graphstore.memory import (
-    MemoryConsStore,
-    MemoryEpisodeStore,
-    MemoryResolverStore,
-    MemoryTemporalStore,
-)
+from ontogr_mem.graphstore import QuerySpec, ScopedRunner
+from ontogr_mem.graphstore.cypher import TenantScope
+from ontogr_mem.ingestion.store import EpisodeStore
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionPolicy
 from ontogr_mem.resolution.resolver import EntityResolver
@@ -20,9 +18,9 @@ from ontogr_mem.temporal.cardinality import (
     RelationRules,
 )
 from ontogr_mem.temporal.engine import TemporalEngine
-from ontogr_mem.vectorstore import EmbeddingGateway, VectorStore
-from ontogr_mem.vectorstore.memory import InMemoryBackend
-from tests.support.embedder import MockEmbedder
+from ontogr_mem.temporal.temporal_store import TemporalStore
+from tests.support.graph_backend import GraphBackend
+from tests.support.tenants import new_tenant
 
 
 T0 = datetime(2030, 1, 1, tzinfo=UTC)
@@ -54,25 +52,45 @@ class ManualClock:
 
 @dataclass
 class ConsWorld:
-    """Every port a stage can reach, all on in-memory twins of one tenant.
+    """Every port a stage can reach, all bound to one live tenant.
 
     Attributes:
         clock: The manual clock every component reads.
         store: The consolidation store.
-        resolution: The entity resolver over its own store.
-        episodes: Episode store that the temporal twin reads.
-        temporal_store: The temporal store twin.
-        temporal: The temporal engine over the twin.
+        resolution: The entity resolver over the tenant's resolver store.
+        episodes: Episode store of the tenant.
+        temporal_store: The temporal store of the tenant.
+        temporal: The temporal engine over the temporal store.
         settings: Consolidation settings of the run.
+        runner: Runs raw queries against the tenant's graph.
+        tenant_keyed: Whether the graph keys nodes by tenant (Neo4j).
     """
 
     clock: ManualClock
-    store: MemoryConsStore
+    store: ConsStore
     resolution: EntityResolver
-    episodes: MemoryEpisodeStore
-    temporal_store: MemoryTemporalStore
+    episodes: EpisodeStore
+    temporal_store: TemporalStore
     temporal: TemporalEngine
     settings: ConsolidationSettings
+    runner: ScopedRunner
+    tenant_keyed: bool
+
+    async def seed_live_fact(self, subject: str, obj: str) -> None:
+        """Add an active FACT edge from ``subject`` to ``obj`` that blocks deletion."""
+        scope = TenantScope.from_mode(self.tenant_keyed)
+        await self.runner.run(
+            QuerySpec(
+                f"MATCH {scope.node_pattern('s', 'Entity', '$subject')}, "
+                f"{scope.node_pattern('o', 'Entity', '$object')} "
+                "MERGE (s)-[f:FACT]->(o) "
+                f"SET f.status = 'active'{scope.stamp_clause('f')}",
+                {"subject": subject, "object": obj},
+                read_only=False,
+                idempotent=True,
+                tag="test_seed_live_fact",
+            )
+        )
 
     async def add_entity(self, entity_id: str, name: str) -> Entity:
         """Save an active entity named ``name`` and return the stored copy."""
@@ -95,33 +113,35 @@ class ConsWorld:
                 await self.add_entity(entity_id, entity_id)
 
 
-async def new_world(settings: ConsolidationSettings | None = None) -> ConsWorld:
-    """Build a world whose resolver and temporal engine run on the in-memory twins."""
+async def new_world(
+    backend: GraphBackend, settings: ConsolidationSettings | None = None
+) -> ConsWorld:
+    """Open a fresh tenant on `backend` and build every port over it."""
     clock = ManualClock()
-    vectors = VectorStore(InMemoryBackend(), EmbeddingGateway(MockEmbedder()))
-    await vectors.ensure_ready()
-    resolver_store = MemoryResolverStore()
+    tenant = new_tenant()
+    stores = await backend.stores_for(tenant)
+    runner = backend.store.runner(await backend.store.open(tenant))
     resolution = EntityResolver(
-        resolver_store,
-        vectors,
+        stores.resolver_store,
+        stores.vectors,
         ResolutionPolicy(),
         ResolverSettings(),
         clock,
     )
-    episodes = MemoryEpisodeStore()
-    temporal_store = MemoryTemporalStore(episodes, resolver_store)
     temporal = TemporalEngine(
-        temporal_store,
+        stores.temporal_store,
         DictRelationPolicy({1: RelationRules(Cardinality.ONE)}),
         resolution.store,
         clock,
     )
     return ConsWorld(
         clock=clock,
-        store=MemoryConsStore(),
+        store=stores.cons_store,
         resolution=resolution,
-        episodes=episodes,
-        temporal_store=temporal_store,
+        episodes=stores.episodes,
+        temporal_store=stores.temporal_store,
         temporal=temporal,
         settings=settings or ConsolidationSettings(),
+        runner=runner,
+        tenant_keyed=backend.tenant_keyed,
     )

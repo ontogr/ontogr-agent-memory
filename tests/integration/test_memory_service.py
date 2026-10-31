@@ -18,15 +18,20 @@ from ontogr_mem.service.errors import (
     ObjectNotFoundError,
 )
 from ontogr_mem.service.principal import Grant
+from tests.support.graph_backend import GraphBackend
 from tests.support.memory_service import memory_service_harness
 
 
 class TestMemoryService:
     """Exercise verbs through the service boundary."""
 
-    async def test_status_lists_grants_and_reads_hide_denied_tenants(self):
+    async def test_status_lists_grants_and_reads_hide_denied_tenants(
+        self, graph_backend: GraphBackend
+    ):
         """Granted Tenants are listed and denied reads use the not-found error."""
-        harness = await memory_service_harness()
+        harness = await memory_service_harness(
+            graph_backend,
+        )
 
         status = await harness.service.get_status(harness.principal)
 
@@ -47,9 +52,13 @@ class TestMemoryService:
         empty = await harness.service.list_episodes(granted, ListEpisodes(tenant="t2"))
         assert empty.episodes == []
 
-    async def test_status_includes_default_tenant_for_wildcard_grant(self):
+    async def test_status_includes_default_tenant_for_wildcard_grant(
+        self, graph_backend: GraphBackend
+    ):
         """A wildcard grant exposes the principal's default tenant in status."""
-        harness = await memory_service_harness()
+        harness = await memory_service_harness(
+            graph_backend,
+        )
         principal = harness.principal.model_copy(
             update={"grants": {"*": frozenset({Grant.READ})}}
         )
@@ -59,10 +68,12 @@ class TestMemoryService:
         assert status.tenants == [principal.default_tenant]
 
     async def test_structured_writes_are_readable_through_entity_and_episode_verbs(
-        self,
+        self, graph_backend: GraphBackend
     ):
         """A fact write stores its relation statement and its session metadata."""
-        harness = await memory_service_harness()
+        harness = await memory_service_harness(
+            graph_backend,
+        )
         effective_at = datetime(2024, 3, 1, tzinfo=UTC)
 
         receipt = await harness.service.add_memory(
@@ -93,9 +104,13 @@ class TestMemoryService:
         )
         assert [episode.session_id for episode in episodes.episodes] == ["session-one"]
 
-    async def test_search_returns_fact_and_rendered_context(self):
+    async def test_search_returns_fact_and_rendered_context(
+        self, graph_backend: GraphBackend
+    ):
         """A stored fact is available in the structured and prompt response."""
-        harness = await memory_service_harness()
+        harness = await memory_service_harness(
+            graph_backend,
+        )
         await harness.service.add_memory(
             harness.principal,
             AddMemory(
@@ -117,9 +132,13 @@ class TestMemoryService:
         assert result.facts and result.facts[0].statement == "Ana works at Acme"
         assert result.rendered
 
-    async def test_text_write_without_a_model_fails_before_queueing(self):
+    async def test_text_write_without_a_model_fails_before_queueing(
+        self, graph_backend: GraphBackend
+    ):
         """A free-text request does not create a job without an LLM client."""
-        harness = await memory_service_harness()
+        harness = await memory_service_harness(
+            graph_backend,
+        )
 
         with pytest.raises(LLMUnavailableError):
             await harness.service.add_memory(
@@ -129,9 +148,13 @@ class TestMemoryService:
 
         assert await harness.state.tenant_ids() == []
 
-    async def test_update_closes_the_current_fact_and_adds_its_replacement(self):
+    async def test_update_closes_the_current_fact_and_adds_its_replacement(
+        self, graph_backend: GraphBackend
+    ):
         """An update closes one fact and makes its replacement current."""
-        harness = await memory_service_harness()
+        harness = await memory_service_harness(
+            graph_backend,
+        )
         original = await harness.service.add_memory(
             harness.principal,
             AddMemory(
@@ -169,9 +192,13 @@ class TestMemoryService:
         assert job.result["closed_fact_id"] == fact_id
         assert entity.facts[0].object.name == "Globex"
 
-    async def test_invalidate_closes_a_fact_and_keeps_its_history(self):
+    async def test_invalidate_closes_a_fact_and_keeps_its_history(
+        self, graph_backend: GraphBackend
+    ):
         """An invalidated fact remains readable before its applied end time."""
-        harness = await memory_service_harness()
+        harness = await memory_service_harness(
+            graph_backend,
+        )
         forget_principal = harness.principal.model_copy(
             update={"grants": {"t1": harness.principal.grants["t1"] | {Grant.FORGET}}}
         )
@@ -228,9 +255,11 @@ class TestMemoryService:
             fact.valid_to == datetime(2025, 9, 1, tzinfo=UTC) for fact in history.facts
         )
 
-    async def test_update_refuses_a_closed_fact(self):
+    async def test_update_refuses_a_closed_fact(self, graph_backend: GraphBackend):
         """An already closed fact cannot be replaced a second time."""
-        harness = await memory_service_harness()
+        harness = await memory_service_harness(
+            graph_backend,
+        )
         receipt = await harness.service.add_memory(
             harness.principal,
             AddMemory(
@@ -263,9 +292,13 @@ class TestMemoryService:
         assert receipt.error.code.value == "conflict"
         assert receipt.error.message == "fact is closed, not active"
 
-    async def test_episode_pages_do_not_repeat_episodes(self):
+    async def test_episode_pages_do_not_repeat_episodes(
+        self, graph_backend: GraphBackend
+    ):
         """A next cursor starts after the last episode on the preceding page."""
-        harness = await memory_service_harness()
+        harness = await memory_service_harness(
+            graph_backend,
+        )
         for object_name in ("Acme", "Globex", "Initech"):
             await harness.service.add_memory(
                 harness.principal,
@@ -294,9 +327,13 @@ class TestMemoryService:
         assert first_ids.isdisjoint(second_ids)
         assert second.next_cursor is None
 
-    async def test_update_rejects_an_effective_time_before_fact_start(self):
+    async def test_update_rejects_an_effective_time_before_fact_start(
+        self, graph_backend: GraphBackend
+    ):
         """The update contract rejects an end that precedes the fact start."""
-        harness = await memory_service_harness()
+        harness = await memory_service_harness(
+            graph_backend,
+        )
         receipt = await harness.service.add_memory(
             harness.principal,
             AddMemory(

@@ -1,19 +1,30 @@
 """Repeatable lane ablation on the approved deterministic retrieval world."""
 
-from ontogr_mem.graphstore.memory import MemoryResolverStore
 from ontogr_mem.retrieval import KeywordKind, LaneStatus, Retriever
 from ontogr_mem.vectorstore import VectorKind
 from tests.eval.retrieval_ports import SilentKeywords, SilentVectors
 from tests.eval.retrieval_runner import run_ablation
+from tests.support.graph_backend import GraphBackend
+from tests.support.retrieval_backends import graph_retrieval_backend
 from tests.support.retrieval_world import VECTOR, build_world
+
+
+# FalkorDB's fulltext stemmer also matches "work" to "works", so its keyword lane
+# retrieves more than Neo4j's does.
+STEMMING_DEPENDENT_FUSED = {
+    "falkordb": {"recall_at_5": 0.9412, "mrr": 0.7829},
+    "neo4j": {"recall_at_5": 0.8824, "mrr": 0.7717},
+}
 
 
 class TestRetrievalAblation:
     """Compare the report and prove that disabled lanes cannot retrieve data."""
 
-    async def test_disabled_ports_and_lanes_return_nothing(self):
+    async def test_disabled_ports_and_lanes_return_nothing(
+        self, graph_backend: GraphBackend
+    ):
         """Suppressed reads leave every result empty and graph expansion skipped."""
-        world = await build_world()
+        world = await build_world(await graph_retrieval_backend(graph_backend))
         vectors = SilentVectors(world.vectors, kinds=frozenset(VectorKind))
         keywords = SilentKeywords(world.keywords, kinds=frozenset(KeywordKind))
         for kind in VectorKind:
@@ -23,7 +34,7 @@ class TestRetrievalAblation:
         retriever = Retriever(
             vectors=vectors,
             keywords=keywords,
-            entities=MemoryResolverStore(),
+            entities=(await graph_backend.open_stores()).resolver_store,
             facts=world.facts_reader,
             episodes=world.episodes,
         )
@@ -38,11 +49,14 @@ class TestRetrievalAblation:
             LaneStatus.SKIPPED,
         ]
 
-    async def test_report_repeats_and_fusion_retains_single_lane_rank(self):
+    async def test_report_repeats_and_fusion_retains_single_lane_rank(
+        self, graph_backend: GraphBackend
+    ):
         """The report repeats exactly and names the metrics each lane adds."""
-        world = await build_world()
-        report = await run_ablation(world)
-        assert await run_ablation(world) == report
+        world = await build_world(await graph_retrieval_backend(graph_backend))
+        empty_resolver = (await graph_backend.open_stores()).resolver_store
+        report = await run_ablation(world, empty_resolver=empty_resolver)
+        assert await run_ablation(world, empty_resolver=empty_resolver) == report
 
         configurations = report["configurations"]
         fused = configurations["fused"]["facts"]["non_overview"]
@@ -52,12 +66,13 @@ class TestRetrievalAblation:
             for name in ("vector_only", "keyword_only", "entity_graph")
         )
 
-        assert fused == {
+        assert {key: fused[key] for key in ("hit_at_1", "queries")} == {
             "hit_at_1": 0.6471,
-            "recall_at_5": 0.8824,
-            "mrr": 0.7717,
             "queries": 17,
         }
+        assert {key: fused[key] for key in ("recall_at_5", "mrr")} == (
+            STEMMING_DEPENDENT_FUSED[graph_backend.name]
+        )
         assert fused["mrr"] >= best_single, (
             "Fusion trails the best single lane. Report the finding to the owner; "
             "do not lower the threshold or alter the labels."

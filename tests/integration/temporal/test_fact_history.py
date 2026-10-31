@@ -1,10 +1,11 @@
-"""Fact history reads against the in-memory temporal twin."""
+"""Fact history reads against a live graph tenant."""
 
 from datetime import timedelta
 
 from ontogr_mem.data_models.fact_versions import FactStatus, SupersessionKind
 from ontogr_mem.temporal.lineage import fact_history
 from ontogr_mem.temporal.reader import FactReader
+from tests.support.graph_backend import GraphBackend
 from tests.support.p9i import NOW, add_fact, make_world
 from tests.unit.temporal.helpers import at
 
@@ -12,10 +13,12 @@ from tests.unit.temporal.helpers import at
 class TestFactHistory:
     """Read a fact slot's world and system history."""
 
-    async def test_history_orders_versions_and_separates_both_ends(self):
+    async def test_history_orders_versions_and_separates_both_ends(
+        self, graph_backend: GraphBackend
+    ):
         """A replacement closes the old world interval and system version."""
-        episodes, _, store, clock, engine = await make_world(
-            ("ana", "berlin", "munich")
+        episodes, _, store, clock, engine, _ = await make_world(
+            graph_backend, ("ana", "berlin", "munich")
         )
         await add_fact(
             episodes,
@@ -64,10 +67,12 @@ class TestFactHistory:
         assert new_claim.fact_id != old.fact_id
         assert new_claim.world_end is None
 
-    async def test_time_filters_return_what_was_believed_then(self):
+    async def test_time_filters_return_what_was_believed_then(
+        self, graph_backend: GraphBackend
+    ):
         """Known time limits versions independently of valid time."""
-        episodes, _, store, clock, engine = await make_world(
-            ("ana", "berlin", "munich")
+        episodes, _, store, clock, engine, _ = await make_world(
+            graph_backend, ("ana", "berlin", "munich")
         )
         await add_fact(
             episodes,
@@ -126,9 +131,13 @@ class TestFactHistory:
         assert known_after_update is not None
         assert [item.version for item in known_after_update.versions] == [2]
 
-    async def test_withdrawn_tombstone_has_no_world_end_or_evidence(self):
+    async def test_withdrawn_tombstone_has_no_world_end_or_evidence(
+        self, graph_backend: GraphBackend
+    ):
         """Retracting the source leaves an auditable tombstone in history."""
-        episodes, _, store, clock, engine = await make_world(("ana", "berlin"))
+        episodes, _, store, clock, engine, _ = await make_world(
+            graph_backend, ("ana", "berlin")
+        )
         await add_fact(
             episodes,
             engine,
@@ -154,9 +163,9 @@ class TestFactHistory:
         assert tombstone.episode_ids == ()
         assert result.versions[0].superseded_by_version == tombstone.version
 
-    async def test_unknown_fact_returns_none(self):
+    async def test_unknown_fact_returns_none(self, graph_backend: GraphBackend):
         """A fact id outside the tenant's store has no history."""
-        _, _, store, _, _ = await make_world(("ana",))
+        _, _, store, _, _, _ = await make_world(graph_backend, ("ana",))
 
         result = await fact_history(store, FactReader(store), "missing", now=NOW)
 

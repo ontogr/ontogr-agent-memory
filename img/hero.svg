@@ -61,7 +61,7 @@
 <g><rect class="row" x="716" y="92" width="176" height="28" rx="4"/><text class="n-name-sm" x="726" y="110">Graph store</text></g>
 <g><rect class="row" x="716" y="128" width="176" height="28" rx="4"/><text class="n-name-sm" x="726" y="146">Vector store</text></g>
 <g><rect class="row" x="716" y="164" width="176" height="28" rx="4"/><text class="n-name-sm" x="726" y="182">Episode store</text></g>
-<g><rect class="row" x="716" y="200" width="176" height="28" rx="4"/><text class="n-name-sm" x="726" y="218">State store</text></g>
+<g><rect class="row" x="716" y="200" width="176" height="28" rx="4"/><text class="n-name-sm" x="726" y="218">Relation store</text></g>
 <g><rect class="k-backend" x="780" y="320" width="124" height="48" rx="6"/><text class="n-name" x="842" y="348" text-anchor="middle">Retrieval</text></g>
 <g><rect class="k-store" x="548" y="320" width="140" height="48" rx="6"/><text class="n-name" x="618" y="348" text-anchor="middle">Context block</text></g>
 <text class="callout" x="24" y="404" text-anchor="start">Writes run left to right across the top. Reads come back along the bottom.</text>

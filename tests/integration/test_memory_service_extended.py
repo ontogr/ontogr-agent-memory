@@ -1,6 +1,5 @@
 """Public feedback, consolidation, and tenant-read service behavior."""
 
-import dataclasses
 from datetime import UTC, datetime
 
 import pytest
@@ -18,16 +17,20 @@ from ontogr_mem.service.contracts import (
 )
 from ontogr_mem.service.errors import InvalidArgumentError, ObjectNotFoundError
 from ontogr_mem.service.principal import Grant
-from tests.support import memory_service as memory_service_support
+from tests.support.graph_backend import GraphBackend
 from tests.support.memory_service import memory_service_harness
 
 
 class TestMemoryServiceExtended:
     """Exercise the additional public service verbs on isolated tenants."""
 
-    async def test_feedback_records_entity_and_fact_scores(self):
+    async def test_feedback_records_entity_and_fact_scores(
+        self, graph_backend: GraphBackend
+    ):
         """Feedback scores map from -1..1 to persisted 0..1 ratings."""
-        harness = await memory_service_harness()
+        harness = await memory_service_harness(
+            graph_backend,
+        )
         receipt = await harness.service.add_memory(
             harness.principal,
             AddMemory(
@@ -61,9 +64,13 @@ class TestMemoryServiceExtended:
         assert entity_result == {"recorded": 1, "rating": 1.0, "tenant_id": "t1"}
         assert fact_result == {"recorded": 2, "rating": 0.0, "tenant_id": "t1"}
 
-    async def test_consolidate_memory_runs_as_a_write_job(self):
+    async def test_consolidate_memory_runs_as_a_write_job(
+        self, graph_backend: GraphBackend
+    ):
         """Consolidation returns its stage report through the job result."""
-        harness = await memory_service_harness()
+        harness = await memory_service_harness(
+            graph_backend,
+        )
 
         receipt = await harness.service.consolidate_memory(
             harness.principal, ConsolidateMemory(tenant="t1", wait_seconds=5)
@@ -79,9 +86,13 @@ class TestMemoryServiceExtended:
         )
         assert reflection["status"] == "skipped"
 
-    async def test_history_entity_graph_stats_and_operations_are_readable(self):
+    async def test_history_entity_graph_stats_and_operations_are_readable(
+        self, graph_backend: GraphBackend
+    ):
         """Tenant reads return domain data, while stats and lists add no rows."""
-        harness = await memory_service_harness()
+        harness = await memory_service_harness(
+            graph_backend,
+        )
         receipt = await harness.service.add_memory(
             harness.principal,
             AddMemory(
@@ -130,9 +141,13 @@ class TestMemoryServiceExtended:
         assert audit_rows == []
         assert len(after) == len(before) + 3
 
-    async def test_export_is_audited_and_requires_export_grant(self):
+    async def test_export_is_audited_and_requires_export_grant(
+        self, graph_backend: GraphBackend
+    ):
         """Export writes a scalar-detail audit event and checks its grant."""
-        harness = await memory_service_harness()
+        harness = await memory_service_harness(
+            graph_backend,
+        )
         writer = harness.principal.model_copy(
             update={
                 "grants": {"t1": frozenset({Grant.READ, Grant.WRITE, Grant.EXPORT})}
@@ -173,9 +188,13 @@ class TestMemoryServiceExtended:
             ),
         ],
     )
-    async def test_search_rejects_retrieval_caps_as_invalid_argument(self, overrides):
+    async def test_search_rejects_retrieval_caps_as_invalid_argument(
+        self, graph_backend: GraphBackend, overrides
+    ):
         """Search reports a request above a retrieval cap as a client error."""
-        harness = await memory_service_harness()
+        harness = await memory_service_harness(
+            graph_backend,
+        )
         await harness.service.add_memory(
             harness.principal,
             AddMemory(
@@ -195,7 +214,7 @@ class TestMemoryServiceExtended:
             )
 
     async def test_graph_keyword_timeout_passes_through_as_a_server_fault(
-        self, monkeypatch
+        self, graph_backend
     ):
         """A keyword timeout during seed search is not reported as bad input."""
 
@@ -203,16 +222,9 @@ class TestMemoryServiceExtended:
             async def search(self, kind, query, *, limit):
                 raise KeywordTimeoutError("keyword index timed out")
 
-        original_memory_stores = memory_service_support.memory_stores
-
-        async def stores_with_timeout_keywords(tenant_id, embedder, *, tracer=None):
-            stores = await original_memory_stores(tenant_id, embedder, tracer=tracer)
-            return dataclasses.replace(stores, keywords=TimeoutKeywords())
-
-        monkeypatch.setattr(
-            memory_service_support, "memory_stores", stores_with_timeout_keywords
+        harness = await memory_service_harness(
+            graph_backend, keywords=TimeoutKeywords()
         )
-        harness = await memory_service_harness()
         await harness.service.add_memory(
             harness.principal,
             AddMemory(
@@ -230,9 +242,13 @@ class TestMemoryServiceExtended:
                 harness.principal, "t1", query="Where does Ana work?"
             )
 
-    async def test_graph_rejects_depth_above_the_cap_as_invalid_argument(self):
+    async def test_graph_rejects_depth_above_the_cap_as_invalid_argument(
+        self, graph_backend: GraphBackend
+    ):
         """A graph depth above the retrieval cap is reported as a client error."""
-        harness = await memory_service_harness()
+        harness = await memory_service_harness(
+            graph_backend,
+        )
         await harness.service.add_memory(
             harness.principal,
             AddMemory(

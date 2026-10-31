@@ -2,7 +2,7 @@
 
 import pytest
 
-from ontogr_mem.graphstore.memory import MemoryOntologyStore
+from ontogr_mem.graphstore.ontology_store import GraphOntologyStore
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import (
     AddAlias,
@@ -20,13 +20,20 @@ from ontogr_mem.service.relations import (
     relation_policy,
 )
 from tests.support.clock import FixedClock
+from tests.support.graph_backend import GraphBackend
 
 
 @pytest.fixture
-def manager() -> OntologyManager:
-    """Build an in-memory manager without an LLM client."""
+async def manager(graph_backend: GraphBackend) -> OntologyManager:
+    """Build a manager over a fresh tenant, without an LLM client."""
+    handle = await graph_backend.open_tenant()
     return OntologyManager(
-        MemoryOntologyStore(set[str]), None, OntologySettings(), FixedClock()
+        GraphOntologyStore(
+            graph_backend.store, handle, tenant_keyed=graph_backend.tenant_keyed
+        ),
+        None,
+        OntologySettings(),
+        FixedClock(),
     )
 
 

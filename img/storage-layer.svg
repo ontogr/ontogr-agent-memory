@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg viewBox="0 0 960 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="storage-layer-title storage-layer-desc" id="storage-layer-root">
 <title id="storage-layer-title">Storage layer</title>
-<desc id="storage-layer-desc">Components reach storage through async ports. The graph store holds entities and facts, and it holds episodes with their raw content. The vector store holds embeddings keyed by graph ids, on the graph or in pgvector. The state store holds jobs, operation rows, audit rows, and the erase journal in SQLite or Postgres.</desc>
+<desc id="storage-layer-desc">Components reach storage through async ports. The graph store holds entities and facts, and it holds episodes with their raw content. The vector store holds embeddings keyed by graph ids, on the graph or in pgvector. The relation store holds jobs, operation rows, audit rows, and the erase journal in SQLite or Postgres.</desc>
 <defs>
       <style>#storage-layer-root { --color-paper:#f5f5f5; --color-ink:#2d3142; --color-muted:#4f5d75; --color-accent:#bf4520; --font-sans:'Geist', system-ui, sans-serif; --font-serif:'Instrument Serif', serif; --font-mono:'Geist Mono', ui-monospace, monospace; }
       #storage-layer-root { font-family: var(--font-sans); color: var(--color-ink); }
@@ -56,7 +56,7 @@
 <text class="n-sub" x="408" y="322" text-anchor="start">and episode text</text>
 <g><rect class="tag" x="776" y="284" width="144" height="20" rx="2"/><text class="tag-t" x="848" y="297" text-anchor="middle">GRAPH-NATIVE (DEFAULT)</text></g>
 <g><rect class="tag" x="776" y="316" width="144" height="20" rx="2"/><text class="tag-t" x="848" y="329" text-anchor="middle">PGVECTOR</text></g>
-<g><rect class="k-store" x="392" y="400" width="544" height="96" rx="6"/><text class="n-name" x="404" y="424">State store</text></g>
+<g><rect class="k-store" x="392" y="400" width="544" height="96" rx="6"/><text class="n-name" x="404" y="424">Relation store</text></g>
 <text class="n-sub" x="408" y="444" text-anchor="start">jobs, operation rows,</text>
 <text class="n-sub" x="408" y="458" text-anchor="start">audit rows, erase journal</text>
 <g><rect class="tag" x="800" y="420" width="120" height="20" rx="2"/><text class="tag-t" x="860" y="433" text-anchor="middle">SQLITE (DEFAULT)</text></g>

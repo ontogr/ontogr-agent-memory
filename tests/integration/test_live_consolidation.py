@@ -15,14 +15,19 @@ from ontogr_mem.consolidation import (
 from ontogr_mem.consolidation.models import Community, Proposal
 from ontogr_mem.consolidation.signals import record_session_entry
 from tests.support.consolidation import new_world
+from tests.support.graph_backend import GraphBackend
 from tests.support.ollama import OllamaLLMClient, available
 from tests.unit.temporal.helpers import at, obs
 
 
 @pytest.mark.skipif(not available(), reason="OLLAMA_API_KEY is not set")
-async def test_the_model_stages_run_against_a_real_model(capsys) -> None:  # type: ignore[no-untyped-def]
+async def test_the_model_stages_run_against_a_real_model(
+    graph_backend: GraphBackend, capsys
+) -> None:  # type: ignore[no-untyped-def]
     """Communities and reflection finish without a failed stage."""
-    world = await new_world()
+    world = await new_world(
+        graph_backend,
+    )
     for entity_id, name in [
         ("ana", "Ana"),
         ("acme", "Acme"),
