@@ -117,12 +117,15 @@ alternate tooling.
 - Use DDD and Clean Architecture principles where they fit the component.
 - Default to functions and modules. Use classes only when there is genuine
   stateful behavior, shared `self` state, or a data container with behavior.
+- Keep related logic in one function unless separate functions are composed or
+  reused.
 - Do not use classes only for namespacing, single-method wrappers, or grouping
   pure functions.
-- Do not add abstractions for single-use code or hypothetical future needs.
-  If you catch yourself adding "for future extensibility", stop. Ship the
-  smallest code that satisfies this task; add configurability only when a
-  second caller exists in this repo.
+- Do not extract single-use helpers preemptively. Inline the logic at the call
+  site unless the helper is reused, hides a genuinely complex boundary, or has
+  a clear independent name that improves the caller.
+- Avoid abstractions for hypothetical future needs. Add configurability only
+  when a second caller exists in this repo.
 - Use `snake_case` for functions and variables, `PascalCase` for classes, and
   `test_*.py` for tests.
 - Prefer descriptive names. Avoid abbreviations such as `ver` when `version` is
@@ -173,7 +176,11 @@ Ask: would this break code that used the package last week?
   when a shared model is appropriate.
 - Keep memory logic storage-agnostic unless it is explicitly in a storage
   adapter package.
-- Validate any interpolated query identifiers before formatting a query string.
+- Validate unknown values once at the boundary that owns them. Pass typed values
+  inward instead of revalidating values guaranteed by a schema, constructor, or
+  internal type.
+- Before interpolating any query identifier, validate it at its owning boundary
+  or use identifier-safe quoting.
 - Settings classes subclass `pydantic_settings.BaseSettings`, load from the
   repo-root `.env`, and use clear environment prefixes such as `MEMORY_DB_`.
 - Wrap databases, external services, network I/O, and message queues when a
@@ -321,6 +328,10 @@ Google style governs docstring structure and formatting; `writing-plain` governs
 - Ask before changing public API shape, persistence schema,
   dependencies, or config keys. Otherwise make a
   reasonable assumption and proceed.
+- Before adding complexity for a speculative or vanishingly unlikely race or
+  security edge case, explain the concrete failure mode, its likelihood, and the
+  complexity cost to the user. Get their buy-in before expanding scope for
+  theoretical robustness.
 - State assumptions when they affect the implementation. Surface tradeoffs and
   push back when a simpler or safer approach exists.
 - Before changing code, inspect enough nearby code and tests to follow existing
