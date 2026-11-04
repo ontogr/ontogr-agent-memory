@@ -87,7 +87,7 @@ dev = [
   "pytest-rerunfailures>=16.2",
   "pytest-socket>=0.7.0",
   "pytest-xdist>=3.8.0",
-  "ruff>=0.16.10",
+  "ruff>=0.17.1",
   "ty>=0.0.32",
   "typos>=1.51.1",
 ]
