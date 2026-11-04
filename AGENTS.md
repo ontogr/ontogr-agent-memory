@@ -121,8 +121,9 @@ alternate tooling.
   reused.
 - Do not use classes only for namespacing, single-method wrappers, or grouping
   pure functions.
-- Do not extract single-use helpers preemptively. Extract one only when it hides
-  a genuinely complex boundary or its independent name makes the caller clearer.
+- Do not extract single-use helpers preemptively. Inline the logic at the call
+  site unless the helper is reused, hides a genuinely complex boundary, or has
+  a clear independent name that improves the caller.
 - Avoid abstractions for hypothetical future needs. Add configurability only
   when a second caller exists in this repo.
 - Use `snake_case` for functions and variables, `PascalCase` for classes, and
@@ -178,8 +179,8 @@ Ask: would this break code that used the package last week?
 - Validate unknown values once at the boundary that owns them. Pass typed values
   inward instead of revalidating values guaranteed by a schema, constructor, or
   internal type.
-- Validate untrusted query identifiers at the query boundary before formatting
-  a query string.
+- Before interpolating any query identifier, validate it at its owning boundary
+  or use identifier-safe quoting.
 - Settings classes subclass `pydantic_settings.BaseSettings`, load from the
   repo-root `.env`, and use clear environment prefixes such as `MEMORY_DB_`.
 - Wrap databases, external services, network I/O, and message queues when a
