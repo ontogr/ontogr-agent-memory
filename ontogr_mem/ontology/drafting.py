@@ -64,7 +64,7 @@ async def run_drafting(
     if not groups:
         return run
     labels = sorted(g.label for g in groups)
-    pid = proposal_id(labels, cat.version, attempt)
+    proposal_identifier = proposal_id(labels, cat.version, attempt)
     schema = Draft.model_json_schema()
     feedback = ""
     for _ in range(max_retries + 1):
@@ -98,7 +98,7 @@ async def run_drafting(
             continue
         run.proposals.append(
             Proposal(
-                proposal_id=pid,
+                proposal_id=proposal_identifier,
                 ops=list(draft.ops),
                 labels=labels,
                 support=sum(g.support for g in groups),
@@ -110,7 +110,7 @@ async def run_drafting(
         return run
     run.proposals.append(
         Proposal(
-            proposal_id=pid,
+            proposal_id=proposal_identifier,
             ops=[],
             labels=labels,
             support=sum(g.support for g in groups),

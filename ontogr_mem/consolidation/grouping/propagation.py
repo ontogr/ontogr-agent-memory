@@ -53,7 +53,11 @@ def label_propagation(
             if not weight:
                 continue
             best = max(weight.values())
-            winners = sorted(lab for lab, w in weight.items() if w == best)
+            winners = sorted(
+                candidate_label
+                for candidate_label, edge_weight in weight.items()
+                if edge_weight == best
+            )
             if label[n] in winners:
                 continue
             label[n] = winners[0]

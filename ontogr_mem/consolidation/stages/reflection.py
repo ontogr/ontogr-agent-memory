@@ -184,13 +184,16 @@ async def _decide_batch(
     pending: list[tuple[_LessonDraft, str, list[str]]] = []
     seen: set[str] = set()
     for lesson in lessons:
-        pid = proposal_id(session_id, lesson.text)
-        if pid in seen or await ctx.store.get(Proposal, pid) is not None:
+        proposal_identifier = proposal_id(session_id, lesson.text)
+        if (
+            proposal_identifier in seen
+            or await ctx.store.get(Proposal, proposal_identifier) is not None
+        ):
             counts["duplicates"] += 1
             continue
-        seen.add(pid)
+        seen.add(proposal_identifier)
         sources = [i for i in lesson.entry_ids if i in by_id]
-        pending.append((lesson, pid, sources))
+        pending.append((lesson, proposal_identifier, sources))
 
     verdicts: list[LessonVerdict | None] = [None] * len(pending)
 
@@ -221,7 +224,7 @@ async def _decide_batch(
     )
 
     ok = True
-    for (lesson, pid, sources), verdict, failure in zip(
+    for (lesson, proposal_identifier, sources), verdict, failure in zip(
         pending, verdicts, failures, strict=True
     ):
         if failure is not None:
@@ -230,11 +233,11 @@ async def _decide_batch(
             continue
         if verdict is None:
             ok = False
-            errors.append(f"writer: no verdict for {pid}")
+            errors.append(f"writer: no verdict for {proposal_identifier}")
             continue
         await ctx.store.put(
             Proposal(
-                proposal_id=pid,
+                proposal_id=proposal_identifier,
                 session_id=session_id,
                 text=lesson.text,
                 source_entry_ids=sources,

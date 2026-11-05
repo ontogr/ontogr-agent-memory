@@ -233,16 +233,16 @@ _COERCERS: dict[ValueType, Callable[[object], AttributeValue]] = {
 }
 
 
-def coerce(value: object, vt: ValueType) -> AttributeValue:
+def coerce(value: object, value_type: ValueType) -> AttributeValue:
     """Coerce ``value`` to the attribute type, strictly.
 
     Integers with a fractional part fail, booleans are not numbers, and a list is not
     wrapped for you. Dates and datetimes return ISO text.
 
     Raises:
-        _UncoercibleError: The value does not fit ``vt``.
+        _UncoercibleError: The value does not fit ``value_type``.
     """
-    return _COERCERS[vt](value)
+    return _COERCERS[value_type](value)
 
 
 def _attributes(

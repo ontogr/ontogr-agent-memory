@@ -68,9 +68,13 @@ def _signals(p: PairInput) -> str:
 def pair_block(n: int, p: PairInput, swap: bool) -> str:
     """Return the delimited block that shows one pair to the model."""
     left, right = (p.b, p.a) if swap else (p.a, p.b)
-    la, ra = (p.b_aliases, p.a_aliases) if swap else (p.a_aliases, p.b_aliases)
-    lq, rq = (p.b_quotes, p.a_quotes) if swap else (p.a_quotes, p.b_quotes)
+    left_aliases, right_aliases = (
+        (p.b_aliases, p.a_aliases) if swap else (p.a_aliases, p.b_aliases)
+    )
+    left_quotes, right_quotes = (
+        (p.b_quotes, p.a_quotes) if swap else (p.a_quotes, p.b_quotes)
+    )
     return (
-        f"<pair n={n}>\nA: {_render(left, la, lq)}\n"
-        f"B: {_render(right, ra, rq)}{_signals(p)}\n</pair>"
+        f"<pair n={n}>\nA: {_render(left, left_aliases, left_quotes)}\n"
+        f"B: {_render(right, right_aliases, right_quotes)}{_signals(p)}\n</pair>"
     )

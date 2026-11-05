@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager, suppress
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
+from ontogr_mem._extras import import_extra
 from ontogr_mem.relational_store.schema.runner import ensure_sqlite_schema
 
 
@@ -82,8 +83,6 @@ async def pg_pool(dsn: str) -> "asyncpg.Pool":
     The pool is a singleton for the process lifetime, so callers must not
     close it; ``asyncpg`` is imported lazily through the optional-extra seam.
     """
-    from ontogr_mem._extras import import_extra
-
     asyncpg = import_extra("asyncpg", "postgres")
     pool = _pg_pools.get(dsn)
     if pool is not None:

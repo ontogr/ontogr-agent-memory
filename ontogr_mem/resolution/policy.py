@@ -153,8 +153,11 @@ class ResolutionPolicy:
     ) -> None:
         """Create the table; ``types`` and ``families`` are keyed by label."""
         self._types = {normalize_label(k): v for k, v in (types or {}).items()}
-        fam = DEFAULT_FAMILIES if families is None else families
-        self._families = {normalize_label(k): v for k, v in fam.items()}
+        configured_families = DEFAULT_FAMILIES if families is None else families
+        self._families = {
+            normalize_label(label): family
+            for label, family in configured_families.items()
+        }
 
     def family(self, label: str) -> str | None:
         """Return the merge family of a label, or None for a free label."""
@@ -204,8 +207,8 @@ class ResolutionPolicy:
             return TypeRel.NESTED
         if relations is not None and relations.related(a_c, b_c):
             return TypeRel.NESTED
-        fam = self.family(a)
-        if fam is not None and fam == self.family(b):
+        family = self.family(a)
+        if family is not None and family == self.family(b):
             return TypeRel.FAMILY
         return TypeRel.DISTINCT
 

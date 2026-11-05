@@ -270,9 +270,12 @@ def _by_label_when_new(a: Ontology, b: Ontology, ops: list[Op]) -> list[Op]:
             return label[kind][ref]
         return ref
 
-    def spec(sp: PatternSpec) -> PatternSpec:
+    def spec(pattern_spec: PatternSpec) -> PatternSpec:
         """Apply ``fix`` to both endpoints of a pattern spec."""
-        return PatternSpec(src=fix(Kind.ENTITY, sp.src), tgt=fix(Kind.ENTITY, sp.tgt))
+        return PatternSpec(
+            src=fix(Kind.ENTITY, pattern_spec.src),
+            tgt=fix(Kind.ENTITY, pattern_spec.tgt),
+        )
 
     out: list[Op] = []
     for op in ops:

@@ -110,9 +110,15 @@ def test_render_caps_the_list_and_keeps_unknown():
 
 def run(cat, ents, rels=()):
     """Run."""
-    _, ev = render(cat, Kind.ENTITY)
-    _, rv = render(cat, Kind.RELATION)
-    return validate(cat, ExtractedItems(tuple(ents), tuple(rels)), CTX, ev, rv)
+    _, entity_view = render(cat, Kind.ENTITY)
+    _, relation_view = render(cat, Kind.RELATION)
+    return validate(
+        cat,
+        ExtractedItems(tuple(ents), tuple(rels)),
+        CTX,
+        entity_view,
+        relation_view,
+    )
 
 
 def test_position_outside_the_list_is_a_counted_drop_not_a_fallback():

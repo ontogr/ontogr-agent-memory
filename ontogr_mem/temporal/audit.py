@@ -51,9 +51,11 @@ def _conflict_violations(snap: TemporalSnapshot) -> list[Violation]:
         if n > 1
     ]
     out += [
-        Violation("duplicate_verdict", vid, str(n))
-        for vid, n in Counter(v.verdict_id for v in snap.verdicts).items()
-        if n > 1
+        Violation("duplicate_verdict", verdict_id, str(count))
+        for verdict_id, count in Counter(
+            verdict.verdict_id for verdict in snap.verdicts
+        ).items()
+        if count > 1
     ]
     for conflict in snap.conflicts:
         for fact_id in conflict.fact_ids:

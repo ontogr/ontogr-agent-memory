@@ -170,16 +170,16 @@ def classify(  # noqa: PLR0911
     if policy is ConflictPolicy.IGNORE:
         return None
     a, b = order(x, y)
-    rtt = time_relation(a, b)
+    relation_to_time = time_relation(a, b)
     inputs = ((a.fact_id, a.rank), (b.fact_id, b.rank))
-    if judged_uncertain or rtt is RelationToTime.UNKNOWN:
+    if judged_uncertain or relation_to_time is RelationToTime.UNKNOWN:
         why = (
             "the judge could not decide" if judged_uncertain else "a fact has no dates"
         )
         return Classification(
             ConflictClass.UNCERTAIN,
             Disposition.REVIEW,
-            rtt,
+            relation_to_time,
             why,
             trust_inputs=inputs,
         )
@@ -190,7 +190,7 @@ def classify(  # noqa: PLR0911
             return Classification(
                 ConflictClass.CORRECTION,
                 Disposition.CORRECT,
-                rtt,
+                relation_to_time,
                 "a correction says the other statement was wrong",
                 loser=wrong.fact_id,
                 loser_status=FactStatus.CORRECTED,
@@ -198,24 +198,24 @@ def classify(  # noqa: PLR0911
             )
     if (
         confirmed_contradiction
-        and rtt is RelationToTime.OVERLAPPING
+        and relation_to_time is RelationToTime.OVERLAPPING
         and b.rank >= a.rank
     ):
         return Classification(
             ConflictClass.UPDATE,
             Disposition.SUPERSEDE,
-            rtt,
+            relation_to_time,
             "a later statement from an equal or more trusted source "
             "contradicts an earlier one",
             close_earlier=True,
             trust_inputs=inputs,
         )
-    if rtt is RelationToTime.ORDERED:
+    if relation_to_time is RelationToTime.ORDERED:
         if b.rank >= a.rank:
             return Classification(
                 ConflictClass.UPDATE,
                 Disposition.SUPERSEDE,
-                rtt,
+                relation_to_time,
                 "a later statement from an equal or more trusted source",
                 close_earlier=True,
                 trust_inputs=inputs,
@@ -223,7 +223,7 @@ def classify(  # noqa: PLR0911
         return Classification(
             ConflictClass.DISPUTE,
             Disposition.COEXIST,
-            rtt,
+            relation_to_time,
             "a later statement from a less trusted source does not close a fact",
             trust_inputs=inputs,
         )
@@ -233,7 +233,7 @@ def classify(  # noqa: PLR0911
         return Classification(
             ConflictClass.DISPUTE,
             Disposition.PREFER,
-            rtt,
+            relation_to_time,
             f"preferred {winner.fact_id} by trust gap {gap} >= margin {margin}",
             loser=loser.fact_id,
             loser_status=FactStatus.OVERRIDDEN,
@@ -242,7 +242,7 @@ def classify(  # noqa: PLR0911
     return Classification(
         ConflictClass.DISPUTE,
         Disposition.COEXIST,
-        rtt,
+        relation_to_time,
         "concurrent statements and no trust gap that permits a preference",
         trust_inputs=inputs,
     )
@@ -255,13 +255,13 @@ def apply_decision(x: Side, y: Side, decision: ConflictDecision) -> Classificati
     fact corrected, and every other action keeps both sides.
     """
     a, b = order(x, y)
-    rtt = time_relation(a, b)
+    relation_to_time = time_relation(a, b)
     if decision.action is DecisionAction.CHOOSE:
         loser = y if decision.chosen_fact_id == x.fact_id else x
         return Classification(
             ConflictClass.DISPUTE,
             Disposition.PREFER,
-            rtt,
+            relation_to_time,
             decision.reason or "chosen by a person",
             loser=loser.fact_id,
             loser_status=FactStatus.OVERRIDDEN,
@@ -271,7 +271,7 @@ def apply_decision(x: Side, y: Side, decision: ConflictDecision) -> Classificati
         return Classification(
             ConflictClass.CORRECTION,
             Disposition.CORRECT,
-            rtt,
+            relation_to_time,
             decision.reason or "marked wrong by a person",
             loser=decision.wrong_fact_id,
             loser_status=FactStatus.CORRECTED,
@@ -280,7 +280,7 @@ def apply_decision(x: Side, y: Side, decision: ConflictDecision) -> Classificati
     return Classification(
         ConflictClass.DISPUTE,
         Disposition.COEXIST,
-        rtt,
+        relation_to_time,
         decision.reason or "both statements are valid",
         decided_by=decision.decided_by.value,
     )
