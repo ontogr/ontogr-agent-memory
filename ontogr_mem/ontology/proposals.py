@@ -99,8 +99,10 @@ def aggregate(
     last_rejected: dict[str, int] = {}
     for p in rejected:
         if p.status is ProposalStatus.REJECTED:
-            for lab in p.labels:
-                last_rejected[lab] = max(last_rejected.get(lab, 0), p.support)
+            for proposal_label in p.labels:
+                last_rejected[proposal_label] = max(
+                    last_rejected.get(proposal_label, 0), p.support
+                )
     out: list[Group] = []
     for (kind, label), items in sorted(buckets.items()):
         resolver = ent if kind is UnmatchedKind.ENTITY_TYPE else rel

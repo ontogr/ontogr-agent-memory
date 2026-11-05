@@ -6,7 +6,6 @@ from uuid import uuid4
 
 import pytest
 
-import ontogr_mem._extras
 from ontogr_mem.relational_store import engine
 
 
@@ -32,9 +31,7 @@ class TestPgPool:
             return pool
 
         fake_asyncpg = SimpleNamespace(create_pool=create_pool)
-        monkeypatch.setattr(
-            ontogr_mem._extras, "import_extra", lambda module, extra: fake_asyncpg
-        )
+        monkeypatch.setattr(engine, "import_extra", lambda module, extra: fake_asyncpg)
         return created
 
     async def test_concurrent_first_callers_share_one_pool(self, dsn, created_pools):

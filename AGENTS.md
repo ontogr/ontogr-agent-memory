@@ -66,7 +66,6 @@ CONTEXT.md              # project vocabulary; keep terms consistent with it
 ## Critical rules
 
 - Do not add any documentation or comments that would not reside in a production codebase. Comments should be developer/user friendly not intermediate findings when performing a task.
-- Do not include comments referring to internal plans, notes, or comments written by agents while performing a task.
 - Keep the flat layout: `ontogr_mem/` lives at the repository root. Do not add
   `src/`.
 - Use `uv run` for Python commands and Makefile targets for standard checks.
@@ -128,11 +127,9 @@ alternate tooling.
   when a second caller exists in this repo.
 - Use `snake_case` for functions and variables, `PascalCase` for classes, and
   `test_*.py` for tests.
-- Prefer descriptive names. Avoid abbreviations such as `ver` when `version` is
-  clearer, or `rp` when `requires_python` is clearer.
-- Prefer top-level imports. Use local imports only when needed to avoid cycles,
-  optional dependency import costs, or test-specific patching patterns already
-  used nearby.
+- AVOID shortening variable names, e.g., use `version` instead of `ver`, and `requires_python`
+  instead of `rp`
+- PREFER top-level imports over local imports or fully qualified names
 - Add type hints to new and modified public APIs.
 - Prefer `TypedDict` over broad `dict`/`Mapping` when documenting structured
   dictionaries in code.
@@ -223,12 +220,17 @@ Use the `writing-tests` skill before adding or changing tests.
 - Test public interfaces and documented behavior, not private implementation
   details. Avoid accessing private members in tests unless no public seam exists.
 - For tests over multiple inputs, use `@pytest.mark.parametrize`.
-- Always read and copy the style of similar nearby tests before adding fixtures
-  or helpers.
+- ALWAYS ensure that new tests use the same style as existing tests for all parts of the test
+- ALWAYS check whether the behavior of a new test is already covered by an existing test
 - For bug fixes, extend the E2E or integration test that covers the behavior so
   it fails without the fix. Add a unit test only when the rules above allow it.
 - One focused test that fails without the fix is better than many shallow tests
   that do not prove behavior.
+- DO NOT leak our conversation, prompt, or iteration history into code comments, pull request
+  descriptions, or other maintainer-facing prose. Write for readers who have not seen our
+  conversation.
+- PREFER comments that explain the current behavior and rationale. Avoid past-facing wording like
+  "preserve the existing behavior"; explain the actual backwards-compatibility constraint instead.
 - Do not write assertion-free tests just to increase coverage.
 - Target 80-90% coverage for core/domain logic; do not chase 100% coverage.
 - Do not delete, skip, or weaken a failing test to hide the failure. Use `skip`

@@ -653,10 +653,10 @@ class ResolverEntities:
             if current.entity_id in seen:
                 return current
             seen.add(current.entity_id)
-            nxt = found.get(current.merged_into)
-            if nxt is None:
+            next_entity = found.get(current.merged_into)
+            if next_entity is None:
                 return current
-            current = nxt
+            current = next_entity
         if current is None:
             raise NotFoundError(f"entity {entity_id!r}")
         return current

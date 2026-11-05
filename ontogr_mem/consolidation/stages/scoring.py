@@ -41,7 +41,7 @@ def _score_of(
     cfg: ScoringSettings,
 ) -> Score:
     """Return the score of one item, counting its recorded accesses."""
-    imp = importance(
+    importance_result = importance(
         last_seen=max([last_seen, *accesses]),
         now=now,
         count=count + len(accesses),
@@ -53,10 +53,10 @@ def _score_of(
         target_id=target_id,
         kind=kind,
         created_at=created_at,
-        score=imp.score,
-        recency=imp.recency,
-        frequency=imp.frequency,
-        salience=imp.salience,
+        score=importance_result.score,
+        recency=importance_result.recency,
+        frequency=importance_result.frequency,
+        salience=importance_result.salience,
         computed_at=now,
     )
 

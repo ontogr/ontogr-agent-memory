@@ -355,8 +355,8 @@ def _baseline_sides(
     current = [fact for fact in inputs.facts if is_withdrawable(fact)]
     ids = assign_fact_ids(key, baseline.runs, current)
     mine = {
-        fid: _run_side(fid, key, run, obs, inputs.trust)
-        for run, fid in zip(baseline.runs, ids, strict=True)
+        fact_id: _run_side(fact_id, key, run, obs, inputs.trust)
+        for run, fact_id in zip(baseline.runs, ids, strict=True)
     }
     runs = dict(zip(ids, baseline.runs, strict=True))
     return baseline, runs, mine

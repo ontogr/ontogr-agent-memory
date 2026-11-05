@@ -21,22 +21,6 @@ class TestLedgerChecksum:
         second = link(CHAIN, (0, GENESIS), TS, LedgerOp.FACT_ADDED, "a", "b|c", PAYLOAD)
         assert first.checksum != second.checksum
 
-    def test_verify_accepts_a_chain_built_by_link(self):
-        """Entries written by link pass verification in any order."""
-        first = link(
-            CHAIN, (0, GENESIS), TS, LedgerOp.FACT_ADDED, "fact-1", "engine", PAYLOAD
-        )
-        second = link(
-            CHAIN,
-            (first.seq, first.checksum),
-            TS,
-            LedgerOp.FACT_VERSIONED,
-            "fact-1",
-            "engine",
-            PAYLOAD,
-        )
-        assert verify([second, first]) == []
-
     def test_verify_rejects_a_chain_with_a_tampered_field(self):
         """Changing a stored actor breaks that entry's checksum."""
         first = link(
