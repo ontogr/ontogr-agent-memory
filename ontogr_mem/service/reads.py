@@ -195,7 +195,11 @@ async def search(
                 seen_entities.add(key)
                 entities_out.append(entity_card_out(tenant_id, card))
 
-    found = bool(facts or entities_out or any(result.episodes for result in results))
+    found = bool(
+        facts
+        or entities_out
+        or (request.session_id is None and any(result.episodes for result in results))
+    )
     state = "found" if found else "none"
     if not found and degraded:
         state = "degraded"

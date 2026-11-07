@@ -27,6 +27,9 @@ from ontogr_mem.service.errors import (
     ObjectNotFoundError,
 )
 from ontogr_mem.service.principal import Grant
+from ontogr_mem.vectorstore import VectorWriter, write_episode_vectors
+from tests.support.embedder import MockEmbedder
+from tests.support.episodes import make_episode
 from tests.support.graph_backend import GraphBackend
 from tests.support.llm import ScriptedLLM
 from tests.support.memory_service import memory_service_harness
@@ -286,6 +289,40 @@ class TestMemoryService:
         assert result.state == "found"
         assert result.facts and result.facts[0].statement == "Ana works at Acme"
         assert result.rendered
+
+    async def test_session_search_ignores_episode_hits_from_other_sessions(
+        self, graph_backend: GraphBackend
+    ):
+        """An episode-only hit outside the requested session is not found."""
+        stores = await graph_backend.stores_for("t1", MockEmbedder())
+        episode = make_episode(
+            "session-search",
+            content="A violet comet note exists.",
+            metadata={"session_id": "stored-session"},
+        )
+        await stores.episodes.write_episodes([episode])
+        await write_episode_vectors(VectorWriter(stores.vectors), [episode])
+        harness = await memory_service_harness(graph_backend)
+
+        unscoped = await harness.service.search_memory(
+            harness.principal,
+            SearchMemory(tenant="t1", query="violet comet note"),
+        )
+        scoped = await harness.service.search_memory(
+            harness.principal,
+            SearchMemory(
+                tenant="t1",
+                query="violet comet note",
+                session_id="requested-session",
+            ),
+        )
+
+        assert unscoped.state == "found"
+        assert unscoped.facts == []
+        assert scoped.facts == []
+        assert scoped.entities == []
+        assert scoped.state == "none"
+        assert scoped.rendered is None
 
     async def test_text_write_without_a_model_fails_before_queueing(
         self, graph_backend: GraphBackend
