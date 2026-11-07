@@ -16,6 +16,7 @@ from ontogr_mem.data_models import (
     Role,
     Source,
     Status,
+    TemporalStatus,
 )
 from ontogr_mem.data_models.fact_versions import FactStatus
 from ontogr_mem.data_models.facts import (
@@ -97,15 +98,23 @@ async def add_memory(
     typed = await stabilize_facts(
         tenant.ontology, facts, await tenant.ontology.extraction_view()
     )
-    if typed.dropped:
+    if typed.dropped and request.kind is MemoryKind.FACT:
         raise InvalidArgumentError("one or more extracted facts were refused")
     ontology = await tenant.ontology.catalog()
     tenant.refresh_relation_labels(ontology)
     report = await tenant.engine(ontology, tenant.resolver.store).ingest(
-        typed.typed, episode
+        typed.typed, episode, ontology_refused=len(typed.dropped)
     )
-    _settled(report)
-    return await _finish_episode(tenant, episode, request)
+    text_write = request.kind in {MemoryKind.TEXT, MemoryKind.MESSAGE}
+    _settled(report, allow_skips=text_write)
+    state = await tenant.stores.temporal_store.episode_state(episode.id)
+    return await _finish_episode(
+        tenant,
+        episode,
+        request,
+        ontology_refused=state.ontology_refused if state is not None else None,
+        skipped=state.skipped if state is not None else None,
+    )
 
 
 async def _prepare_fact(
@@ -203,6 +212,13 @@ async def _prepare_text(
         tenant,
         _draft(job, request, principal_id, kind, occurred_at, content=request.content),
     )
+    state = await tenant.stores.temporal_store.episode_state(episode.id)
+    if (
+        state is not None
+        and state.status is TemporalStatus.COMMITTED
+        and state.committed_hash == episode.content_hash
+    ):
+        return episode, []
     projection = await tenant.ontology.extraction_view()
     entities = await EntityExtraction(
         [LLMExtractor(tenant.llm)],
@@ -521,7 +537,7 @@ def _draft(
         ),
         actor=Actor(
             id=(add.speaker if add is not None and add.speaker else principal_id),
-            role=Role.USER,
+            role=add.role if add is not None else Role.USER,
             display_name=add.speaker or "" if add is not None else "",
         ),
         content=content,
@@ -542,8 +558,11 @@ async def _finish_episode(
     tenant: TenantRuntime,
     episode: Episode,
     request: AddMemory | UpdateMemory | InvalidateMemory,
+    *,
+    ontology_refused: int | None = None,
+    skipped: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
-    """Store episode metadata and write its episode vector."""
+    """Store episode metadata, outcome counts and its episode vector."""
     facts = await tenant.stores.temporal_store.facts_of_episode(episode.id)
     fact_ids = list(dict.fromkeys(fact.fact_id for fact in facts))
     add = request if isinstance(request, AddMemory) else None
@@ -556,11 +575,15 @@ async def _finish_episode(
         )
     )
     await write_episode_vectors(tenant.writer, [episode])
-    return {
+    result = {
         "episode_id": episode.id,
         "episode_ids": [episode.id],
         "fact_ids": fact_ids,
     }
+    if add is not None:
+        result["ontology_refused"] = ontology_refused
+        result["skipped"] = dict(skipped) if skipped is not None else None
+    return result
 
 
 async def _names(tenant: TenantRuntime, entity_ids: list[str]) -> dict[str, str]:
@@ -569,9 +592,9 @@ async def _names(tenant: TenantRuntime, entity_ids: list[str]) -> dict[str, str]
     return {entity.entity_id: entity.canonical_name for entity in entities}
 
 
-def _settled(report: TemporalReport) -> None:
+def _settled(report: TemporalReport, *, allow_skips: bool = False) -> None:
     """Turn an unsuccessful temporal report into a service error."""
-    if report.skipped:
+    if report.skipped and not allow_skips:
         reason, count = next(iter(report.skipped.items()))
         raise InvalidArgumentError(f"fact was skipped: {reason} ({count})")
     if not report.ok:

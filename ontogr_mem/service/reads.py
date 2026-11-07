@@ -195,7 +195,7 @@ async def search(
                 seen_entities.add(key)
                 entities_out.append(entity_card_out(tenant_id, card))
 
-    found = bool(facts or entities_out)
+    found = bool(facts or entities_out or any(result.episodes for result in results))
     state = "found" if found else "none"
     if not found and degraded:
         state = "degraded"
@@ -318,6 +318,9 @@ async def _episode_out(
         episode_id=episode.id,
         tenant=tenant_id,
         kind=episode.kind.value,
+        actor_id=episode.actor.id,
+        actor_name=episode.actor.display_name,
+        actor_role=episode.actor.role.value,
         session_id=meta.session_id if meta else None,
         thread=meta.thread if meta else None,
         source_description=episode.source.description,
