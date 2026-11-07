@@ -1,5 +1,7 @@
 """EpisodeStateStore operations for graph-backed temporal storage."""
 
+import json
+from collections.abc import Mapping
 from typing import Any
 
 from ontogr_mem.data_models.episode import TemporalStatus
@@ -37,7 +39,9 @@ class EpisodeStateStore:
             QuerySpec(
                 f"MATCH (e:{EPISODE} {self._map('id: $id')}) "
                 "RETURN e.temporal_status AS status, "
-                "e.temporal_committed_hash AS committed_hash",
+                "e.temporal_committed_hash AS committed_hash, "
+                "e.temporal_ontology_refused AS ontology_refused, "
+                "e.temporal_skipped AS skipped",
                 {"id": episode_id},
                 read_only=True,
                 idempotent=True,
@@ -47,14 +51,36 @@ class EpisodeStateStore:
         if not rows.rows or rows.rows[0]["status"] is None:
             return None
         row = rows.rows[0]
-        return EpisodeState(TemporalStatus(row["status"]), row["committed_hash"])
+        skipped = json.loads(row["skipped"]) if row["skipped"] is not None else None
+        return EpisodeState(
+            status=TemporalStatus(row["status"]),
+            committed_hash=row["committed_hash"],
+            ontology_refused=row["ontology_refused"],
+            skipped=skipped,
+        )
 
-    async def set_episode_pending(self, episode_id: str) -> None:
-        """Mark the episode as having observations in flight."""
+    async def set_episode_pending(
+        self,
+        episode_id: str,
+        *,
+        ontology_refused: int | None = None,
+        skipped: Mapping[str, int] | None = None,
+    ) -> None:
+        """Mark the episode as pending and store any known item outcomes."""
+        assignments = ["e.temporal_status = $status"]
+        params: dict[str, Any] = {"status": TemporalStatus.PENDING.value}
+        if ontology_refused is not None:
+            assignments.append("e.temporal_ontology_refused = $ontology_refused")
+            params["ontology_refused"] = ontology_refused
+        if skipped is not None:
+            assignments.append("e.temporal_skipped = $skipped")
+            params["skipped"] = json.dumps(
+                skipped, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            )
         await self._set_episode(
             episode_id,
-            "SET e.temporal_status = $status",
-            {"status": TemporalStatus.PENDING.value},
+            f"SET {', '.join(assignments)}",
+            params,
         )
 
     async def mark_committed(self, episode_id: str, content_hash: str) -> None:
@@ -87,7 +113,8 @@ class EpisodeStateStore:
         """
         await self._set_episode(
             episode_id,
-            "REMOVE e.temporal_status, e.temporal_committed_hash",
+            "REMOVE e.temporal_status, e.temporal_committed_hash, "
+            "e.temporal_ontology_refused, e.temporal_skipped",
             {},
         )
 

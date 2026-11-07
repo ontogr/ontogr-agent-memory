@@ -1,11 +1,12 @@
 """Contract for `EpisodeStore` implementations."""
 
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from datetime import timedelta
 
 import pytest
 
-from ontogr_mem.data_models import TemporalStatus
+from ontogr_mem.data_models import Actor, Role, TemporalStatus
 from ontogr_mem.data_models.episode import EpisodeMeta
 from tests.support.episodes import T0, Harness, make_episode
 
@@ -383,3 +384,37 @@ class EpisodeStoreContract:
 
         assert len(await harness.node_ids("Episode")) == 1000
         assert (await harness.store.get_episode("e0999")).id == "e0999"
+
+    async def test_actor_values_belong_to_each_episode(self, harness):
+        """Reusing an actor id does not overwrite earlier episode values."""
+        first = replace(
+            make_episode("actor-first", actor="shared-actor"),
+            actor=Actor("shared-actor", Role.USER, "First name"),
+        )
+        second = replace(
+            make_episode("actor-second", actor="shared-actor", minutes=1),
+            actor=Actor("shared-actor", Role.ASSISTANT, "Second <name>"),
+        )
+        await harness.store.write_episodes([first, second])
+
+        stored = await harness.store.get_episodes([first.id, second.id])
+
+        assert [
+            (episode.actor.id, episode.actor.role, episode.actor.display_name)
+            for episode in stored
+        ] == [
+            ("shared-actor", Role.USER, "First name"),
+            ("shared-actor", Role.ASSISTANT, "Second <name>"),
+        ]
+        await harness.store.remove_episode(first.id)
+
+        remaining = await harness.store.get_episode(second.id)
+        assert remaining is not None
+        assert remaining.actor == Actor("shared-actor", Role.ASSISTANT, "Second <name>")
+
+        await harness.store.write_episodes([first])
+        await harness.store.remove_episode(second.id)
+
+        remaining = await harness.store.get_episode(first.id)
+        assert remaining is not None
+        assert remaining.actor == Actor("shared-actor", Role.USER, "First name")

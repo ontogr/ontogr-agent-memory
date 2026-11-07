@@ -608,6 +608,12 @@ A read does not create a job. A search that finds nothing reports an `indexing` 
 
 Writes return a `WriteReceipt` with a job id and status. A positive `wait_seconds` waits for completion. Jobs run in serial lanes per tenant, and different tenants run in parallel. Each write accepts an optional idempotency key, and a repeated key returns the original job instead of creating duplicate work. A job records attempts, progress, result, error, and trace id, and the runner retries up to a configured maximum.
 
+AddMemory writes accept a `role`, which defaults to `user`, and a `speaker`. The speaker is both the actor id and display name. If it is omitted, the service uses the caller id as the actor id and leaves the display name empty. Episode listings and retrieved episode passages include the actor id, display name, and role.
+
+Completed text and message results include `ontology_refused`, the number of extracted facts rejected by the ontology, and `skipped`, counts keyed by temporal skip reason. Accepted facts remain available even when other extracted facts are refused or skipped. Events, plans, and other skipped items remain in the episode text, but are not stored as structured temporal facts. Explicit fact writes, updates, and invalidations still fail when a required fact is refused or skipped.
+
+Actor role and display name are stored on each episode's actor relationship. Existing graphs are not backfilled. Reset or migrate existing graph data through a separately approved rollout before using this version with that data.
+
 ### Errors
 
 Service errors carry a stable code, a message, and an optional hint:

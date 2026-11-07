@@ -17,6 +17,7 @@ from pydantic import (
     model_validator,
 )
 
+from ontogr_mem.data_models import Role
 from ontogr_mem.data_models.jobs import JobProgress, JobState
 from ontogr_mem.data_models.tenant import validate_tenant_id
 from ontogr_mem.data_models.timestamps import require_utc
@@ -95,11 +96,12 @@ class WriteRequest(ScopedRequest):
 
 
 class AddMemory(WriteRequest):
-    """Store one observation.
+    """Store a fact or extract facts from text.
 
     ``kind`` decides which fields the request needs: free text for message
-    and text, one triple for fact. Content is limited to
-    ``MAX_CONTENT_BYTES`` UTF-8 bytes.
+    and text, one triple for fact. ``speaker`` is the actor id and display name;
+    ``role`` defaults to ``user``. Content is limited to ``MAX_CONTENT_BYTES``
+    UTF-8 bytes.
     """
 
     kind: MemoryKind = MemoryKind.TEXT
@@ -123,7 +125,11 @@ class AddMemory(WriteRequest):
         default=None,
         description="kind=fact: true when a new object replaces the old.",
     )
-    speaker: str | None = None
+    speaker: str | None = Field(
+        default=None,
+        description="Actor id and display name. Defaults to the caller id.",
+    )
+    role: Role = Role.USER
     source_description: str = ""
     session_id: str | None = None
     thread: str | None = None
@@ -485,6 +491,9 @@ class EpisodeOut(ContractModel):
     episode_id: str
     tenant: TenantId
     kind: str
+    actor_id: str
+    actor_name: str
+    actor_role: str
     session_id: str | None = None
     thread: str | None = None
     source_description: str = ""

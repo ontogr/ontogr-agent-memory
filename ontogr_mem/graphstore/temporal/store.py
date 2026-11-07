@@ -11,7 +11,7 @@ the revision before writing. A refused commit therefore writes nothing, on
 either server.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from ontogr_mem.data_models.fact_versions import Fact, Supersession
 from ontogr_mem.data_models.ledger import LedgerEntry
@@ -112,9 +112,19 @@ class GraphTemporalStore:
         """Return the temporal state of the episode, or ``None`` if it has none."""
         return await self._episodes.episode_state(episode_id)
 
-    async def set_episode_pending(self, episode_id: str) -> None:
-        """Mark the episode as having observations in flight."""
-        return await self._episodes.set_episode_pending(episode_id)
+    async def set_episode_pending(
+        self,
+        episode_id: str,
+        *,
+        ontology_refused: int | None = None,
+        skipped: Mapping[str, int] | None = None,
+    ) -> None:
+        """Mark the episode as pending and store any known item outcomes."""
+        return await self._episodes.set_episode_pending(
+            episode_id,
+            ontology_refused=ontology_refused,
+            skipped=skipped,
+        )
 
     async def mark_committed(self, episode_id: str, content_hash: str) -> None:
         """Mark the episode committed with the content hash that was read."""

@@ -1,9 +1,18 @@
 """Public memory service behavior over isolated in-memory adapters."""
 
+import json
+import re
 from datetime import UTC, datetime
 
 import pytest
 
+import ontogr_mem.service.writes as memory_writes
+from ontogr_mem.data_models import Role
+from ontogr_mem.llm import LLMRequest
+from ontogr_mem.ontology.diff import diff
+from ontogr_mem.ontology.manager import OntologyManager
+from ontogr_mem.ontology.models import Mode
+from ontogr_mem.ontology.settings import OntologySettings
 from ontogr_mem.service.contracts import (
     AddMemory,
     GetEntity,
@@ -18,8 +27,157 @@ from ontogr_mem.service.errors import (
     ObjectNotFoundError,
 )
 from ontogr_mem.service.principal import Grant
+from ontogr_mem.vectorstore import VectorWriter, write_episode_vectors
+from tests.support.embedder import MockEmbedder
+from tests.support.episodes import make_episode
 from tests.support.graph_backend import GraphBackend
+from tests.support.llm import ScriptedLLM
 from tests.support.memory_service import memory_service_harness
+
+
+def _prompt_block(prompt: str, tag: str) -> str:
+    """Return one JSON prompt block's body."""
+    match = re.search(rf"<{tag}>\n(.*?)\n</{tag}>", prompt, re.DOTALL)
+    if match is None:
+        raise AssertionError(f"missing {tag} block")
+    return match.group(1)
+
+
+def _memory_llm() -> ScriptedLLM:
+    """Return deterministic entities and facts for memory-write tests."""
+
+    def answer(request: LLMRequest) -> object:
+        prompt = request.prompt
+        if "Task: list the entities" in prompt:
+            text = _prompt_block(prompt, "episode_text")
+            entity_types = json.loads(_prompt_block(prompt, "entity_types"))
+            type_ids = {item["label"].casefold(): item["id"] for item in entity_types}
+            names = [name for name in ("Ana", "Hydra") if name in text]
+            return {
+                "entities": [
+                    {
+                        "name": name,
+                        "type_id": type_ids["thing" if name == "Hydra" else "person"],
+                        "confidence": 1.0,
+                    }
+                    for name in names
+                ]
+            }
+
+        text = _prompt_block(prompt, "episode_text")
+        relation_types = json.loads(_prompt_block(prompt, "relation_types"))
+
+        def relation_id(label: str) -> int | None:
+            return next(
+                (
+                    item["id"]
+                    for item in relation_types
+                    if item["label"].casefold() == label.casefold()
+                ),
+                None,
+            )
+
+        def fact(
+            statement: str,
+            quote: str,
+            *,
+            label: str | None,
+            refs: list[str],
+            kind: str = "state",
+        ) -> dict[str, object]:
+            return {
+                "text": statement,
+                "entity_refs": refs,
+                "relation_type_id": relation_id(label) if label else None,
+                "relation_label": label,
+                "fact_kind": kind,
+                "polarity": "affirmed",
+                "modality": "actual",
+                "valid_from": None,
+                "valid_to": None,
+                "precision": None,
+                "time_expression": None,
+                "evidence_quote": quote,
+                "confidence": 1.0,
+            }
+
+        if "violet comet" in text:
+            facts = [
+                fact(
+                    "A violet comet note exists",
+                    "A violet comet note exists.",
+                    label=None,
+                    refs=[],
+                )
+            ]
+        elif "I direct Hydra" in text and "I acquired Hydra" in text:
+            facts = [
+                fact(
+                    "The speaker owns Hydra",
+                    "I own Hydra.",
+                    label="OWNS",
+                    refs=["actor", "e0"],
+                ),
+                fact(
+                    "The speaker directs Hydra",
+                    "I direct Hydra.",
+                    label="DIRECTS",
+                    refs=["actor", "e0"],
+                ),
+                fact(
+                    "The speaker acquired Hydra",
+                    "I acquired Hydra yesterday.",
+                    label="OWNS",
+                    refs=["actor", "e0"],
+                    kind="event",
+                ),
+            ]
+        elif "I direct Hydra" in text:
+            facts = [
+                fact(
+                    "The speaker owns Hydra",
+                    "I own Hydra.",
+                    label="OWNS",
+                    refs=["actor", "e0"],
+                ),
+                fact(
+                    "The speaker directs Hydra",
+                    "I direct Hydra.",
+                    label="DIRECTS",
+                    refs=["actor", "e0"],
+                ),
+            ]
+        elif "I acquired Hydra" in text:
+            facts = [
+                fact(
+                    "The speaker owns Hydra",
+                    "I own Hydra.",
+                    label="OWNS",
+                    refs=["actor", "e0"],
+                ),
+                fact(
+                    "The speaker acquired Hydra",
+                    "I acquired Hydra yesterday.",
+                    label="ACQUIRED",
+                    refs=["actor", "e0"],
+                    kind="event",
+                ),
+                fact(
+                    "A private note exists", "A note was private.", label=None, refs=[]
+                ),
+            ]
+        else:
+            facts = [
+                fact(
+                    "The speaker owns Hydra",
+                    "I own Hydra.",
+                    label="OWNS",
+                    refs=["actor", "e0"],
+                )
+            ]
+        return {"facts": facts}
+
+    return ScriptedLLM(answer=answer)
 
 
 class TestMemoryService:
@@ -131,6 +289,40 @@ class TestMemoryService:
         assert result.state == "found"
         assert result.facts and result.facts[0].statement == "Ana works at Acme"
         assert result.rendered
+
+    async def test_session_search_ignores_episode_hits_from_other_sessions(
+        self, graph_backend: GraphBackend
+    ):
+        """An episode-only hit outside the requested session is not found."""
+        stores = await graph_backend.stores_for("t1", MockEmbedder())
+        episode = make_episode(
+            "session-search",
+            content="A violet comet note exists.",
+            metadata={"session_id": "stored-session"},
+        )
+        await stores.episodes.write_episodes([episode])
+        await write_episode_vectors(VectorWriter(stores.vectors), [episode])
+        harness = await memory_service_harness(graph_backend)
+
+        unscoped = await harness.service.search_memory(
+            harness.principal,
+            SearchMemory(tenant="t1", query="violet comet note"),
+        )
+        scoped = await harness.service.search_memory(
+            harness.principal,
+            SearchMemory(
+                tenant="t1",
+                query="violet comet note",
+                session_id="requested-session",
+            ),
+        )
+
+        assert unscoped.state == "found"
+        assert unscoped.facts == []
+        assert scoped.facts == []
+        assert scoped.entities == []
+        assert scoped.state == "none"
+        assert scoped.rendered is None
 
     async def test_text_write_without_a_model_fails_before_queueing(
         self, graph_backend: GraphBackend
@@ -369,3 +561,204 @@ class TestMemoryService:
             harness.principal, ListEpisodes(tenant="t1", limit=10)
         )
         assert len(episodes.episodes) == 1
+
+    async def test_text_write_reports_skips_after_retry_and_keeps_episode_text(
+        self, graph_backend: GraphBackend, monkeypatch: pytest.MonkeyPatch
+    ):
+        """A retry keeps item outcomes, facts, episode metadata and actor data."""
+        harness = await memory_service_harness(graph_backend, llm=_memory_llm())
+        await harness.service.add_memory(
+            harness.principal,
+            AddMemory(
+                tenant="t1",
+                kind=MemoryKind.FACT,
+                subject="Ana",
+                relation="owns",
+                object="Hydra",
+                speaker="agent<&>",
+                role=Role.USER,
+                wait_seconds=5,
+            ),
+        )
+        stores = await graph_backend.stores_for("t1")
+        manager = OntologyManager(
+            stores.ontology_store, None, OntologySettings(), harness.clock
+        )
+        catalog = await manager.catalog()
+        await manager.apply(
+            diff(catalog, catalog.model_copy(update={"relation_mode": Mode.STRICT}))
+        )
+        original_write = memory_writes.write_episode_vectors
+        vector_attempts = 0
+
+        async def fail_first_vector_write(writer, episodes):
+            nonlocal vector_attempts
+            vector_attempts += 1
+            if vector_attempts == 1:
+                raise RuntimeError("temporary vector failure")
+            await original_write(writer, episodes)
+
+        monkeypatch.setattr(
+            memory_writes, "write_episode_vectors", fail_first_vector_write
+        )
+        request = AddMemory(
+            tenant="t1",
+            kind=MemoryKind.MESSAGE,
+            content="I own Hydra. I direct Hydra. I acquired Hydra yesterday.",
+            speaker="agent<&>",
+            role=Role.ASSISTANT,
+            session_id="mixed-outcomes",
+            idempotency_key="mixed-outcomes",
+            wait_seconds=5,
+        )
+
+        receipt = await harness.service.add_memory(harness.principal, request)
+        job = await harness.service.get_job(harness.principal, receipt.job_id)
+
+        assert receipt.status.value == "done", job.error
+        assert receipt.result == job.result
+        assert job.result is not None
+        assert job.result["ontology_refused"] == 1
+        assert job.result["skipped"] == {"not_state": 1}
+        assert job.attempts == 2
+        assert vector_attempts == 2
+        assert len(job.result["fact_ids"]) == 1
+        entity = await harness.service.get_entity(
+            harness.principal, GetEntity(tenant="t1", name="Hydra")
+        )
+        assert len(entity.facts) == 2
+        assert any(fact.fact_id in job.result["fact_ids"] for fact in entity.facts)
+
+        observations = await stores.temporal_store.observations_of_episode(
+            job.result["episode_id"]
+        )
+        assert len(observations) == 1
+        assert [
+            (item.actor_role, item.source_system, item.connector)
+            for item in observations
+        ] == [("assistant", "agent-memory", "agent-interface")]
+        episodes = await harness.service.list_episodes(
+            harness.principal,
+            ListEpisodes(tenant="t1", session_id="mixed-outcomes"),
+        )
+        assert [
+            (item.actor_id, item.actor_name, item.actor_role)
+            for item in episodes.episodes
+        ] == [("agent<&>", "agent<&>", "assistant")]
+
+        replay = await harness.service.add_memory(harness.principal, request)
+        assert replay.idempotent_replay
+        assert replay.result == job.result
+
+        skipped_receipt = await harness.service.add_memory(
+            harness.principal,
+            AddMemory(
+                tenant="t1",
+                kind=MemoryKind.MESSAGE,
+                content="A violet comet note exists.",
+                speaker="agent<&>",
+                role=Role.ASSISTANT,
+                session_id="all-skipped",
+                wait_seconds=5,
+            ),
+        )
+        skipped_job = await harness.service.get_job(
+            harness.principal, skipped_receipt.job_id
+        )
+        assert skipped_job.result is not None
+        assert skipped_job.result["ontology_refused"] == 0
+        assert skipped_job.result["skipped"] == {"no_relation": 1}
+        assert skipped_job.result["fact_ids"] == []
+        listed = await harness.service.list_episodes(
+            harness.principal,
+            ListEpisodes(tenant="t1", session_id="all-skipped"),
+        )
+        assert len(listed.episodes) == 1
+        search = await harness.service.search_memory(
+            harness.principal,
+            SearchMemory(tenant="t1", query="violet comet note", format="both"),
+        )
+        assert search.state == "found"
+        assert search.rendered is not None
+        assert (
+            'actor_id="agent&lt;&amp;&gt;" actor_name="agent&lt;&amp;&gt;" '
+            'actor_role="assistant"'
+        ) in search.rendered
+
+    async def test_strict_refusal_keeps_known_and_rejects_structured_fact(
+        self, graph_backend: GraphBackend
+    ):
+        """STRICT drops unknown text links but does not reject the episode."""
+        harness = await memory_service_harness(graph_backend, llm=_memory_llm())
+        first_receipt = await harness.service.add_memory(
+            harness.principal,
+            AddMemory(
+                tenant="t1",
+                kind=MemoryKind.FACT,
+                subject="Ana",
+                relation="owns",
+                object="Hydra",
+                speaker="speaker-1",
+                role=Role.USER,
+                wait_seconds=5,
+            ),
+        )
+        stores = await graph_backend.stores_for("t1")
+        manager = OntologyManager(
+            stores.ontology_store, None, OntologySettings(), harness.clock
+        )
+        catalog = await manager.catalog()
+        await manager.apply(
+            diff(catalog, catalog.model_copy(update={"relation_mode": Mode.STRICT}))
+        )
+
+        receipt = await harness.service.add_memory(
+            harness.principal,
+            AddMemory(
+                tenant="t1",
+                kind=MemoryKind.MESSAGE,
+                content="I own Hydra. I direct Hydra.",
+                speaker="speaker-1",
+                role=Role.ASSISTANT,
+                session_id="strict-relations",
+                wait_seconds=5,
+            ),
+        )
+        assert receipt.status.value == "done"
+        assert receipt.result is not None
+        assert receipt.result["ontology_refused"] == 1
+        assert receipt.result["skipped"] == {}
+        assert len(receipt.result["fact_ids"]) == 1
+        assert first_receipt.result is not None
+        catalog = await manager.catalog()
+        assert catalog.relation_by_label("DIRECTS") is None
+        episodes = await harness.service.list_episodes(
+            harness.principal,
+            ListEpisodes(tenant="t1", limit=10),
+        )
+        actor_values = {
+            episode.episode_id: (
+                episode.actor_id,
+                episode.actor_name,
+                episode.actor_role,
+            )
+            for episode in episodes.episodes
+        }
+        assert actor_values == {
+            first_receipt.result["episode_id"]: ("speaker-1", "speaker-1", "user"),
+            receipt.result["episode_id"]: ("speaker-1", "speaker-1", "assistant"),
+        }
+
+        rejected = await harness.service.add_memory(
+            harness.principal,
+            AddMemory(
+                tenant="t1",
+                kind=MemoryKind.FACT,
+                subject="Ana",
+                relation="directs",
+                object="Hydra",
+                wait_seconds=5,
+            ),
+        )
+        assert rejected.status.value == "failed"
+        assert rejected.result is None
