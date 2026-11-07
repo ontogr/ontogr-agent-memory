@@ -134,7 +134,7 @@ class TemporalEngine:
         episode: Episode,
         stamp: ProvenanceStamp = NO_STAMP,
         *,
-        ontology_refused: int = 0,
+        ontology_refused: int | None = None,
     ) -> TemporalReport:
         """Turn the episode's typed facts into observations and settle them.
 
@@ -173,7 +173,11 @@ class TemporalEngine:
         await self._store.set_episode_pending(
             episode.id,
             ontology_refused=ontology_refused,
-            skipped=skipped_counts,
+            skipped=(
+                skipped_counts
+                if skipped_counts or ontology_refused is not None
+                else None
+            ),
         )
         report.merge(await self.ingest_observations(observations))
         if report.ok:
