@@ -141,7 +141,10 @@ def _episode_item(episode: EpisodeResult, passage_chars: int) -> _Item:
         text = f"{text[:passage_chars]}…"
     rendered = (
         f'<episode id="{html.escape(episode.episode_id, quote=True)}" '
-        f'occurred="{episode.occurred_at.isoformat()}">'
+        f'occurred="{episode.occurred_at.isoformat()}" '
+        f'actor_id="{html.escape(episode.actor_id, quote=True)}" '
+        f'actor_name="{html.escape(episode.actor_name, quote=True)}" '
+        f'actor_role="{html.escape(episode.actor_role, quote=True)}">'
         f"{html.escape(text, quote=True)}</episode>"
     )
     return _Item("episode", (episode.episode_id,), rendered)

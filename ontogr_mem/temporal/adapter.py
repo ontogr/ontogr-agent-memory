@@ -250,6 +250,9 @@ async def _convert(
             statement=fact.text,
             quote=fact.evidence_quote,
             inverse=rules.inverse,
+            source_system=episode.source.system,
+            connector=episode.source.connector,
+            actor_role=episode.actor.role.value,
         )
     except ValueError as exc:
         return Skipped(fact.fact_id, SkipReason.BAD_INTERVAL, str(exc))

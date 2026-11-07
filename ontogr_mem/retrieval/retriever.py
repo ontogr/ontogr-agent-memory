@@ -441,6 +441,9 @@ class Retriever:
                     source_id=episode.source.id,
                     score=score,
                     lanes=lanes,
+                    actor_id=episode.actor.id,
+                    actor_name=episode.actor.display_name,
+                    actor_role=episode.actor.role.value,
                 )
             )
         return result

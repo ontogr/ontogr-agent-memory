@@ -27,7 +27,7 @@ e.content_hash AS content_hash, e.temporal_status AS temporal_status,
 e.temporal_committed_hash AS temporal_committed_hash,
 s.system AS source_system, s.ref AS source_ref, s.connector AS source_connector,
 s.description AS source_description,
-a.id AS actor_id, a.role AS actor_role, a.display_name AS actor_name"""
+a.id AS actor_id, actor.role AS actor_role, actor.display_name AS actor_name"""
 
 
 class GraphEpisodeStore:
@@ -86,10 +86,11 @@ class GraphEpisodeStore:
                 "    s.connector = item.source_connector,",
                 "    s.description = item.source_description",
                 f"MERGE (a:Actor {self._scope.pattern('id: item.actor_id')})",
-                "SET a.role = item.actor_role, a.display_name = item.actor_name",
                 f"MERGE (e)-[source:FROM_SOURCE {self._scope.edge()}]->(s)",
                 self._scope.stamp_assignment("source"),
                 f"MERGE (e)-[actor:BY_ACTOR {self._scope.edge()}]->(a)",
+                "SET actor.role = item.actor_role,",
+                "    actor.display_name = item.actor_name",
                 self._scope.stamp_assignment("actor"),
             ]
         )
@@ -215,7 +216,7 @@ class GraphEpisodeStore:
             QuerySpec(
                 f"MATCH {self._node('e', 'Episode', '$id')}"
                 f"-[:FROM_SOURCE {self._scope.edge()}]->(s), "
-                f"(e)-[:BY_ACTOR {self._scope.edge()}]->(a) "
+                f"(e)-[actor:BY_ACTOR {self._scope.edge()}]->(a) "
                 f"RETURN {EPISODE_COLUMNS}",
                 {"id": episode_id},
                 read_only=True,
@@ -241,7 +242,7 @@ class GraphEpisodeStore:
                     f"MATCH (e:Episode {self._scope.pattern()}) "
                     "WHERE e.id IN $ids "
                     f"MATCH (e)-[:FROM_SOURCE {self._scope.edge()}]->(s), "
-                    f"(e)-[:BY_ACTOR {self._scope.edge()}]->(a) "
+                    f"(e)-[actor:BY_ACTOR {self._scope.edge()}]->(a) "
                     f"RETURN {EPISODE_COLUMNS}",
                     {"ids": unique[start : start + WRITE_BATCH]},
                     read_only=True,
@@ -282,10 +283,10 @@ class GraphEpisodeStore:
                 f"MATCH (e:Episode {self._scope.pattern()}) "
                 "MATCH (e)-[:FROM_SOURCE "
                 f"{self._scope.edge()}]->(s), "
-                f"(e)-[:BY_ACTOR {self._scope.edge()}]->(a) "
+                f"(e)-[actor:BY_ACTOR {self._scope.edge()}]->(a) "
                 f"OPTIONAL MATCH (m:EpisodeMeta "
                 f"{self._scope.pattern('id: e.id')}) "
-                f"WITH e, s, a, m {where} "
+                f"WITH e, s, a, actor, m {where} "
                 f"RETURN {EPISODE_COLUMNS} ORDER BY e.ingested_at DESC, e.id DESC "
                 "LIMIT $limit",
                 params,
@@ -309,7 +310,7 @@ class GraphEpisodeStore:
                 " WHERE e.occurred_at <= $before AND e.id <> $exclude"
                 " AND e.content_hash IS NOT NULL "
                 f"MATCH (e)-[:FROM_SOURCE {self._scope.edge()}]->(s), "
-                f"(e)-[:BY_ACTOR {self._scope.edge()}]->(a) "
+                f"(e)-[actor:BY_ACTOR {self._scope.edge()}]->(a) "
                 f"RETURN {EPISODE_COLUMNS} "
                 "ORDER BY e.occurred_at DESC, e.ingested_at DESC, e.id DESC "
                 "LIMIT $limit",

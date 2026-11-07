@@ -11,6 +11,7 @@ episode does the same, then clears its temporal state and removes its mentions,
 so the episode can be ingested again.
 """
 
+from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import datetime
 from typing import Protocol
@@ -132,6 +133,8 @@ class TemporalEngine:
         facts: Sequence[TypedFact],
         episode: Episode,
         stamp: ProvenanceStamp = NO_STAMP,
+        *,
+        ontology_refused: int | None = None,
     ) -> TemporalReport:
         """Turn the episode's typed facts into observations and settle them.
 
@@ -154,16 +157,28 @@ class TemporalEngine:
             and state.committed_hash == content_hash
         ):
             report.bump(Outcome.EPISODE_SKIPPED)
+            if state.skipped is not None:
+                report.skipped.update(state.skipped)
             return report
         if await self._store.episode_has_observations(episode.id):
             raise EpisodeAlreadyIngestedError(episode.id)
 
-        await self._store.set_episode_pending(episode.id)
         observations, skipped = await observations_from_facts(
             facts, episode, self._resolver_refs, self._policy, stamp
         )
+        skipped_counts: Counter[str] = Counter()
         for item in skipped:
-            report.skipped[item.reason.value] += 1
+            skipped_counts[item.reason.value] += 1
+        report.skipped.update(skipped_counts)
+        await self._store.set_episode_pending(
+            episode.id,
+            ontology_refused=ontology_refused,
+            skipped=(
+                skipped_counts
+                if skipped_counts or ontology_refused is not None
+                else None
+            ),
+        )
         report.merge(await self.ingest_observations(observations))
         if report.ok:
             await self._commit_episode(episode.id, content_hash, report)

@@ -88,6 +88,9 @@ class EpisodeResult:
         text: Text of the episode.
         occurred_at: When the episode happened.
         source_id: Source the episode came from.
+        actor_id: Speaker id of the episode.
+        actor_name: Speaker display name of the episode.
+        actor_role: Role of the speaker in the episode.
         score: Fused score, relative to the best episode of the same result.
         lanes: Names of the lanes that found the episode.
     """
@@ -98,6 +101,9 @@ class EpisodeResult:
     source_id: str
     score: float
     lanes: tuple[str, ...] = ()
+    actor_id: str = ""
+    actor_name: str = ""
+    actor_role: str = ""
 
 
 @dataclass(frozen=True, slots=True)

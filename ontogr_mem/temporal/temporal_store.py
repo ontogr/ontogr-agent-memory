@@ -6,7 +6,7 @@ standalone chain, such as the tenant chain, has its own head that is compared
 on append.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
@@ -49,10 +49,14 @@ class EpisodeState:
     Attributes:
         status: Where the episode stands in reconciliation.
         committed_hash: Content hash recorded with the commit, or ``None``.
+        ontology_refused: Rejected extracted facts, or ``None`` when unknown.
+        skipped: Facts not converted to observations, or ``None`` when unknown.
     """
 
     status: TemporalStatus
     committed_hash: str | None = None
+    ontology_refused: int | None = None
+    skipped: dict[str, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,8 +228,14 @@ class TemporalStore(Protocol):
         """Return the temporal state of the episode, or ``None`` if it has none."""
         ...
 
-    async def set_episode_pending(self, episode_id: str) -> None:
-        """Mark the episode as having observations in flight.
+    async def set_episode_pending(
+        self,
+        episode_id: str,
+        *,
+        ontology_refused: int | None = None,
+        skipped: Mapping[str, int] | None = None,
+    ) -> None:
+        """Mark the episode as pending and store any known item outcomes.
 
         Raises:
             MissingEpisodeError: The episode does not exist.
