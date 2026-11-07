@@ -198,7 +198,7 @@ class TestTemporalEngine:
         assert report.ok
         assert report.counts[Outcome.EPISODE_COMMITTED.value] == 1
         assert await store.episode_state("ep1") == EpisodeState(
-            TemporalStatus.COMMITTED, "hash-ep1", ontology_refused=0, skipped={}
+            TemporalStatus.COMMITTED, "hash-ep1"
         )
         facts = await store.facts_of_episode("ep1")
         assert [(f.subject_id, f.object_id, f.version) for f in facts] == [
