@@ -10,6 +10,7 @@ on:
       - synchronize
       - reopened
       - ready_for_review
+      - edited
   schedule:
     - cron: "30 1 * * *"
   workflow_dispatch:
@@ -18,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.pull_request.draft && 'draft' || (github.event.action == 'edited' && github.event.changes.base.ref.from == null) && 'metadata-edit' || 'active' }}
   cancel-in-progress: true
 
 env:
@@ -28,7 +29,7 @@ env:
 jobs:
   integration:
     name: Integration (${{ matrix.suite.name }})
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
+    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.action != 'edited' || github.event.changes.base.ref.from != null)) }}
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.suite.timeout }}
     strategy:
