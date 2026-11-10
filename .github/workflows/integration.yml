@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.pull_request.draft && 'draft' || 'active' }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.pull_request.draft && 'draft' || 'active' }}-${{ github.event_name == 'pull_request' && github.sha || github.ref }}
   cancel-in-progress: true
 
 env:
