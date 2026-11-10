@@ -12,14 +12,13 @@ on:
       - synchronize
       - reopened
       - ready_for_review
-      - edited
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.pull_request.draft && 'draft' || (github.event.action == 'edited' && github.event.changes.base.ref.from == null) && 'metadata-edit' || 'active' }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event.pull_request.draft && 'draft' || 'active' }}
   cancel-in-progress: true
 
 env:
@@ -29,7 +28,6 @@ env:
 jobs:
   lint:
     name: Lint & Format Check
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'edited' || github.event.changes.base.ref.from != null }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -59,7 +57,6 @@ jobs:
 
   secret-scan:
     name: Secret Scanning
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'edited' || github.event.changes.base.ref.from != null }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -88,7 +85,6 @@ jobs:
 
   type-check:
     name: Type Checking
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'edited' || github.event.changes.base.ref.from != null }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -110,7 +106,7 @@ jobs:
 
   test:
     name: Tests - Python ${{ matrix.python-version }}
-    if: ${{ github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.action != 'edited' || github.event.changes.base.ref.from != null)) }}
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -154,7 +150,6 @@ jobs:
 
   wheel:
     name: Test Packaging - wheel build & install
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'edited' || github.event.changes.base.ref.from != null }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -177,7 +172,6 @@ jobs:
 
   security:
     name: Python Security Scanning
-    if: ${{ github.event_name != 'pull_request' || github.event.action != 'edited' || github.event.changes.base.ref.from != null }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
