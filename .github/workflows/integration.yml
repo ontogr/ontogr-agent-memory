@@ -10,6 +10,7 @@ on:
       - synchronize
       - reopened
       - ready_for_review
+      - edited
   schedule:
     - cron: "30 1 * * *"
   workflow_dispatch:
