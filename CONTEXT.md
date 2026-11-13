@@ -354,3 +354,12 @@ The reusable unit that gives an [[Agent]] memory. It decides when to read (a [[C
 
 **Turn**:
 One user message and the assistant's final reply to it. A turn can produce one [[Episode]] per message.
+
+**Host**:
+The application that connects to the MCP server on behalf of a model, such as a coding agent. In keyless mode the host's model extracts the facts.
+
+**Keyless mode**:
+Running with no model configured. The [[Host]] sends the source text with the facts it extracted, and the service applies the same checks as for a text write.
+
+**Skill**:
+A packaged, task-specific set of instructions that the MCP server hands to a [[Host]] when asked.

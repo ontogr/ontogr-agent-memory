@@ -21,6 +21,7 @@ from ontogr_mem.service.contracts import (
     ErrorInfo,
     InvalidateMemory,
     JobView,
+    MemoryKind,
     UpdateMemory,
     WriteReceipt,
 )
@@ -78,7 +79,11 @@ def _error_info(error: Mapping[str, str] | None) -> ErrorInfo | None:
         "PayloadTooLargeError": ErrorCode.PAYLOAD_TOO_LARGE,
         "ConfirmationRequiredError": ErrorCode.CONFIRMATION_REQUIRED,
     }
-    hints = {"LLMUnavailableError": "Retry, or write a structured fact with kind=fact."}
+    hints = {
+        "LLMUnavailableError": (
+            "Configure both extraction roles, or use write_facts with source text."
+        ),
+    }
     return ErrorInfo(
         code=code_by_type.get(error.get("type", ""), ErrorCode.INTERNAL),
         message=error.get("message", "job failed"),
@@ -147,13 +152,17 @@ class ServiceJobs:
             tenant_id = await self._deps.tenants.require(
                 principal, tenant_id, Grant.WRITE, "memory.add"
             )
-            if request.kind.value != "fact" and not (
+            text_write = request.kind in {MemoryKind.TEXT, MemoryKind.MESSAGE}
+            if text_write and not (
                 self._deps.models.configured(ModelRole.ENTITY_EXTRACTION)
                 and self._deps.models.configured(ModelRole.FACT_EXTRACTION)
             ):
                 raise LLMUnavailableError(
-                    "a language model is required for text memory",
-                    hint="Retry, or write a structured fact with kind=fact.",
+                    "both extraction models are required for text memory",
+                    hint=(
+                        "Configure both extraction roles, or use write_facts "
+                        "with source text."
+                    ),
                 )
             await self._deps.tenants.get(tenant_id, create=True)
             return await self.submit(

@@ -29,7 +29,7 @@ async def ensure_relation(
     ontology = await manager.catalog()
     relation = ontology.relation_by_label(label)
     if relation is None:
-        if ontology.relation_mode is Mode.STRICT:
+        if ontology.relation_mode is not Mode.OPEN:
             raise InvalidArgumentError(
                 f"relation label is not in the ontology: {label}"
             )

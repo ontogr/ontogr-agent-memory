@@ -19,6 +19,7 @@ BLOCKED_EXTRAS = (
     "spacy",
     "yaml",
     "fastembed",
+    "fastmcp",
 )
 
 OPTIONAL_SUBPACKAGES = (
@@ -27,6 +28,7 @@ OPTIONAL_SUBPACKAGES = (
     "ontogr_mem.vectorstore.builtin",
     "ontogr_mem.vectorstore.graph",
     "ontogr_mem.vectorstore.pgvector",
+    "ontogr_mem.mcp_server",
 )
 
 GRAPHSTORE_KERNEL_MODULES = (
@@ -260,6 +262,30 @@ class TestImportBoundaries:
             )
             print(loaded)
             sys.exit(1 if loaded else 0)
+            """
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_cli_imports_without_loading_fastmcp(self):
+        """The console command package loads without the MCP extra."""
+        result = run_clean(
+            f"""
+            import importlib.abc
+            import sys
+
+            blocked = {BLOCKED_EXTRAS!r}
+
+            class Blocker(importlib.abc.MetaPathFinder):
+                def find_spec(self, name, path=None, target=None):
+                    if name.split(".")[0] in blocked:
+                        raise ImportError(name)
+                    return None
+
+            sys.meta_path.insert(0, Blocker())
+            import ontogr_mem.cli
+
+            sys.exit(1 if "fastmcp" in sys.modules else 0)
             """
         )
 

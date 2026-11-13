@@ -1,6 +1,6 @@
 """The async Memory client for one Tenant."""
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Sequence
 from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontextmanager
 from datetime import datetime
 from typing import Any
@@ -18,6 +18,7 @@ from ontogr_mem.service.contracts import (
     ForgetMode,
     ForgetResult,
     GetEntity,
+    HostFact,
     InvalidateMemory,
     JobView,
     MemoryContext,
@@ -222,6 +223,46 @@ class Memory:
                 "statement": statement,
                 "valid_from": valid_from,
                 "valid_to": valid_to,
+                "idempotency_key": idempotency_key,
+                "wait_seconds": wait_seconds,
+            },
+        )
+        return await self._service.add_memory(self._principal, request)
+
+    async def write_facts(
+        self,
+        source_text: str,
+        facts: Sequence[HostFact],
+        *,
+        role: Role = Role.USER,
+        idempotency_key: str | None = None,
+        wait_seconds: float = 0.0,
+    ) -> WriteReceipt:
+        """Store source text and host-extracted facts without model calls.
+
+        Use this when the caller has extracted facts from the source. Quotes
+        and entity names must occur in that source. The receipt identifies a
+        queued job; its result lists stored fact ids and dropped input indices
+        with reasons. Use get_job until the job reaches a terminal state.
+
+        Args:
+            source_text: Original text to retain as one Episode.
+            facts: Extracted facts in the order used by dropped indices.
+            role: Role of the source's author.
+            idempotency_key: Reuse for a retry of this same write.
+            wait_seconds: Maximum time to wait for the job before returning.
+
+        Returns:
+            The write receipt and, when finished, its result.
+        """
+        request = validate_request(
+            AddMemory,
+            {
+                "tenant": self.tenant,
+                "kind": MemoryKind.SOURCED_FACTS,
+                "content": source_text,
+                "facts": list(facts),
+                "role": role,
                 "idempotency_key": idempotency_key,
                 "wait_seconds": wait_seconds,
             },

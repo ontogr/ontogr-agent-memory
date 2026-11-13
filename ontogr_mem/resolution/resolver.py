@@ -133,8 +133,19 @@ class EntityResolver:
         """Return the pair verifier, or None when inline verification is off."""
         return self._verifier
 
-    async def resolve(self, entities: Sequence[ExtractedEntity]) -> ResolutionResult:
-        """Link a batch of extracted entities and write their mentions."""
+    async def resolve(
+        self, entities: Sequence[ExtractedEntity], *, allow_model: bool = True
+    ) -> ResolutionResult:
+        """Link a batch of extracted entities and write their mentions.
+
+        Args:
+            entities: Extracted entities of one or more episodes.
+            allow_model: Whether inline verification may call the resolution
+                model. ``False`` skips inline verification for this call only;
+                deterministic candidate matching still runs, and entities that
+                would have needed verification are written as new provisional
+                entities instead of being linked to a candidate.
+        """
         batch = list(entities)
         if not batch:
             return ResolutionResult()
@@ -162,7 +173,11 @@ class EntityResolver:
                 settings=self.settings,
             )
             verified: dict[int, dict[str, VerdictKind]] = {}
-            if self.settings.inline_verification and self._verifier is not None:
+            if (
+                allow_model
+                and self.settings.inline_verification
+                and self._verifier is not None
+            ):
                 verified = await inline_verify(
                     groups,
                     candidates,
