@@ -91,31 +91,44 @@ def build_models(  # noqa: PLR0912
     """
     selected = config if config is not None else LLMConfig()
     limiter = ConcurrencyLimiter(selected.max_concurrency, name="memory-llm")
-    built: dict[ModelRole, Model] = {}
     configs: dict[ModelRole, RoleConfig] = {}
+    injected: dict[ModelRole, Model] = {}
+    planned: list[tuple[ModelRole, Protocol, str, str, RoleConfig]] = []
+    for role in ModelRole:
+        role_config = selected.resolve(role)
+        override = (overrides or {}).get(role)
+        if isinstance(override, str):
+            role_config = replace(
+                role_config, model=override if override.strip() else None
+            )
+        configs[role] = role_config
+        if isinstance(override, Model):
+            injected[role] = override
+            continue
+        if not role_config.model:
+            continue
+        protocol, name = split_model_string(role_config.model)
+        if not role_config.base_url:
+            raise ValueError(
+                f"set MEMORY_LLM_{role.name}_BASE_URL or MEMORY_LLM_BASE_URL"
+            )
+        planned.append((role, protocol, name, role_config.base_url, role_config))
+    built: dict[ModelRole, Model] = {
+        role: ConcurrencyLimitedModel(model, limiter=limiter)
+        for role, model in injected.items()
+    }
     providers: dict[
         tuple[Protocol, str, str | None],
         OpenAICompatibleProvider | AnthropicProvider,
     ] = {}
     clients = []
-    for role in ModelRole:
-        cfg = selected.resolve(role)
-        override = (overrides or {}).get(role)
-        if isinstance(override, str):
-            cfg = replace(cfg, model=override if override.strip() else None)
-        configs[role] = cfg
-        if isinstance(override, Model):
-            built[role] = ConcurrencyLimitedModel(override, limiter=limiter)
-            continue
-        if not cfg.model:
-            continue
-        protocol, name = split_model_string(cfg.model)
-        if not cfg.base_url:
-            raise ValueError(
-                f"set MEMORY_LLM_{role.name}_BASE_URL or MEMORY_LLM_BASE_URL"
-            )
-        key = cfg.api_key.get_secret_value() if cfg.api_key is not None else None
-        provider_key = protocol, cfg.base_url, key
+    for role, protocol, name, base_url, role_config in planned:
+        key = (
+            role_config.api_key.get_secret_value()
+            if role_config.api_key is not None
+            else None
+        )
+        provider_key = protocol, base_url, key
         provider = providers.get(provider_key)
         if provider is None:
             client = create_async_httpx2_client()
@@ -123,20 +136,20 @@ def build_models(  # noqa: PLR0912
             if protocol == "anthropic":
                 # Passing None lets the SDK read ambient credentials.
                 provider = AnthropicProvider(
-                    base_url=cfg.base_url,
+                    base_url=base_url,
                     api_key=key or "not-set",
                     http_client=client,
                 )
             else:
                 provider = OpenAICompatibleProvider(
                     "custom",
-                    base_url=cfg.base_url,
+                    base_url=base_url,
                     api_key=key,
                     http_client=client,
                 )
             providers[provider_key] = provider
-        profile = ModelProfile(default_structured_output_mode=cfg.output_mode)
-        if cfg.output_mode == "native":
+        profile = ModelProfile(default_structured_output_mode=role_config.output_mode)
+        if role_config.output_mode == "native":
             profile["supports_json_schema_output"] = True
         if protocol == "anthropic":
             if not isinstance(provider, AnthropicProvider):

@@ -40,3 +40,20 @@ async def test_per_role_models_override_the_shared_one() -> None:
     b = await run_agent(agent, ModelRole.ANSWER, "p", models=models, deps=None)
     assert (a.output.value, b.output.value) == (2, 1)
     assert len(special_rec.calls) == len(shared_rec.calls) == 1
+
+
+@pytest.mark.parametrize("with_endpoint", [False, True])
+def test_ambient_model_settings_do_not_configure_unlisted_roles(
+    monkeypatch: pytest.MonkeyPatch, with_endpoint: bool
+) -> None:
+    """Ambient model settings do not configure roles missing from the overrides."""
+    monkeypatch.setenv("MEMORY_LLM_MODEL", "m")
+    if with_endpoint:
+        monkeypatch.setenv("MEMORY_LLM_BASE_URL", "http://x/v1")
+        monkeypatch.setenv("MEMORY_LLM_API_KEY", "k")
+    judge, _ = scripted_model()
+    pool = scripted_role_models(judge=judge)
+    assert [role for role in ModelRole if pool.configured(role)] == [ModelRole.JUDGE]
+    assert pool.config_for(ModelRole.FACT_EXTRACTION).max_output_tokens == 16384
+    shared, _ = scripted_model()
+    assert all(scripted_role_models(shared).configured(role) for role in ModelRole)

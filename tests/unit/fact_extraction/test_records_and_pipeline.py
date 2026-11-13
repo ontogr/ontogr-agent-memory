@@ -438,6 +438,18 @@ class TestFactExtraction:
         for text in texts:
             assert text in prompt
 
+    async def test_long_current_episode_reaches_the_prompt_whole(self) -> None:
+        """A very long episode is sent in full and still yields its grounded fact."""
+        text = "I switched to Postgres in March 2024. " + "x" * 100_000
+        models, scripted = fact_models([reply(fact())])
+        ex = FactExtraction(LLMFactExtractor(models), InMemoryFactStore())
+        episode = make_episode(text)
+
+        report = await ex.extract([episode], by_episode([episode]))
+
+        assert report.results[0].status is Status.OK
+        assert text in scripted.calls[0].prompt
+
     async def test_report_counts_statuses_drops_usage_and_skip_codes(self) -> None:
         """The report gives the counts a retry policy needs."""
         ex, _, _ = driver([reply(fact(), fact(evidence_quote="never said"))])

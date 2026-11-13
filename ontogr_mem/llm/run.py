@@ -73,23 +73,28 @@ async def run_agent(
 
     Raises:
         ModelNotConfiguredError: If the kind of work has no model.
+        ValueError: If max_output_tokens is not positive.
         ModelCallFailedError: If a provider call fails.
         ModelOutputError: If output validation fails or output is truncated.
     """
     model = models.model_for(role)
     if model is None:
         raise ModelNotConfiguredError(f"no model configured for {role.value}")
-    cfg = models.config_for(role)
-    cap = max_output_tokens if max_output_tokens is not None else cfg.max_output_tokens
-    if cap is not None and cap < 1:
+    role_config = models.config_for(role)
+    output_cap = (
+        max_output_tokens
+        if max_output_tokens is not None
+        else role_config.max_output_tokens
+    )
+    if output_cap is not None and output_cap < 1:
         raise ValueError("max_output_tokens must be positive")
-    settings = OpenAIChatModelSettings(timeout=cfg.timeout_s)
-    if cap is not None:
-        settings["max_tokens"] = cap
-    if cfg.reasoning_effort is not None:
-        settings["openai_reasoning_effort"] = cast("Any", cfg.reasoning_effort)
-    if cfg.extra_body is not None:
-        settings["extra_body"] = dict(cfg.extra_body)
+    settings = OpenAIChatModelSettings(timeout=role_config.timeout_s)
+    if output_cap is not None:
+        settings["max_tokens"] = output_cap
+    if role_config.reasoning_effort is not None:
+        settings["openai_reasoning_effort"] = cast("Any", role_config.reasoning_effort)
+    if role_config.extra_body is not None:
+        settings["extra_body"] = dict(role_config.extra_body)
     usage = RunUsage()
     try:
         result = await agent.run(

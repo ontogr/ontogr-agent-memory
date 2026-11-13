@@ -351,30 +351,27 @@ class TestMemoryService:
         "configured_role",
         [ModelRole.ENTITY_EXTRACTION, ModelRole.FACT_EXTRACTION],
     )
-    async def test_text_write_with_one_extraction_role_fails_the_job(
+    async def test_text_write_with_one_extraction_role_is_refused(
         self, graph_backend: GraphBackend, configured_role: ModelRole
     ):
-        """A text write needs both extraction roles, not just one of them."""
+        """A text write needs both extraction roles and is refused before queueing."""
         model, _ = scripted_model()
         harness = await memory_service_harness(
             graph_backend,
             models=scripted_role_models(**{configured_role.value: model}),
         )
 
-        receipt = await harness.service.add_memory(
-            harness.principal,
-            AddMemory(
-                tenant="t1",
-                kind=MemoryKind.TEXT,
-                content="Ana works here.",
-                wait_seconds=5,
-            ),
-        )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        with pytest.raises(LLMUnavailableError):
+            await harness.service.add_memory(
+                harness.principal,
+                AddMemory(
+                    tenant="t1",
+                    kind=MemoryKind.TEXT,
+                    content="Ana works here.",
+                ),
+            )
 
-        assert job.status.value == "failed"
-        assert job.error is not None
-        assert job.error.code.value == "llm_unavailable"
+        assert await harness.state.tenant_ids() == []
 
     async def test_text_write_with_both_extraction_roles_completes(
         self, graph_backend: GraphBackend

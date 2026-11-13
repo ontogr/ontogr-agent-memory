@@ -38,7 +38,6 @@ class SkipReason(StrEnum):
     """Stable code for a skipped episode; numbers and causes are in `detail`."""
 
     NO_CANDIDATES = "no_candidates"
-    OVERSIZE = "oversize"
     UNMAPPED_RECORD = "unmapped_record"
     UNSUPPORTED_LANGUAGE = "unsupported_language"
 
@@ -80,21 +79,6 @@ def skipped(result: FactResult, reason: SkipReason, detail: str) -> FactResult:
     result.status = Status.SKIPPED
     result.skip_reason = reason
     result.detail = detail
-    return result
-
-
-def unusable(
-    result: FactResult,
-    failure: Exception | None,
-    errors: list[str],
-) -> FactResult:
-    """Mark a result that produced no parsed facts as error or parse_failed."""
-    if failure is not None:
-        result.status = Status.ERROR
-        result.detail = f"{type(failure).__name__}: {failure}"
-    else:
-        result.status = Status.PARSE_FAILED
-        result.detail = "; ".join(errors)
     return result
 
 

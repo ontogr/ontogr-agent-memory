@@ -209,6 +209,28 @@ def test_missing_base_url_names_the_variable() -> None:
         build_models(cfg)
 
 
+def test_no_client_is_created_when_a_later_role_lacks_a_base_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No HTTP client is created before every role's configuration is validated."""
+    created: list[httpx2.AsyncClient] = []
+
+    def counting_client() -> httpx2.AsyncClient:
+        client = ai_models.create_async_httpx2_client()
+        created.append(client)
+        return client
+
+    monkeypatch.setattr(
+        "ontogr_mem.llm.models.create_async_httpx2_client", counting_client
+    )
+    config = make(
+        roles={"entity_extraction": {"model": "m", "base_url": "http://x/v1"}}
+    )
+    with pytest.raises(ValueError, match="MEMORY_LLM_ANSWER_BASE_URL"):
+        build_models(config, overrides={ModelRole.ANSWER: "m"})
+    assert created == []
+
+
 async def test_model_and_string_overrides() -> None:
     """Model and string overrides."""
     fn, _ = scripted_model([{"value": 1}])
@@ -457,8 +479,6 @@ async def test_request_shape_on_the_wire(
         assert "tools" not in body
     else:
         assert "tools" not in body
-        assert body["response_format"]["type"] in {"json_object", "text"} or (
-            "response_format" not in body
-        )
+        assert body["response_format"] == {"type": "json_object"}
         assert "value" in json.dumps(body["messages"])
     await models.aclose()

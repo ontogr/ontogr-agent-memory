@@ -8,6 +8,7 @@ from typing import Any
 
 from ontogr_mem.data_models.jobs import Job
 from ontogr_mem.errors import AgentMemoryError
+from ontogr_mem.llm import ModelRole
 from ontogr_mem.relational_store import (
     IdempotencyConflictError,
     OperationKind,
@@ -130,8 +131,9 @@ class ServiceJobs:
     ) -> WriteReceipt:
         """Authorize and queue a structured, text, or message memory write.
 
-        A text or message write requires an injected language model. A positive
-        ``wait_seconds`` waits up to that long for the job to finish.
+        A text or message write requires the entity and fact extraction models to
+        be configured. A positive ``wait_seconds`` waits up to that long for the
+        job to finish.
         """
         self._deps.limiter.check(principal.id, "write")
         tenant_id = request.tenant or principal.default_tenant
@@ -146,7 +148,8 @@ class ServiceJobs:
                 principal, tenant_id, Grant.WRITE, "memory.add"
             )
             if request.kind.value != "fact" and not (
-                self._deps.llm is not None or self._deps.models.any_configured()
+                self._deps.models.configured(ModelRole.ENTITY_EXTRACTION)
+                and self._deps.models.configured(ModelRole.FACT_EXTRACTION)
             ):
                 raise LLMUnavailableError(
                     "a language model is required for text memory",

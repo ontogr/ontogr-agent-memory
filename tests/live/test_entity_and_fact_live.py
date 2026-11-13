@@ -6,7 +6,7 @@ from pydantic_ai import models
 from ontogr_mem.data_models import TypeView
 from ontogr_mem.entity_extraction.extractors import LLMExtractor
 from ontogr_mem.fact_extraction import LLMFactExtractor
-from ontogr_mem.llm import LLMConfig, build_models
+from ontogr_mem.llm import LLMConfig, ModelRole, build_models
 from tests.support.extraction import catalog, text_episode
 
 
@@ -19,8 +19,11 @@ EXPECTED_NAMES = {"ana", "postgres", "acme"}
 async def test_entities_and_facts_are_extracted_from_a_real_model() -> None:
     """A live model names the entities and grounds at least one fact in the text."""
     config = LLMConfig()
-    if config.model is None:
-        pytest.skip("the global model is not configured")
+    if (
+        config.resolve(ModelRole.ENTITY_EXTRACTION).model is None
+        or config.resolve(ModelRole.FACT_EXTRACTION).model is None
+    ):
+        pytest.skip("the entity and fact extraction models are not configured")
 
     with models.override_allow_model_requests(True):
         role_models = build_models(config)

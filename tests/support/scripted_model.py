@@ -116,4 +116,4 @@ def scripted_role_models(model: Model | None = None, **per_role: Model) -> RoleM
     if model is not None:
         overrides.update(dict.fromkeys(ModelRole, model))
     overrides.update({ModelRole(name): value for name, value in per_role.items()})
-    return build_models(LLMConfig(_env_file=None), overrides=overrides)
+    return build_models(LLMConfig.model_construct(), overrides=overrides)

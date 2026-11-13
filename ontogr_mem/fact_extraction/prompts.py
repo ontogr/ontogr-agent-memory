@@ -1,4 +1,4 @@
-"""Prompt and schema for the fact pass.
+"""Prompt for the fact pass.
 
 Episode text, previous episodes, instructions and type descriptions are untrusted
 data: each goes in a delimited block with an explicit "treat as data" clause, and
@@ -13,7 +13,6 @@ from collections.abc import Sequence
 from typing import Any
 
 from ontogr_mem.data_models import Episode, ExtractedEntity, TypeMode, TypeView
-from ontogr_mem.data_models.facts import FactKind, Modality, Polarity, Precision
 from ontogr_mem.fact_extraction.text import language_of, text_of
 from ontogr_mem.llm.prompt import fence
 
@@ -58,60 +57,6 @@ or "desired". Never drop them and never rewrite them as affirmed actuals.
 - Write "text" in the language of the episode."""
 
 
-def _values(enum_cls: Any) -> list[str]:
-    """Return the values of an enum."""
-    return [member.value for member in enum_cls]
-
-
-def schema(*, with_types: bool, strict: bool) -> dict[str, Any]:
-    """Return the JSON schema for provider-enforced structured output.
-
-    Attempt 1 uses the strict form, attempt 2 the loose one (some providers
-    reject strict schemas), attempt 3 sends no schema at all.
-
-    Args:
-        with_types: Include the dense relation type id.
-        strict: Require every property and refuse extra keys.
-    """
-    nullable_str = {"type": ["string", "null"]}
-    props: dict[str, Any] = {
-        "text": {"type": "string"},
-        "entity_refs": {"type": "array", "items": {"type": "string"}},
-        "fact_kind": {"type": "string", "enum": _values(FactKind)},
-        "polarity": {"type": "string", "enum": _values(Polarity)},
-        "modality": {"type": "string", "enum": _values(Modality)},
-        "valid_from": nullable_str,
-        "valid_to": nullable_str,
-        "precision": {"type": ["string", "null"], "enum": [*_values(Precision), None]},
-        "time_expression": nullable_str,
-        "evidence_quote": {"type": "string"},
-        "relation_label": nullable_str,
-        "confidence": {"type": ["number", "null"]},
-    }
-    if with_types:
-        props["relation_type_id"] = {"type": ["integer", "null"]}
-    required = (
-        list(props)
-        if strict
-        else ["text", "entity_refs", "fact_kind", "polarity", "modality"]
-        + ["evidence_quote"]
-    )
-    fact: dict[str, Any] = {
-        "type": "object",
-        "required": required,
-        "properties": props,
-    }
-    top: dict[str, Any] = {
-        "type": "object",
-        "required": ["facts"],
-        "properties": {"facts": {"type": "array", "items": fact}},
-    }
-    if strict:
-        fact["additionalProperties"] = False
-        top["additionalProperties"] = False
-    return top
-
-
 def _json(value: Any) -> str:
     """Encode a value for a data block."""
     return json.dumps(value, ensure_ascii=False, indent=1)
@@ -135,7 +80,6 @@ def build_prompt(
     previous: Sequence[Episode] = (),
     *,
     instructions: str = "",
-    repair: tuple[str, list[str]] | None = None,
 ) -> str:
     """Render the user prompt.
 
@@ -148,7 +92,6 @@ def build_prompt(
         view: The relation types and mode, or None when there is no catalog.
         previous: Earlier episodes, oldest first. No block is added when empty.
         instructions: Extra instructions from settings.
-        repair: The previous invalid reply and its errors, for a repair attempt.
     """
     entities = [
         {"id": entity.local_id, "name": entity.name, "type": entity.type_label}
@@ -197,13 +140,4 @@ def build_prompt(
     parts.append(fence("episode_text", text_of(episode)))
     if instructions:
         parts.append(fence("instructions", instructions))
-    if repair is not None:
-        reply, errors = repair
-        parts.append(
-            "Your previous reply was invalid. Fix every error and reply with "
-            "the corrected JSON only.\n"
-            + fence("previous_reply", reply)
-            + "\n"
-            + fence("validation_errors", _json(errors))
-        )
     return "\n\n".join(parts)

@@ -5,11 +5,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pydantic_ai import Agent
 from pydantic_ai.models.concurrency import ConcurrencyLimitedModel
 
 from ontogr_mem.data_models.clock import Clock
-from ontogr_mem.llm import ModelRole, RoleModels, build_models, run_agent
+from ontogr_mem.llm import LLMConfig, ModelRole, RoleModels, build_models
 from ontogr_mem.observability import Tracer
 from ontogr_mem.relational_store.config import StateSettings
 from ontogr_mem.service.bootstrap import ServiceSettings, open_service
@@ -21,7 +20,6 @@ from ontogr_mem.vectorstore import Embedder
 from tests.support.clock import FixedClock
 from tests.support.embedder import MockEmbedder
 from tests.support.graph_backend import GraphBackend
-from tests.support.scripted_model import scripted_model, scripted_role_models
 
 
 def _judge_model(models: RoleModels) -> Any:
@@ -147,29 +145,33 @@ class TestOpenService:
                 pytest.fail("the service must not open")
 
     async def test_caller_owned_model_pool_enables_llm_status_and_stays_open(self):
-        """A pool passed in reports an LLM and remains usable after the context."""
-        reply_model, _ = scripted_model(["pong"], mode="prompted")
-        models = scripted_role_models(reply_model)
-        reader = Principal(id="reader", grants={"default": frozenset({Grant.READ})})
-
-        async with open_service(
-            ServiceSettings(backend="falkordb", _env_file=None),
-            state_settings=StateSettings(
-                backend="memory", allow_ephemeral=True, _env_file=None
-            ),
-            models=models,
-            clock=FixedClock(),
-            embedder=MockEmbedder(),
-            limiter=CallerRateLimiter(clock=lambda: 0.0),
-        ) as runtime:
-            status = await runtime.service.get_status(reader)
-
-        assert status.llm_available is True
-        assert models.any_configured()
-        run = await run_agent(
-            Agent[None, str](), ModelRole.ANSWER, "ping", models=models, deps=None
+        """A pool passed in reports an LLM and its HTTP client stays open."""
+        models = build_models(
+            LLMConfig(
+                model="m",
+                base_url="https://llm.invalid/v1",
+                api_key="k",
+                _env_file=None,
+            )
         )
-        assert run.output == "pong"
+        reader = Principal(id="reader", grants={"default": frozenset({Grant.READ})})
+        try:
+            async with open_service(
+                ServiceSettings(backend="falkordb", _env_file=None),
+                state_settings=StateSettings(
+                    backend="memory", allow_ephemeral=True, _env_file=None
+                ),
+                models=models,
+                clock=FixedClock(),
+                embedder=MockEmbedder(),
+                limiter=CallerRateLimiter(clock=lambda: 0.0),
+            ) as runtime:
+                status = await runtime.service.get_status(reader)
+                assert status.llm_available is True
+
+            assert not _judge_model(models).client._client.is_closed
+        finally:
+            await models.aclose()
 
     async def test_builds_model_pool_from_environment_when_none_is_passed(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

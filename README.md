@@ -470,7 +470,7 @@ asyncio.run(main())
 
 The write returns a job receipt, and `wait_seconds` makes the call wait for the job. The search result holds ranked facts, entity cards, and a rendered context block. `result.state` is one of `found`, `none`, `indexing`, or `degraded`.
 
-A free-text or message write needs an injected `LLMClient`, because the text must first be extracted into entities and facts.
+A free-text or message write needs the `ENTITY_EXTRACTION` and `FACT_EXTRACTION` model roles configured, because the text must first be extracted into entities and facts. Without them, the call fails with the `llm_unavailable` error code. A structured fact write does not need a model.
 
 ### 3. Move to durable storage
 
@@ -657,7 +657,7 @@ async def read_memory(query, now, *, vectors, keywords, temporal, entities, epis
 
 ## Language model and embedding layer
 
-The package ships no provider client. You supply an `LLMClient` and an `Embedder`. `LLMGate` is the path for the model calls of resolution verification, ontology drafting, consolidation and the pair judge. Entity and fact extraction use named model roles instead, as described under [Configuration](#configuration). The gate provides:
+The gate path handles the model calls for resolution verification, ontology drafting, consolidation and the pair judge. You supply an `LLMClient` for that path, and an `Embedder` for embeddings. Entity and fact extraction do not use the gate. They use named model roles instead, as described under [Configuration](#configuration). `build_models()` creates the OpenAI-compatible and Anthropic provider clients for those named models from the `MEMORY_LLM_*` settings. The gate provides:
 
 - model tiers (`small` and `medium`) with separate concurrency limits
 - structured output parsing and a schema repair loop
@@ -721,7 +721,7 @@ The global fields are:
 | `base_url` | `MEMORY_LLM_BASE_URL` | Unset | Endpoint URL. Required for every role that has a model. |
 | `api_key` | `MEMORY_LLM_API_KEY` | Unset | Credential for the endpoint. It is hidden from printed settings. |
 | `output_mode` | `MEMORY_LLM_OUTPUT_MODE` | `tool` | How structured output is requested: `tool`, `native` or `prompted`. |
-| `max_output_tokens` | `MEMORY_LLM_MAX_OUTPUT_TOKENS` | Role default | Output cap, an integer of at least 1. When set, it applies to every role. |
+| `max_output_tokens` | `MEMORY_LLM_MAX_OUTPUT_TOKENS` | Role default | Output cap, an integer of at least 1. It is the cap for each role that sets no `MEMORY_LLM_<ROLE>_MAX_OUTPUT_TOKENS`, and it replaces that role's default. |
 | `reasoning_effort` | `MEMORY_LLM_REASONING_EFFORT` | Unset | Reasoning effort, sent as the OpenAI reasoning effort setting. |
 | `timeout_s` | `MEMORY_LLM_TIMEOUT_S` | `300` | Seconds allowed for each HTTP attempt. Must be greater than 0. |
 | `extra_body` | `MEMORY_LLM_EXTRA_BODY` | Unset | JSON object added to the body of each provider request. |
@@ -796,6 +796,8 @@ Entity extraction and fact extraction handle failures in the following way:
 3. A fact that fails a check after a valid reply is dropped with a reason code, such as `unknown_entity_ref` or `ungrounded`. The model is not asked again for that fact.
 
 `timeout_s` applies to each HTTP attempt.
+
+The extraction pipelines never truncate input. The service API rejects text and message `content` over 64 KiB of UTF-8 bytes (`payload_too_large`) before it queues the job. The episode text and the earlier episodes reach the model in full. The `max_previous` setting (`MEMORY_ENTITY_EXTRACTION_MAX_PREVIOUS` and `MEMORY_FACT_EXTRACTION_MAX_PREVIOUS`) limits how many earlier episodes are sent, not how large they are. If the prompt is larger than the model's context window, the provider rejects the call. A service write then fails with `llm_unavailable`. The fact pipeline saves the episode's result with the `error` status, and a later `extract` call with the same store runs the episode again. The entity pipeline keeps no store. It lists the episode in `failed_episode_ids`, so the caller can pass that episode to a later `extract` call.
 
 ### Tracing model calls
 

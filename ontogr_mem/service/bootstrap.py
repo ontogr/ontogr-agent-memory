@@ -112,14 +112,17 @@ async def build_service(
         authorizer: Checks grants and records access decisions.
         operations: Persists service operation rows.
         clock: Time source shared by service components.
-        llm: Optional language model client.
+        llm: Optional client for resolution verification, ontology drafting,
+            consolidation and the pair judge. Text extraction uses ``models``
+            and needs both entity extraction and fact extraction configured.
         embedder: Client used by Tenant vector stores.
         policy: Entity resolution policy.
         resolver_settings: Entity resolver configuration.
         retrieval_settings: Retrieval configuration.
         limiter: Per-principal read and write limiter.
         models: Caller-owned process-wide model pool. The caller closes it.
-            When omitted, an unconfigured pool without HTTP clients is used.
+            When omitted, an unconfigured pool without HTTP clients is used,
+            which disables text extraction.
         max_attempts: Maximum attempts for each queued job.
         tracer: Optional tracer for service and Tenant spans.
         audit_log: Optional audit chain for service operations.
@@ -212,7 +215,9 @@ async def open_service(
         drop_graph: Graph cleanup callback for ``stores_factory``. Ignored
             when the configured backend opens the stores.
         clock: Shared time source; defaults to the system clock.
-        llm: Optional client for text extraction and model-backed operations.
+        llm: Optional client for resolution verification, ontology drafting,
+            consolidation and the pair judge. Text extraction uses ``models``
+            and needs both entity extraction and fact extraction configured.
         models: Process-wide model pool. When omitted, the pool is built from
             the environment and its HTTP clients are closed when the context
             exits. A pool passed in stays owned by the caller.
