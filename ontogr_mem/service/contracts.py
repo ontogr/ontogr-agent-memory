@@ -27,7 +27,12 @@ from ontogr_mem.service.errors import (
     PayloadTooLargeError,
     ServiceError,
 )
-from ontogr_mem.service.limits import MAX_CONTENT_BYTES, MAX_HOST_FACTS, MAX_RESULTS
+from ontogr_mem.service.limits import (
+    MAX_CONTENT_BYTES,
+    MAX_HOST_FACT_CHARS,
+    MAX_HOST_FACTS,
+    MAX_RESULTS,
+)
 
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -99,6 +104,8 @@ class WriteRequest(ScopedRequest):
 class HostFact(ContractModel):
     """A host-extracted link supported by the accompanying source text.
 
+    Every text field holds at most ``MAX_HOST_FACT_CHARS`` characters.
+
     Attributes:
         subject: Subject name as written in the source.
         subject_type: Ontology label for the subject type.
@@ -111,13 +118,13 @@ class HostFact(ContractModel):
         valid_to: Optional UTC end of validity.
     """
 
-    subject: str
-    subject_type: str
-    relation: str
-    object: str
-    object_type: str
-    evidence_quote: str
-    statement: str | None = None
+    subject: str = Field(max_length=MAX_HOST_FACT_CHARS)
+    subject_type: str = Field(max_length=MAX_HOST_FACT_CHARS)
+    relation: str = Field(max_length=MAX_HOST_FACT_CHARS)
+    object: str = Field(max_length=MAX_HOST_FACT_CHARS)
+    object_type: str = Field(max_length=MAX_HOST_FACT_CHARS)
+    evidence_quote: str = Field(max_length=MAX_HOST_FACT_CHARS)
+    statement: str | None = Field(default=None, max_length=MAX_HOST_FACT_CHARS)
     valid_from: UtcDatetime | None = None
     valid_to: UtcDatetime | None = None
 

@@ -142,6 +142,41 @@ class TestSourcedFactContracts:
 
         assert [error["loc"] for error in excinfo.value.errors()] == [("subject",)]
 
+    def test_host_fact_with_every_text_field_at_4096_characters_validates(self):
+        """Each text field of a host fact may hold exactly 4096 characters."""
+        text = "a" * 4096
+        every_text_field = dict.fromkeys(ANA_FACT, text) | {"statement": text}
+
+        fact = HostFact.model_validate(every_text_field)
+
+        assert fact.model_dump(include=set(every_text_field)) == every_text_field
+
+    @pytest.mark.parametrize(
+        "field",
+        [
+            "subject",
+            "subject_type",
+            "relation",
+            "object",
+            "object_type",
+            "evidence_quote",
+            "statement",
+        ],
+    )
+    def test_host_fact_text_field_of_4097_characters_fails(self, field):
+        """A text field one character over 4096 is refused and named in the error."""
+        with pytest.raises(ValidationError) as excinfo:
+            HostFact.model_validate({**ANA_FACT, field: "a" * 4097})
+
+        assert [error["loc"] for error in excinfo.value.errors()] == [(field,)]
+
+    def test_over_long_host_fact_field_raises_invalid_argument(self):
+        """An over-long host fact field reaches the caller as invalid argument."""
+        fact = {**ANA_FACT, "evidence_quote": "a" * 4097}
+
+        with pytest.raises(InvalidArgumentError, match="evidence_quote"):
+            validate_request(AddMemory, _sourced_request(facts=[fact]))
+
     def test_host_fact_with_an_empty_subject_is_valid(self):
         """An empty name becomes a per-item drop later, not a request error."""
         fact = HostFact.model_validate({**ANA_FACT, "subject": ""})

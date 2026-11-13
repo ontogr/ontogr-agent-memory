@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim@sha256:07d4824036af339fa1b6ef769cc99d9c10a141769538b52b3b597c84f7a7b535
 COPY --from=ghcr.io/astral-sh/uv:0.12.23@sha256:61d393e44e249f2e4b526b6c7ddcecce245946826e608e11c93ad4f5bba55b21 /uv /usr/local/bin/uv
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md LICENSE ./
@@ -14,6 +14,9 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYDANTIC_AI_NO_BANNER=1 \
     MEMORY_STATE_SQLITE_PATH=/data/state/agent_memory_state.sqlite3 \
-    FASTEMBED_CACHE_PATH=/data/models
+    FASTEMBED_CACHE_PATH=/data/models \
+    MEMORY_MCP_TRANSPORT=http \
+    MEMORY_MCP_HOST=0.0.0.0 \
+    MEMORY_MCP_PORT=8000
 ENTRYPOINT ["ontogr-mem"]
-CMD ["mcp", "--transport", "http", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["mcp"]

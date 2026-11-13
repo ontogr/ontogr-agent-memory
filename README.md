@@ -417,7 +417,7 @@ uv run ontogr-mem mcp --transport http --host 127.0.0.1 --port 8000
 docker compose up -d --build mcp
 ```
 
-`docker compose up -d --wait falkordb` runs from a clone or a copy of `compose.yaml`, as the earlier sections explain. The container serves HTTP at `http://127.0.0.1:8000/mcp`, and Compose publishes that port on host loopback only. The image binds all container interfaces and the server only warns when no key is set, so set `MEMORY_MCP_API_KEY` before publishing the port beyond host loopback or sharing the container network.
+`docker compose up -d --wait falkordb` runs from a clone or a copy of `compose.yaml`, as the earlier sections explain. The container serves HTTP at `http://127.0.0.1:8000/mcp`, and Compose publishes that port on host loopback only. The image sets `MEMORY_MCP_TRANSPORT`, `MEMORY_MCP_HOST` and `MEMORY_MCP_PORT` to `http`, `0.0.0.0` and `8000`, and environment variables or Compose can override them. The image binds all container interfaces and the server only warns when no key is set, so set `MEMORY_MCP_API_KEY` before publishing the port beyond host loopback or sharing the container network.
 
 Connect a host with one of these snippets. They assume `ontogr-mem` is on the host's PATH, for example after `uv tool install "ontogr-mem[falkordb,fastembed,mcp]"`. Inside a uv project, prefix the command with `uv run`.
 
@@ -460,13 +460,13 @@ The four snippets do not change between server modes. The server has two modes.
 - **Keyless mode** needs no language model on the server. Run the server where no global or role-specific model is configured. Removing only `MEMORY_LLM_API_KEY` does not disable a configured model.
 - **Model mode** lets the server extract facts from text. Set `MEMORY_LLM_MODEL`, `MEMORY_LLM_BASE_URL` and the key in the environment, or in the server working directory's `.env`, before the process starts. Use a model key for these settings. Never copy a host subscription token into them.
 
-Keyless mode works as follows. The host's model extracts the facts and calls `write_facts` with the source text and the facts. A `write_facts` request carries at most 1000 facts. The service stores the exact source text as one Episode, checks every quote and name against that text, applies the ontology rules, and stores the valid facts. The server's model settings are independent of the host's subscription.
+Keyless mode works as follows. The host's model extracts the facts and calls `write_facts` with the source text and the facts. A `write_facts` request carries at most 1000 facts, and each text field of a fact holds at most 4096 characters. The service stores the exact source text as one Episode, checks every quote and name against that text, applies the ontology rules, and stores the valid facts. The server's model settings are independent of the host's subscription.
 
 `add_memory` is listed only in model mode, when both extraction roles (`ENTITY_EXTRACTION` and `FACT_EXTRACTION`) have models. It extracts entities and facts from plain text on the server.
 
 The bearer key `MEMORY_MCP_API_KEY` authenticates HTTP requests. It is not a model key, and it does not protect stdio. Stdio access means access to the launched process, so it is not a tenant authorization mechanism. Set the key through the host's documented bearer header mechanism. The snippets above do not include it.
 
-The local embedder downloads its model on first use, about 190 MB, and keeps it in `FASTEMBED_CACHE_PATH`. The first write or search after a fresh install is slow.
+The local embedder loads its model while the server process starts, before the server answers any request. On a fresh install it first downloads the model, about 190 MB, into `FASTEMBED_CACHE_PATH`, so startup can take half a minute or more. A host that launches the stdio server may need a longer startup timeout, or you can start the server once beforehand so the model is already cached.
 
 The server registers these tools:
 
