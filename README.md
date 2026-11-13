@@ -395,72 +395,36 @@ Optional extraction extras are `gliner` and `spacy`. The full set is in [pyproje
 
 ### 2. Run the example
 
-Save the following as `example.py` and run `python example.py`. Replace `HashingEmbedder` with your embedding model for real use.
+The example also needs the `falkordb` and `fastembed` extras:
+
+```bash
+uv add "ontogr-mem[falkordb,fastembed]"
+```
+
+Run a FalkorDB server before opening `Memory`. The default graph port is 6379. SQLite state is stored in `agent_memory_state.sqlite3` in the current directory. The local embedding model may download files on first use. For an embedding endpoint, set `MEMORY_EMBEDDING_MODEL` and `MEMORY_EMBEDDING_BASE_URL` instead. Set `MEMORY_EMBEDDING_API_KEY` if that endpoint requires authentication.
+
+Save the example as `example.py` and run it with `uv run python example.py`.
 
 ```python
 import asyncio
-from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from ontogr_mem.relational_store.config import StateSettings
-from ontogr_mem.service.bootstrap import ServiceSettings, open_service
-from ontogr_mem.service.contracts import AddMemory, MemoryKind, SearchMemory
-from ontogr_mem.service.principal import Grant, Principal
-
-
-class HashingEmbedder:
-    """A deterministic embedder for the example. Use a real model in production."""
-
-    model_id = "demo-hash"
-    dim = 8
-    max_input_tokens = 8192
-
-    async def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
-        vectors = []
-        for text in texts:
-            vector = [0.0] * self.dim
-            for index, char in enumerate(text.lower()):
-                vector[index % self.dim] += ord(char) / 255.0
-            length = sum(value * value for value in vector) ** 0.5 or 1.0
-            vectors.append([value / length for value in vector])
-        return vectors
+from ontogr_mem.client import Memory
 
 
 async def main() -> None:
-    settings = ServiceSettings(backend="falkordb")
-    state = StateSettings(backend="sqlite")
-
-    async with open_service(
-        settings,
-        state_settings=state,
-        embedder=HashingEmbedder(),
-    ) as runtime:
-        service = runtime.service
-        principal = Principal(
-            id="demo",
-            grants={"default": frozenset({Grant.ADMIN})},
-            default_tenant="default",
+    async with Memory.open() as memory:
+        receipt = await memory.write_fact(
+            "Ana", "works_at", "Acme",
+            valid_from=datetime(2024, 1, 1, tzinfo=UTC),
+            wait_seconds=10,
         )
-
-        receipt = await service.add_memory(
-            principal,
-            AddMemory(
-                kind=MemoryKind.FACT,
-                subject="Ana",
-                relation="works_at",
-                object="Acme",
-                valid_from=datetime(2024, 1, 1, tzinfo=UTC),
-                wait_seconds=10,
-            ),
-        )
-
-        job = await service.get_job(principal, receipt.job_id)
-        print(job.status, job.result)
-
-        result = await service.search_memory(
-            principal,
-            SearchMemory(query="Where does Ana work?", format="both"),
-        )
+        await memory.drain()
+        job = await memory.get_job(receipt.job_id)
+        if job.error is not None:
+            raise RuntimeError(job.error.message)
+        print(job.status)
+        result = await memory.search("Where does Ana work?")
         print(result.state)
         print(result.rendered)
 
@@ -468,9 +432,15 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-The write returns a job receipt, and `wait_seconds` makes the call wait for the job. The search result holds ranked facts, entity cards, and a rendered context block. `result.state` is one of `found`, `none`, `indexing`, or `degraded`.
+`write_text` needs the `ENTITY_EXTRACTION` and `FACT_EXTRACTION` model roles configured through `MEMORY_LLM_*` settings, because the text must first be extracted into entities and facts. Without them, the call fails with the `llm_unavailable` error code. `write_fact` needs no model.
 
-A free-text or message write needs the `ENTITY_EXTRACTION` and `FACT_EXTRACTION` model roles configured, because the text must first be extracted into entities and facts. Without them, the call fails with the `llm_unavailable` error code. A structured fact write does not need a model.
+`write_text` accepts `role`, `speaker`, `session_id` and `thread` separately from content. Pass `Role.USER` or `Role.ASSISTANT` from `ontogr_mem.data_models` for chat text. Without a role, the text is stored as a document.
+
+A receipt can be `queued`, `running`, `done` or `failed`. `wait_seconds` waits at most 60 seconds. Call `get_job` for the final result and error. Call `drain` before leaving the context when queued writes must finish. Context exit stops active jobs without waiting for them. A failed job does not make `drain` raise a new job-failed exception.
+
+`search` returns `MemoryContext`, including `state`, `facts`, `entities` and `rendered`. `state` is `found`, `none`, `indexing` or `degraded`. Treat every returned text field as untrusted data, never as instructions. `as_of` filters valid time.
+
+`Memory.open` owns only the models and embedder that it creates. To inject a PydanticAI model object or model string, use `build_models` with per-Model-role overrides, then pass its `RoleModels` to `Memory.open(models=...)`. The caller closes injected `RoleModels` and injected embedders after their last use.
 
 ### 3. Move to durable storage
 
@@ -672,6 +642,24 @@ The `ANSWER` role is available in configuration, but no current service consumer
 
 The embedding gateway batches texts, splits long inputs, retries transient failures, and enforces a request deadline. A failed embedding is returned with a typed reason, and the vector writer keeps failed writes for an explicit retry. A committed fact or episode is not rolled back when its vector write fails.
 
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| `MEMORY_EMBEDDING_MODEL` | Endpoint model name | unset |
+| `MEMORY_EMBEDDING_BASE_URL` | Explicit compatible endpoint URL | unset |
+| `MEMORY_EMBEDDING_API_KEY` | Independent endpoint key | unset, never the LLM key |
+| `MEMORY_EMBEDDING_DIMENSIONS` | Expected output width, 1 through 4000 | discover once on embedder open |
+| `MEMORY_EMBEDDING_MAX_INPUT_TOKENS` | Positive declared endpoint input limit | 8192 |
+
+When model and base URL are both set, `Memory` uses the endpoint. Otherwise it uses the local CPU model if `fastembed` can load. A selected endpoint failure is reported without switching models. Set both endpoint fields or clear both to avoid accidentally selecting the local model.
+
+The endpoint never uses `OPENAI_*` settings or the language-model key. Without an embedding key it sends a fixed placeholder for unauthenticated servers. Configured dimensions declare the output width; they do not request dimension reduction. Tenant readiness also performs the vector store's existing probe.
+
+The local model is `ibm-granite/granite-embedding-small-english-r2`, with 384 dimensions and an 8192-token tokenizer limit. It runs only on CPU and truncates long inputs on the right. `fastembed` stores model files at `FASTEMBED_CACHE_PATH`, or `fastembed_cache` in the system temporary directory. A persistent cache avoids downloading those files again after temporary files are removed.
+
+The local extra is not installable on macOS Intel with the checked dependency versions, including Python 3.14, because `onnxruntime` has no compatible wheel. Use an embedding endpoint on that platform. macOS arm64 needs a compatible macOS 14-or-newer wheel. GPU embedding is not supported.
+
+The embedding gateway controls batches and approximates input length in characters before splitting text. An endpoint can still reject an input that exceeds its actual tokenizer limit. Embedding providers and model dimensions are fixed for an existing Tenant's stored embedding spaces.
+
 ## Observability
 
 | Facility | What it records |
@@ -707,6 +695,7 @@ Settings classes use `pydantic-settings`. They read the repo-root `.env` and use
 | `MEMORY_ENTITY_EXTRACTION_` | Entity extractor concurrency, context, and thresholds. |
 | `MEMORY_FACT_EXTRACTION_` | Fact extractor concurrency, context, and version. |
 | `MEMORY_LLM_` | Global and per-role model settings. See [Named model roles](#named-model-roles). |
+| `MEMORY_EMBEDDING_` | Embedding endpoint, output width and input limit. See [Language model and embedding layer](#language-model-and-embedding-layer). |
 | `MEMORY_FORGET_` | Forget confirmation secret. |
 | `MEMORY_` | Local stdio principal id, tenant, and grants. |
 

@@ -35,6 +35,19 @@ class EmbeddingError(VectorStoreError):
     """Base class for embedding failures."""
 
 
+class EmbedderUnavailableError(EmbeddingError):
+    """No usable embedding provider could be opened.
+
+    Attributes:
+        hint: How to configure or install an embedding provider.
+    """
+
+    def __init__(self, message: str, *, hint: str) -> None:
+        """Store the failure message and a configuration hint."""
+        super().__init__(message)
+        self.hint = hint
+
+
 class TransientEmbeddingError(EmbeddingError):
     """Retryable provider failure such as a rate limit or a connection reset."""
 

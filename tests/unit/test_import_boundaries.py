@@ -18,11 +18,13 @@ BLOCKED_EXTRAS = (
     "gliner",
     "spacy",
     "yaml",
+    "fastembed",
 )
 
 OPTIONAL_SUBPACKAGES = (
     "ontogr_mem.graphstore.falkordb",
     "ontogr_mem.graphstore.neo4j",
+    "ontogr_mem.vectorstore.builtin",
     "ontogr_mem.vectorstore.graph",
     "ontogr_mem.vectorstore.pgvector",
 )
@@ -211,7 +213,11 @@ class TestImportBoundaries:
             import pkgutil
             import sys
 
-            skip = (*{OPTIONAL_SUBPACKAGES!r}, "ontogr_mem.service")
+            skip = (
+                *{OPTIONAL_SUBPACKAGES!r},
+                "ontogr_mem.service",
+                "ontogr_mem.client",
+            )
             import ontogr_mem
 
             def walk(package, prefix):
@@ -227,6 +233,28 @@ class TestImportBoundaries:
             loaded = sorted(
                 name for name in sys.modules
                 if name.startswith("ontogr_mem.service")
+            )
+            print(loaded)
+            sys.exit(1 if loaded else 0)
+            """
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_package_import_leaves_client_extra_and_graph_store_unloaded(self):
+        """Importing the root package loads neither the client nor the graph store."""
+        result = run_clean(
+            """
+            import sys
+            import ontogr_mem
+
+            forbidden = ("ontogr_mem.client", "ontogr_mem.graphstore", "fastembed")
+            loaded = sorted(
+                name for name in sys.modules
+                if any(
+                    name == prefix or name.startswith(prefix + ".")
+                    for prefix in forbidden
+                )
             )
             print(loaded)
             sys.exit(1 if loaded else 0)
@@ -276,6 +304,42 @@ class TestBackendImports:
         )
 
         assert result.returncode == 0, result.stdout + result.stderr
+
+    def test_local_embedder_open_hints_at_fastembed_and_model_settings(self):
+        """With every extra absent, the local embedder names both recovery paths."""
+        result = run_clean(
+            f"""
+            import asyncio
+            import importlib.abc
+            import sys
+
+            blocked = {BLOCKED_EXTRAS!r}
+
+            class Blocker(importlib.abc.MetaPathFinder):
+                def find_spec(self, name, path=None, target=None):
+                    if name.split(".")[0] in blocked:
+                        raise ImportError(name)
+                    return None
+
+            sys.meta_path.insert(0, Blocker())
+            import ontogr_mem.vectorstore.builtin.local
+            from ontogr_mem.vectorstore.builtin.local import LocalEmbedder
+            from ontogr_mem.vectorstore.errors import EmbedderUnavailableError
+
+            try:
+                asyncio.run(LocalEmbedder.open())
+            except EmbedderUnavailableError as exc:
+                if "fastembed" in exc.hint and "MEMORY_EMBEDDING_MODEL" in exc.hint:
+                    print("EMBEDDER_HINT_OK")
+                    sys.exit(0)
+                print(exc.hint)
+                sys.exit(1)
+            sys.exit(1)
+            """
+        )
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "EMBEDDER_HINT_OK" in result.stdout
 
     def test_missing_extra_names_the_install_command(self):
         """Without falkordb installed, importing the backend explains the fix."""

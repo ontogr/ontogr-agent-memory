@@ -260,6 +260,9 @@ _Avoid_: session state, global context
 The one async service that applies access checks and memory rules for every verb. See [one memory service](thoughts/shared/decisions/0069-one-memory-service-with-thin-doors.md).
 _Avoid_: interface, platform service
 
+**Memory client**:
+The public entry that opens the [[Memory service]] for one [[Tenant]] with a default local [[Principal]] and exposes the verbs.
+
 **Tenant stack**:
 The stores and ports for one [[Tenant]] on one backend.
 _Avoid_: store bundle, runtime (for these stores)
