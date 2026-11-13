@@ -10,7 +10,7 @@ from enum import StrEnum
 from typing import Any, TypeVar
 
 from ontogr_mem.data_models.facts import FactKind, Modality, Polarity, Precision
-from ontogr_mem.llm.json_reply import SchemaError, load_json
+from ontogr_mem.json_reply import SchemaError, load_json
 
 
 E = TypeVar("E", bound=StrEnum)

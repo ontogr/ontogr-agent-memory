@@ -15,7 +15,7 @@ from ontogr_mem.consolidation.ports import ResolutionPort, TemporalPort
 from ontogr_mem.consolidation.registry import validate_stages
 from ontogr_mem.consolidation.stage import Clock, Stage, StageContext
 from ontogr_mem.consolidation.store import ConsStore
-from ontogr_mem.llm.gate import LLMGate
+from ontogr_mem.llm import RoleModels
 
 
 log = logging.getLogger(__name__)
@@ -37,9 +37,9 @@ class ConsolidationRunner:
         store: Consolidation store of the tenant.
         clock: Time source of the run.
         settings: Lease and rerun limits.
+        models: Models available to the stages by role.
         resolution: Entity resolution the stages act on.
         temporal: Temporal engine the stages act on.
-        llm: The gate every model call of the stages passes through.
         run_ids: Source of run identities, which are also lease holder ids.
             Defaults to random hex strings.
     """
@@ -51,9 +51,9 @@ class ConsolidationRunner:
         clock: Clock,
         settings: ConsolidationSettings,
         *,
+        models: RoleModels,
         resolution: ResolutionPort | None = None,
         temporal: TemporalPort | None = None,
-        llm: LLMGate | None = None,
         run_ids: Callable[[], str] | None = None,
     ) -> None:
         """Wire the runner to its stages and ports."""
@@ -61,9 +61,9 @@ class ConsolidationRunner:
         self._store = store
         self._clock = clock
         self._settings = settings
+        self._models = models
         self._resolution = resolution
         self._temporal = temporal
-        self._llm = llm
         self._run_ids = run_ids or _random_run_id
 
     async def run(self) -> RunResult:
@@ -109,9 +109,9 @@ class ConsolidationRunner:
             clock=self._clock,
             store=self._store,
             settings=self._settings,
+            models=self._models,
             resolution=self._resolution,
             temporal=self._temporal,
-            llm=self._llm,
         )
         results: list[StageResult] = []
         aborted = False

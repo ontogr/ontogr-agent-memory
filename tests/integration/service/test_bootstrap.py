@@ -3,6 +3,7 @@
 import asyncio
 
 from ontogr_mem.data_models.clock import Clock
+from ontogr_mem.llm import LLMConfig, build_models
 from ontogr_mem.observability import InMemoryTracer, Tracer
 from ontogr_mem.relational_store import MemoryOperationStore
 from ontogr_mem.relational_store.memory import MemoryJobStore
@@ -140,7 +141,7 @@ async def _build_service(
         authorizer=authorizer,
         operations=operations,
         clock=clock,
-        llm=None,
+        models=build_models(LLMConfig.model_construct()),
         embedder=embedder,
         stores_factory=stores_factory or graph_stores_factory,
         drop_graph=graph_backend.store.erase_tenant,

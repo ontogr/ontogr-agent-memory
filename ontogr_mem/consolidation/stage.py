@@ -15,7 +15,7 @@ from ontogr_mem.consolidation.config import ConsolidationSettings
 from ontogr_mem.consolidation.models import StageResult, Watermark
 from ontogr_mem.consolidation.ports import ResolutionPort, TemporalPort
 from ontogr_mem.consolidation.store import ConsStore
-from ontogr_mem.llm.gate import LLMGate
+from ontogr_mem.llm import RoleModels
 
 
 Clock = Callable[[], datetime]
@@ -30,9 +30,9 @@ class StageContext:
         clock: Time source of the run.
         store: Consolidation document store of the tenant.
         settings: Settings of the run.
+        models: Models available to the stages by role.
         resolution: Entity resolution the stages act on, if wired.
         temporal: Temporal engine the stages act on, if wired.
-        llm: The gate every model call of the stages passes through, if wired.
         results: Results of the stages that already ran in this pass.
         entity_graph: The graph read by stages in this pass, when built.
     """
@@ -41,9 +41,9 @@ class StageContext:
     clock: Clock
     store: ConsStore
     settings: ConsolidationSettings
+    models: RoleModels
     resolution: ResolutionPort | None = None
     temporal: TemporalPort | None = None
-    llm: LLMGate | None = None
     results: list[StageResult] = field(default_factory=list)
     entity_graph: EntityGraph | None = field(default=None, init=False, repr=False)
 

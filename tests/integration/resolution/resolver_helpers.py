@@ -2,6 +2,7 @@
 
 from ontogr_mem.data_models import ExtractedEntity, Method, SystemClock
 from ontogr_mem.data_models.entities import Mention
+from ontogr_mem.llm import LLMConfig, RoleModels, build_models
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionPolicy
 from ontogr_mem.resolution.resolver import EntityResolver
@@ -36,7 +37,7 @@ def ex(
 async def make(
     store: ResolverStore,
     *,
-    llm: object | None = None,
+    models: RoleModels | None = None,
     inline: bool = False,
     **settings: object,
 ) -> EntityResolver:
@@ -49,7 +50,7 @@ async def make(
         ResolutionPolicy(),
         ResolverSettings(inline_verification=inline, **settings),  # type: ignore[arg-type]
         SystemClock(),
-        llm=llm,  # type: ignore[arg-type]
+        models=models or build_models(LLMConfig.model_construct()),
     )
 
 

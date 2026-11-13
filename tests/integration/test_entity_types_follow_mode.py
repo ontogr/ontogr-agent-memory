@@ -11,6 +11,7 @@ from ontogr_mem.data_models import Episode
 from ontogr_mem.entity_extraction import EntityExtraction, EntityExtractionSettings
 from ontogr_mem.entity_extraction.extractors import LLMExtractor, RecordMapper
 from ontogr_mem.graphstore.ontology_store import GraphOntologyStore
+from ontogr_mem.llm import RoleModels
 from ontogr_mem.ontology.extraction_items import items_from_entities
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import UNKNOWN_ID, Mode, Reason, SetModes
@@ -20,14 +21,15 @@ from ontogr_mem.ontology.validate import Context, ValidationReport
 from tests.support.clock import FixedClock
 from tests.support.extraction import entity_models, text_episode
 from tests.support.graph_backend import GraphBackend
-from tests.support.llm import ScriptedLLM
 from tests.support.ontology import base, cs
-from tests.support.scripted_model import ScriptedCall
-
-
-DRAFT = json.dumps(
-    {"ops": [{"op": "add_entity", "label": "Gadget", "description": "A device."}]}
+from tests.support.scripted_model import (
+    ScriptedCall,
+    scripted_model,
+    scripted_role_models,
 )
+
+
+DRAFT = {"ops": [{"op": "add_entity", "label": "Gadget", "description": "A device."}]}
 TYPES_BLOCK = re.compile(r"<entity_types>\n(.*?)\n</entity_types>", re.DOTALL)
 
 
@@ -48,12 +50,12 @@ class World:
     """A manager on one store, and the extraction that reads its catalog."""
 
     store: OntologyStore
-    draft_llm: ScriptedLLM
+    models: RoleModels
 
     def manager(self) -> OntologyManager:
         """Build a manager that needs three unmatched rows to propose."""
         return OntologyManager(
-            self.store, self.draft_llm, OntologySettings(min_support=3), FixedClock()
+            self.store, self.models, OntologySettings(min_support=3), FixedClock()
         )
 
 
@@ -61,11 +63,12 @@ class World:
 async def world(graph_backend: GraphBackend) -> AsyncGenerator[World]:
     """An ontology store on each real backend."""
     handle = await graph_backend.open_tenant()
+    model, _ = scripted_model([DRAFT])
     yield World(
         GraphOntologyStore(
             graph_backend.store, handle, tenant_keyed=graph_backend.tenant_keyed
         ),
-        ScriptedLLM([DRAFT]),
+        scripted_role_models(ontology=model),
     )
 
 

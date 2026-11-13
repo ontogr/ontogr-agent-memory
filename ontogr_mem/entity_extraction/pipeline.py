@@ -31,7 +31,7 @@ from ontogr_mem.entity_extraction.extractors import (
 from ontogr_mem.entity_extraction.report import ExtractionReport
 from ontogr_mem.entity_extraction.settings import EntityExtractionSettings
 from ontogr_mem.entity_extraction.text import language_of
-from ontogr_mem.llm import LLMError, ModelFailure, ModelOutputError
+from ontogr_mem.llm import ModelFailure, ModelOutputError
 
 
 log = logging.getLogger(__name__)
@@ -122,7 +122,7 @@ class EntityExtraction:
                 return await self._extract_one(episode)
             except UnknownKindError:
                 raise
-            except (ExtractionError, LLMError, ModelFailure, TimeoutError) as exc:
+            except (ExtractionError, ModelFailure, TimeoutError) as exc:
                 log.warning("extraction failed for %s: %r", episode.id, exc)
                 status = (
                     Status.PARSE_FAILED

@@ -1,12 +1,14 @@
 """Tests for the ontology manager over a live graph tenant."""
 
 import asyncio
-import json
+from collections.abc import Sequence
+from typing import Any
 
 import pytest
+from pydantic_ai.exceptions import ModelHTTPError
 
 from ontogr_mem.graphstore.ontology_store import GraphOntologyStore
-from ontogr_mem.llm import LLMCallError
+from ontogr_mem.llm import RoleModels
 from ontogr_mem.ontology.apply import apply_changeset
 from ontogr_mem.ontology.errors import (
     InvalidChange,
@@ -41,13 +43,17 @@ from ontogr_mem.ontology.validate import (
 )
 from tests.support.clock import FixedClock
 from tests.support.graph_backend import GraphBackend
-from tests.support.llm import ScriptedLLM
 from tests.support.ontology import base, cs
+from tests.support.scripted_model import Scripted, scripted_model, scripted_role_models
 
 
-GOOD = json.dumps(
-    {"ops": [{"op": "add_entity", "label": "Gadget", "description": "A device."}]}
-)
+GOOD = {"ops": [{"op": "add_entity", "label": "Gadget", "description": "A device."}]}
+
+
+def _ontology_models(replies: Sequence[Any] = ()) -> tuple[RoleModels, Scripted]:
+    """Build a scripted model pool for ontology proposals."""
+    model, recorder = scripted_model(replies)
+    return scripted_role_models(ontology=model), recorder
 
 
 async def make_store(graph_backend: GraphBackend) -> GraphOntologyStore:
@@ -61,12 +67,14 @@ async def make_store(graph_backend: GraphBackend) -> GraphOntologyStore:
 async def make_manager(
     graph_backend: GraphBackend,
     catalog: Ontology | None = None,
-    llm: ScriptedLLM | None = None,
+    models: RoleModels | None = None,
 ) -> OntologyManager:
     """Build a manager on a fresh tenant, optionally loaded with a catalog."""
+    if models is None:
+        models, _ = _ontology_models()
     manager = OntologyManager(
         await make_store(graph_backend),
-        llm or ScriptedLLM(),
+        models,
         OntologySettings(min_support=2),
         FixedClock(),
     )
@@ -133,12 +141,12 @@ class TestOntologyManager:
 
         assert (await manager.propose()).proposals == []
 
-    async def test_drafting_uses_the_llm_client_and_accepting_commits(
+    async def test_drafting_uses_the_ontology_role_and_accepting_commits(
         self, graph_backend: GraphBackend
     ):
-        """Drafting uses the llm client and accepting commits."""
-        llm = ScriptedLLM([GOOD])
-        manager = await make_manager(graph_backend, base(), llm)
+        """A typed proposal can be accepted and committed."""
+        models, recorder = _ontology_models([GOOD])
+        manager = await make_manager(graph_backend, base(), models)
         await seed(manager)
 
         run = await manager.propose()
@@ -149,49 +157,34 @@ class TestOntologyManager:
 
         assert proposal.status is ProposalStatus.PENDING
         assert proposal.support == 2 and proposal.labels == ["gadget"]
-        assert len(llm.requests) == 1
+        assert len(recorder.calls) == 1
         assert new is not None and new.version == 2
         gadget = new.entities[-1]
         assert (gadget.label, gadget.origin.value) == ("Gadget", "accepted")
         again = await manager.propose()
         assert again.proposals == []
 
-    async def test_malformed_draft_is_retried_then_works(
+    async def test_invalid_shape_is_reasked_then_valid_draft_is_returned(
         self, graph_backend: GraphBackend
     ):
-        """Malformed draft is retried then works."""
-        bad = json.dumps({"ops": [{"op": "add_entity", "label": "Person"}]})
-        llm = ScriptedLLM([bad, GOOD])
-        manager = await make_manager(graph_backend, base(), llm)
+        """PydanticAI re-asks for invalid shape before returning a valid draft."""
+        bad = {"ops": [{"op": "add_entity", "label": "Gadget", "extra": True}]}
+        models, recorder = _ontology_models([bad, GOOD])
+        manager = await make_manager(graph_backend, base(), models)
         await seed(manager)
 
         run = await manager.propose()
 
         assert [p.status for p in run.proposals] == [ProposalStatus.PENDING]
-        assert len(llm.requests) == 2
+        assert len(recorder.calls) == 2
 
-    async def test_draft_that_never_validates_is_stored_rejected(
+    async def test_exhausted_shape_validation_is_stored_rejected(
         self, graph_backend: GraphBackend
     ):
-        """Draft that never validates is stored rejected."""
-        llm = ScriptedLLM(
-            [
-                json.dumps({"ops": [{"op": "add_entity", "label": "G", "bogus": 1}]}),
-                json.dumps(
-                    {
-                        "ops": [
-                            {
-                                "op": "deprecate_type",
-                                "kind": "entity",
-                                "target": "Person",
-                            }
-                        ]
-                    }
-                ),
-                "not json",
-            ]
-        )
-        manager = await make_manager(graph_backend, base(), llm)
+        """Exhausted output validation is stored as a rejected proposal."""
+        invalid = {"ops": [{"op": "add_entity", "label": "Gadget", "extra": True}]}
+        models, recorder = _ontology_models([invalid, invalid, invalid])
+        manager = await make_manager(graph_backend, base(), models)
         await seed(manager)
 
         (proposal,) = (await manager.propose()).proposals
@@ -200,17 +193,34 @@ class TestOntologyManager:
         assert proposal.status is ProposalStatus.REJECTED
         assert proposal.ops == [] and proposal.reason
         assert stored.proposals == []
+        assert len(recorder.calls) == 3
+
+    async def test_domain_invalid_draft_is_rejected_without_a_reask(
+        self, graph_backend: GraphBackend
+    ):
+        """A valid shape that fails dry-application gets one request."""
+        models, recorder = _ontology_models(
+            [{"ops": [{"op": "add_entity", "label": "Person"}]}]
+        )
+        manager = await make_manager(graph_backend, base(), models)
+        await seed(manager)
+
+        (proposal,) = (await manager.propose()).proposals
+        stored = await manager.propose()
+
+        assert proposal.status is ProposalStatus.REJECTED
+        assert proposal.ops == [] and proposal.reason
+        assert stored.proposals == []
+        assert len(recorder.calls) == 1
 
     async def test_model_failure_raises_an_ontology_error(
         self, graph_backend: GraphBackend
     ):
         """Model failure raises an ontology error."""
-
-        def fail(_request):
-            """Fail."""
-            raise LLMCallError("timeout")
-
-        manager = await make_manager(graph_backend, base(), ScriptedLLM(answer=fail))
+        models, _ = _ontology_models(
+            [ModelHTTPError(503, "test-model", {"error": "timeout"})]
+        )
+        manager = await make_manager(graph_backend, base(), models)
         await seed(manager)
 
         with pytest.raises(OntologyError, match="draft failed"):
@@ -220,8 +230,8 @@ class TestOntologyManager:
         self, graph_backend: GraphBackend
     ):
         """Rejected group returns only when support doubles."""
-        llm = ScriptedLLM([GOOD, GOOD])
-        manager = await make_manager(graph_backend, base(), llm)
+        models, _ = _ontology_models([GOOD, GOOD])
+        manager = await make_manager(graph_backend, base(), models)
         await seed(manager)
         (first,) = (await manager.propose()).proposals
         assert (
@@ -252,7 +262,8 @@ class TestOntologyManager:
         graph_backend: GraphBackend,
     ):
         """Accepting a proposal that no longer applies marks it superseded."""
-        manager = await make_manager(graph_backend, base(), ScriptedLLM([GOOD]))
+        models, _ = _ontology_models([GOOD])
+        manager = await make_manager(graph_backend, base(), models)
         await seed(manager)
         (proposal,) = (await manager.propose()).proposals
         head = await manager.catalog()
@@ -274,7 +285,8 @@ class TestOntologyManager:
         self, graph_backend: GraphBackend
     ):
         """A decided proposal cannot be decided again."""
-        manager = await make_manager(graph_backend, base(), ScriptedLLM([GOOD]))
+        models, _ = _ontology_models([GOOD])
+        manager = await make_manager(graph_backend, base(), models)
         await seed(manager)
         (proposal,) = (await manager.propose()).proposals
         await manager.decide(proposal.proposal_id, accept=False, actor="a", reason="")

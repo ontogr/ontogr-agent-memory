@@ -6,7 +6,7 @@ from ontogr_mem.resolution.resolver_store import ResolverStore
 from tests.contracts.resolver_store import entity
 from tests.integration.resolution.resolver_helpers import make
 from tests.support.graph_backend import GraphBackend
-from tests.unit.resolution.helpers import OracleLLM
+from tests.unit.resolution.helpers import oracle_models
 
 
 async def _duplicate_store(graph_backend: GraphBackend) -> ResolverStore:
@@ -71,12 +71,12 @@ async def test_a_blocked_pair_is_judged_on_its_jaccard_and_not_on_a_cosine(
         ],
         [],
     )
-    llm = OracleLLM(lambda a, b: True)
-    resolver = await make(store, llm=llm)
+    models, scripted = oracle_models(lambda a, b: True)
+    resolver = await make(store, models=models)
 
     report = await resolver.deduplicate()
 
-    assert len(llm.requests) == 1
-    assert "jaccard=" in llm.requests[0].prompt
-    assert "cosine=" not in llm.requests[0].prompt
+    assert len(scripted.calls) == 1
+    assert "jaccard=" in scripted.calls[0].prompt
+    assert "cosine=" not in scripted.calls[0].prompt
     assert report.pairs_merged == 1

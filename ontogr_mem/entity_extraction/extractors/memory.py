@@ -1,15 +1,18 @@
-"""Memory extractor: base entities, then a small-model pass for attributes."""
+"""Memory extractor: base entities, then role-model enrichment."""
 
 import json
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
-from typing import Any
 
 from ontogr_mem.data_models import Episode, ExtractedEntity, TypeCatalog, Usage
 from ontogr_mem.entity_extraction.extractors.base import EntityExtractor, Extracted
+from ontogr_mem.entity_extraction.extractors.memory_agent import (
+    EntityAnnotation,
+    memory_agent,
+)
 from ontogr_mem.entity_extraction.text import find_spans, text_of
-from ontogr_mem.llm import LLMError, LLMGate, LLMRequest, ModelSize
+from ontogr_mem.llm import ModelFailure, ModelRole, RoleModels, run_agent
 
 
 log = logging.getLogger(__name__)
@@ -21,45 +24,33 @@ DEFAULT_ATTRIBUTES: Mapping[str, tuple[str, ...]] = {
     "Organization": ("relationship_to_user",),
 }
 
-ENRICH_SYSTEM = (
-    "You annotate entities found in a user's message. Reply with JSON only: "
-    '{"entities": [{"id": "e0", "description": "...", "attributes": '
-    '{"<name>": {"value": "...", "evidence": "<exact quote from the text>"}}}]}. '
-    "Use only facts stated in the text. Only use the allowed attribute names "
-    "listed for each entity. Omit an attribute when the text does not state it."
-)
-
 _MAX_DESCRIPTION = 300
-_Scalar = str | int | float | bool
 
 
 class MemoryEntityExtractor(EntityExtractor):
     """Wrap an extractor and fill `description` and `attributes`.
 
-    One small-model call per batch of entities. The model never changes names,
-    types or spans. An attribute is kept only if it is allowed for the entity's
-    type, has a scalar value, and its `evidence` quote is found in the episode
-    text. A failed or malformed reply leaves the plain result.
+    One role-model call enriches each batch of entities. The model never changes
+    names, types or spans. An attribute is kept only if it is allowed for the
+    entity's type and its evidence quote is found in the Episode. A failed run
+    leaves the base result unchanged.
     """
 
     def __init__(
         self,
         base: EntityExtractor,
-        gate: LLMGate,
+        models: RoleModels,
         *,
         allowed_attributes: Mapping[str, tuple[str, ...]] | None = None,
         max_entities_per_call: int = 25,
-        model_size: ModelSize = ModelSize.SMALL,
     ) -> None:
-        """Create the extractor around `base`."""
+        """Create the extractor around the base extractor and role models."""
         if max_entities_per_call < 1:
-            msg = "max_entities_per_call must be >= 1"
-            raise ValueError(msg)
+            raise ValueError("max_entities_per_call must be >= 1")
         self._base = base
-        self._gate = gate
+        self._models = models
         self._allowed = dict(allowed_attributes or DEFAULT_ATTRIBUTES)
         self._max = max_entities_per_call
-        self._size = model_size
         self.languages = base.languages
 
     async def extract(
@@ -97,20 +88,38 @@ class MemoryEntityExtractor(EntityExtractor):
             for e in batch
         ]
         try:
-            response = await self._gate.complete(
-                LLMRequest(
-                    system=ENRICH_SYSTEM,
-                    prompt=f"TEXT:\n{text}\n\nENTITIES:\n{json.dumps(listing)}",
-                    model_size=self._size,
-                )
+            result = await run_agent(
+                memory_agent,
+                ModelRole.ENTITY_EXTRACTION,
+                f"TEXT:\n{text}\n\nENTITIES:\n{json.dumps(listing)}",
+                models=self._models,
+                deps=None,
             )
-        except LLMError:
+        except ModelFailure as exc:
+            if exc.usage is not None and exc.usage.requests:
+                usage.add(
+                    "enrich",
+                    ModelRole.ENTITY_EXTRACTION.value,
+                    exc.usage.input_tokens,
+                    exc.usage.output_tokens,
+                )
+                usage.buckets[f"enrich/{ModelRole.ENTITY_EXTRACTION.value}"].calls += (
+                    exc.usage.requests - 1
+                )
             log.warning("enrichment failed; keeping the plain result", exc_info=True)
             return batch
-        usage.add(
-            "enrich", self._size.value, response.input_tokens, response.output_tokens
-        )
-        replies = _parse(response.text)
+        tokens = result.usage
+        if tokens.requests:
+            usage.add(
+                "enrich",
+                ModelRole.ENTITY_EXTRACTION.value,
+                tokens.input_tokens,
+                tokens.output_tokens,
+            )
+            usage.buckets[f"enrich/{ModelRole.ENTITY_EXTRACTION.value}"].calls += (
+                tokens.requests - 1
+            )
+        replies = {item.id: item for item in result.output.entities}
         return [
             self._apply(text, e, labels[e.local_id], replies.get(e.local_id))
             for e in batch
@@ -121,41 +130,23 @@ class MemoryEntityExtractor(EntityExtractor):
         text: str,
         entity: ExtractedEntity,
         label: str,
-        item: dict[str, Any] | None,
+        item: EntityAnnotation | None,
     ) -> ExtractedEntity:
         if item is None:
             return entity
         allowed = self._allowed.get(label, ())
-        attributes: dict[str, _Scalar] = {}
-        raw_attributes = item.get("attributes")
-        for name, spec in (
-            raw_attributes if isinstance(raw_attributes, dict) else {}
-        ).items():
-            if name not in allowed or not isinstance(spec, dict):
+        attributes: dict[str, str | int | float | bool] = {}
+        for name, spec in item.attributes.items():
+            if name not in allowed:
                 continue
-            value, evidence = spec.get("value"), spec.get("evidence")
-            if (
-                isinstance(value, _Scalar)
-                and isinstance(evidence, str)
-                and find_spans(text, evidence)
-            ):
-                attributes[name] = value
-        description = item.get("description")
+            if find_spans(text, spec.evidence):
+                attributes[name] = spec.value
         return replace(
             entity,
             description=(
-                description.strip()[:_MAX_DESCRIPTION]
-                if isinstance(description, str) and description.strip()
+                item.description.strip()[:_MAX_DESCRIPTION]
+                if item.description.strip()
                 else entity.description
             ),
             attributes={**entity.attributes, **attributes},
         )
-
-
-def _parse(raw: str) -> dict[str, dict[str, Any]]:
-    """Map entity id to its reply item, or return `{}` for a malformed reply."""
-    try:
-        items = json.loads(raw)["entities"]
-        return {it["id"]: it for it in items if isinstance(it, dict)}
-    except (ValueError, KeyError, TypeError):
-        return {}

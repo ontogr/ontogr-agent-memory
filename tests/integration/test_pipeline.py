@@ -49,7 +49,6 @@ from tests.support.clock import FixedClock
 from tests.support.episodes import T0, graph_harness
 from tests.support.episodes import make_episode as episode_at
 from tests.support.extraction import catalog, entity_models
-from tests.support.llm import ScriptedLLM
 from tests.support.ontology import cs
 from tests.support.pipeline_stack import (
     NOW,
@@ -60,7 +59,12 @@ from tests.support.pipeline_stack import (
     relation_id,
     temporal_stack,
 )
-from tests.support.scripted_model import Scripted, ScriptedCall
+from tests.support.scripted_model import (
+    Scripted,
+    ScriptedCall,
+    scripted_model,
+    scripted_role_models,
+)
 from tests.support.tenants import new_tenant
 
 
@@ -369,14 +373,14 @@ WRITER_MARK = "decide whether to add one lesson"
 def consolidation_answer(entry_id: str):
     """Answer every consolidation model call with a fixed, valid reply."""
 
-    def answer(request) -> dict:
-        if CURATOR_MARK in request.system:
+    def answer(call: ScriptedCall) -> dict:
+        if CURATOR_MARK in call.system:
             return {
                 "lessons": [
                     {"text": "Ana prefers short answers", "entry_ids": [entry_id]}
                 ]
             }
-        if WRITER_MARK in request.system:
+        if WRITER_MARK in call.system:
             return {"verdict": "accept"}
         return {"summary": "Ana and Globex.", "description": "A person and a firm."}
 
@@ -422,7 +426,7 @@ class TestFullCycle:
         entry = await record_session_entry(
             cons, "s1", "Ana prefers short answers", now, helpfulness=1
         )
-        llm = ScriptedLLM(answer=consolidation_answer(entry.entry_id))
+        model, scripted = scripted_model(answer=consolidation_answer(entry.entry_id))
         run_ids = iter(f"run-{i}" for i in range(1, 10))
         runner = ConsolidationRunner(
             default_stages(),
@@ -431,7 +435,7 @@ class TestFullCycle:
             ConsolidationSettings(_env_file=None, prune=PruneSettings(dry_run=False)),
             resolution=stack.resolver,
             temporal=await stack.engine(),
-            llm=llm,
+            models=scripted_role_models(consolidation=model),
             run_ids=lambda: next(run_ids),
         )
 
@@ -439,7 +443,7 @@ class TestFullCycle:
         first_scores = await cons.list(Score)
         first_proposals = await cons.list(Proposal)
         first_entity = (await stack.resolver.get_entities([ana]))[0]
-        calls = len(llm.requests)
+        calls = len(scripted.calls)
         second_run = await runner.run()
 
         assert first_run.status is RunStatus.OK
@@ -459,7 +463,7 @@ class TestFullCycle:
         assert second_descriptions.notes == ["no stale summaries"]
         assert second_reflection.status is StageStatus.SKIPPED
         assert second_reflection.notes == ["no new eligible session entries"]
-        assert len(llm.requests) == calls
+        assert len(scripted.calls) == calls
         assert await cons.list(Score) == first_scores
         assert (await stack.resolver.get_entities([ana]))[0] == first_entity
         assert await cons.list(Proposal) == first_proposals
@@ -478,7 +482,7 @@ class TestFullCycle:
         await stack.ingest(
             episode_at("ep-2025", minutes=1, content=TEMPORAL_TEXTS["ep-2025"]), second
         )
-        llm = ScriptedLLM(answer=consolidation_answer("none"))
+        model, _ = scripted_model(answer=consolidation_answer("none"))
         engine = await stack.engine()
         runner = ConsolidationRunner(
             default_stages(),
@@ -487,7 +491,7 @@ class TestFullCycle:
             ConsolidationSettings(_env_file=None, prune=PruneSettings(dry_run=False)),
             resolution=stack.resolver,
             temporal=engine,
-            llm=llm,
+            models=scripted_role_models(consolidation=model),
         )
         await runner.run()
 

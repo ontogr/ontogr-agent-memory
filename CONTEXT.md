@@ -225,7 +225,7 @@ Closing one [[Fact]] at a stated time while keeping its history, so an as-of rea
 _Avoid_: retraction (for this), forget, delete
 
 **Erase**:
-A [[Deletion]] followed by a scan for content that remains in the graph, the indexes and the model cache. It fails when it finds residue and lists what it cannot clean.
+A [[Deletion]] followed by a scan for content that remains in the graph and the indexes. It fails when it finds residue and lists what it cannot clean.
 _Avoid_: forget, purge
 
 **Principal**:
@@ -253,7 +253,7 @@ One record of a write, retrieve, invalidate, erase, export or history, with its 
 _Avoid_: job (for this), run, span
 
 **Request context**:
-The values of one call held per task: principal, [[Tenant]], trace id, session, operation id, latency budget, usage and cache tags.
+The values of one call held per task: principal, [[Tenant]], trace id, session, operation id, latency budget and usage.
 _Avoid_: session state, global context
 
 **Memory service**:
@@ -280,12 +280,8 @@ _Avoid_: restored fact
 Admin-only removal of every [[Episode]], [[Fact]], [[Entity]] and vector for one [[Tenant]].
 _Avoid_: reset, wipe, purge
 
-**Model cache**:
-A stored model completion keyed by the [[Tenant]] and request, which can be evicted by tag or text.
-_Avoid_: prompt history
-
 **Circuit breaker**:
-A limit that refuses calls to a failing model provider until its recovery period ends.
+A limit that refuses calls to a failing provider until its recovery period ends.
 _Avoid_: retry policy
 
 **Model role**:

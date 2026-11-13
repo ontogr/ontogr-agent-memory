@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import Callable, Sequence
 
 from ontogr_mem.data_models import Clock
-from ontogr_mem.llm import LLMClient
+from ontogr_mem.llm import ModelRole, RoleModels
 from ontogr_mem.ontology.apply import apply_changeset, check_catalog
 from ontogr_mem.ontology.diff import diff
 from ontogr_mem.ontology.drafting import DraftRun, run_drafting
@@ -41,21 +41,21 @@ class OntologyManager:
 
     Args:
         store: Storage for the tenant's ontology.
-        llm: Client used to draft proposals.
-        settings: Thresholds and retry counts.
+        models: Configured models, including the ontology drafting role.
+        settings: Thresholds for proposal grouping.
         clock: Source of the time stamped on change sets and decisions.
     """
 
     def __init__(
         self,
         store: OntologyStore,
-        llm: LLMClient | None,
+        models: RoleModels,
         settings: OntologySettings,
         clock: Clock,
     ) -> None:
-        """Wire the store, the model client, the settings and the clock."""
+        """Wire the store, the model pool, the settings and the clock."""
         self._store = store
-        self._llm = llm
+        self._models = models
         self._settings = settings
         self._clock = clock
         # Writers in one process queue here instead of racing on the head.
@@ -161,8 +161,7 @@ class OntologyManager:
         Raises:
             OntologyError: If the model call fails.
         """
-        llm = self._llm
-        if llm is None:
+        if not self._models.configured(ModelRole.ONTOLOGY):
             raise OntologyError("language model is unavailable")
         cat, rows, proposals = await asyncio.gather(
             self._store.get(), self._store.unmatched(), self._store.proposals()
@@ -194,9 +193,8 @@ class OntologyManager:
         run = await run_drafting(
             cat,
             groups,
-            llm,
+            self._models,
             prompt_version=self._settings.prompt_version,
-            max_retries=self._settings.max_draft_retries,
             attempt=attempt,
         )
         for proposal in run.proposals:

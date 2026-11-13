@@ -22,9 +22,9 @@ Rules:
 - Differences in numbers, dates or versions are NO.
 - A person and an organization are NO.
 - When unsure, answer NO.
-Reply with exactly one line per pair, in order:
-<n>. <name A> vs <name B> | rule: <the rule you applied> | YES or NO
-Write nothing else."""
+Return an object with a pairs list. Each item has the integer id shown by n,
+a vote of YES or NO, and a short rule. Answer each pair once. Write no prose
+outside the object."""
 
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]+")
 

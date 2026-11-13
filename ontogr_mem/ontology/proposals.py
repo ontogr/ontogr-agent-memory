@@ -150,13 +150,12 @@ def _safe_json(data: object) -> str:
     return json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")
 
 
-def build_prompt(cat: Ontology, groups: list[Group], feedback: str = "") -> str:
+def build_prompt(cat: Ontology, groups: list[Group]) -> str:
     """Build the drafting prompt for one batch of groups.
 
     The current catalog, with descriptions and patterns, and each group's quotes are
     placed inside ``<untrusted>`` blocks, with a rule that they are data. A ``<`` in
-    that text is escaped, so quoted text cannot close a block. ``feedback`` carries the
-    error from a previous draft that failed validation.
+    that text is escaped, so quoted text cannot close a block.
     """
     ent_text, _ = render(cat, Kind.ENTITY, max_types=10_000)
     rel_text, _ = render(cat, Kind.RELATION, max_types=10_000)
@@ -189,8 +188,6 @@ def build_prompt(cat: Ontology, groups: list[Group], feedback: str = "") -> str:
         + "\n</untrusted>",
         *blocks,
     ]
-    if feedback:
-        parts.append("Your previous answer was rejected: " + feedback)
     return "\n\n".join(parts)
 
 

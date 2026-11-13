@@ -1,4 +1,4 @@
-"""Read a JSON reply from the model.
+"""Read a JSON reply from text.
 
 Small models wrap their answer in a Markdown fence and sometimes put a line of
 prose around it. The loader strips the fence and falls back to the outermost

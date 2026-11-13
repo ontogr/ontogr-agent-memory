@@ -54,4 +54,3 @@ class VerifyStats:
 
     calls: int = 0
     invalid_ids: int = 0
-    reasked: int = 0

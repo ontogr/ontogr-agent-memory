@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 import pytest
 
 from ontogr_mem.data_models.fact_versions import FactStatus
-from ontogr_mem.llm import estimate_tokens
+from ontogr_mem.llm.tokens import estimate_tokens
 from ontogr_mem.retrieval.context import assemble
 from ontogr_mem.retrieval.models import (
     EntityCard,

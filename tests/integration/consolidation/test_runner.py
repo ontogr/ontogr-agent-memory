@@ -15,6 +15,7 @@ from ontogr_mem.consolidation.stage import Stage, StageContext
 from ontogr_mem.consolidation.store import ConsStore
 from tests.support.consolidation import ManualClock
 from tests.support.graph_backend import GraphBackend
+from tests.support.scripted_model import scripted_role_models
 
 
 class FakeStage:
@@ -65,7 +66,13 @@ async def make_runner(
 ) -> tuple[ConsolidationRunner, ConsStore]:
     """Build a runner over scripted stages, with a fresh tenant store unless given."""
     store = store or (await backend.open_stores()).cons_store
-    runner = ConsolidationRunner(stages, store, clock, ConsolidationSettings())
+    runner = ConsolidationRunner(
+        stages,
+        store,
+        clock,
+        ConsolidationSettings(),
+        models=scripted_role_models(),
+    )
     return runner, store
 
 

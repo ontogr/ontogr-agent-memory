@@ -7,8 +7,9 @@ Build a runner from the stages, the tenant's store and the ports the stages act 
         store,
         clock,
         ConsolidationSettings(),
-        resolution,
-        temporal,
+        models=models,
+        resolution=resolution,
+        temporal=temporal,
     )
     result = await runner.run()
 """

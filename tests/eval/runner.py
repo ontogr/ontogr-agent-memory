@@ -1,29 +1,23 @@
 """Run the judge over the labelled set and report what it gets wrong and costs.
 
 The report gives precision and recall for ``contradicts``, the false-supersession
-rate (a non-contradiction judged as one, the costly error), the uncertain and
-unanswered counts, calls and tokens, and the pairs answered wrongly.
+rate, uncertain and unanswered counts, model requests and tokens, and the pairs
+answered wrongly.
 
-Live run, from the repository root (needs ``OLLAMA_API_KEY`` in the environment
-of this one command):
+Run against the configured judge model from the repository root:
 
-    OLLAMA_API_KEY=... uv run python -m tests.eval.runner
+    uv run python -m tests.eval.runner
 """
 
 import asyncio
-import sys
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from ontogr_mem.llm import LLMClient, LLMGate, LLMRequest, LLMResponse
+from ontogr_mem.llm import LLMConfig, ModelRole, RoleModels, build_models
 from ontogr_mem.temporal.judge import JudgeFact, LLMPairJudge, PairInput
 from ontogr_mem.temporal.settings import JudgeSettings
 from tests.eval.labelled import LABELLED, Labelled
-from tests.support.ollama import OllamaLLMClient, available
-
-
-GATE_INPUT_TOKENS = 50_000
 
 
 @dataclass(slots=True)
@@ -88,44 +82,29 @@ def to_input(item: Labelled) -> PairInput:
     return PairInput(item.id, f"hash-{item.id}", left, right)
 
 
-class _Counting:
-    """An ``LLMClient`` that counts the calls it passes on."""
-
-    def __init__(self, inner: LLMClient) -> None:
-        self._inner = inner
-        self.calls = 0
-
-    async def complete(self, request: LLMRequest) -> LLMResponse:
-        """Count the call and pass it to the wrapped client."""
-        self.calls += 1
-        return await self._inner.complete(request)
-
-
 async def run_eval(
-    llm: LLMClient,
+    models: RoleModels,
     items: tuple[Labelled, ...] = LABELLED,
     settings: JudgeSettings | None = None,
 ) -> EvalReport:
-    """Judge every labelled pair once and score the answers.
+    """Judge the labelled pairs and report their outcomes and token usage.
 
     Args:
-        llm: Model client the judge calls through a gate.
+        models: Shared model pool used by the judge role.
         items: Labelled pairs to judge.
-        settings: Judge settings. Defaults to the environment's values.
+        settings: Judge batching and threshold settings.
 
     Returns:
         Counts, rates and the pairs answered wrongly.
     """
-    counted = _Counting(llm)
-    gate = LLMGate(counted, max_input_tokens=GATE_INPUT_TOKENS)
-    judge = LLMPairJudge(gate, settings or JudgeSettings())
+    judge = LLMPairJudge(models, settings or JudgeSettings())
     outcome = await judge.judge_pairs(
         [to_input(item) for item in items], now=datetime.now(UTC)
     )
     said_by_id = {v.pair_key: v.verdict.value for v in outcome.verdicts}
     report = EvalReport(
         n=len(items),
-        calls=counted.calls,
+        calls=outcome.requests,
         tokens_in=outcome.tokens_in,
         tokens_out=outcome.tokens_out,
     )
@@ -154,13 +133,20 @@ async def run_eval(
     return report
 
 
+async def _run_live() -> EvalReport:
+    """Open configured models for one explicit live evaluation."""
+    models = build_models(LLMConfig())
+    try:
+        if not models.configured(ModelRole.JUDGE):
+            raise SystemExit("configure the judge model before running evaluation")
+        return await run_eval(models)
+    finally:
+        await models.aclose()
+
+
 def main() -> None:
-    """Run the set against Ollama Cloud and print the report."""
-    if not available():
-        sys.exit("set OLLAMA_API_KEY to run the live evaluation")
-    llm = OllamaLLMClient()
-    print(f"model {llm.model}")
-    print(asyncio.run(run_eval(llm)).render())
+    """Print a labelled evaluation using the configured judge model."""
+    print(asyncio.run(_run_live()).render())
 
 
 if __name__ == "__main__":

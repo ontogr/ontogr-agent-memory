@@ -9,6 +9,7 @@ from ontogr_mem.consolidation.stages.feedback_weights import FeedbackWeightsStag
 from ontogr_mem.consolidation.stages.scoring import ScoringStage
 from tests.support.consolidation import ConsWorld, new_world
 from tests.support.graph_backend import GraphBackend
+from tests.support.scripted_model import scripted_role_models
 from tests.unit.temporal.helpers import at, obs
 
 
@@ -19,6 +20,7 @@ def ctx_for(world: ConsWorld) -> StageContext:
         clock=world.clock,
         store=world.store,
         settings=world.settings,
+        models=scripted_role_models(),
         resolution=world.resolution,
         temporal=world.temporal,
     )
@@ -43,6 +45,7 @@ async def test_gate_skips_without_a_resolver_or_temporal_engine(
         clock=world.clock,
         store=world.store,
         settings=world.settings,
+        models=scripted_role_models(),
     )
 
     assert await ScoringStage().gate(ctx) == "no resolver or temporal engine"

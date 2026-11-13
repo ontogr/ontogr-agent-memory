@@ -9,23 +9,6 @@ starting point and should be tuned on real data.
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from ontogr_mem.llm.base import ModelSize
-
-
-class LLMSettings(BaseModel):
-    """Model calls of the consolidation stages.
-
-    Attributes:
-        model_size: Model tier the stages call.
-        max_output_tokens: Cap on generated tokens. A curator that answers with
-            several lessons needs room for all of them. Unmeasured.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    model_size: ModelSize = ModelSize.SMALL
-    max_output_tokens: int = Field(default=2048, ge=1)
-
 
 class RunnerSettings(BaseModel):
     """Lease and rerun limits of the runner.
@@ -183,7 +166,6 @@ class ConsolidationSettings(BaseSettings):
         community: Community detection and summaries.
         description: Entity summary regeneration.
         reflection: Session distillation.
-        llm: Model calls of the stages.
     """
 
     model_config = SettingsConfigDict(
@@ -201,4 +183,3 @@ class ConsolidationSettings(BaseSettings):
     community: CommunitySettings = Field(default_factory=CommunitySettings)
     description: DescriptionSettings = Field(default_factory=DescriptionSettings)
     reflection: ReflectionSettings = Field(default_factory=ReflectionSettings)
-    llm: LLMSettings = Field(default_factory=LLMSettings)

@@ -33,6 +33,7 @@ from ontogr_mem.graphstore.neo4j import Neo4jGraphStore
 from ontogr_mem.graphstore.resolver_store import GraphResolverStore
 from ontogr_mem.graphstore.schemas import EPISODES, RESOLUTION, TEMPORAL
 from ontogr_mem.graphstore.temporal.store import GraphTemporalStore
+from ontogr_mem.llm import LLMConfig, build_models
 from ontogr_mem.resolution import EntityResolver, ResolutionPolicy
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.errors import EpisodeAlreadyResolvedError
@@ -268,6 +269,7 @@ async def build_resolver(resolver_store: ResolverStore) -> EntityResolver:
         resolution_policy(),
         ResolverSettings(inline_verification=False),
         FixedClock(),
+        models=build_models(LLMConfig.model_construct()),
     )
 
 

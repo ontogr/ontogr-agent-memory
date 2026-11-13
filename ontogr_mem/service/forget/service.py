@@ -142,7 +142,6 @@ def _counts_detail(result: ForgetResult) -> dict[str, int]:
         "removed_observations": result.removed.observations,
         "removed_entities": result.removed.entities,
         "removed_vector_documents": result.removed.vector_documents,
-        "removed_cache_entries": result.removed.cache_entries,
         "removed_entity_text_updates": result.removed.entity_text_updates,
         "residue_count": len(result.residue),
     }

@@ -399,9 +399,7 @@ class ServiceQueries:
             return StatusOut(
                 status="ok",
                 backend=self._deps.backend,
-                llm_available=(
-                    self._deps.llm is not None or self._deps.models.any_configured()
-                ),
+                llm_available=self._deps.models.any_configured(),
                 tenants=tenants,
                 queued_jobs=queued,
                 detail={"relation_counts": relation_counts},

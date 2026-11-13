@@ -15,7 +15,7 @@ from ontogr_mem.data_models.entities import (
     Outcome,
     VerdictKind,
 )
-from ontogr_mem.llm import LLMClient
+from ontogr_mem.llm import ModelRole, RoleModels
 from ontogr_mem.resolution.candidates import candidate_pass
 from ontogr_mem.resolution.config import Budget, ResolverSettings
 from ontogr_mem.resolution.decision import collect_matches
@@ -99,7 +99,7 @@ class EntityResolver:
         policy: Per-type resolution policy.
         settings: Resolver thresholds and version.
         clock: Time source for every timestamp the resolver writes.
-        llm: Optional client for the inline verification tier.
+        models: Role-based models used by inline verification.
         relations: Type ancestry used when comparing labels.
     """
 
@@ -111,17 +111,21 @@ class EntityResolver:
         settings: ResolverSettings,
         clock: Clock,
         *,
-        llm: LLMClient | None = None,
+        models: RoleModels,
         relations: TypeRelations | None = None,
     ) -> None:
-        """Wire the resolver; `llm` enables inline verification."""
+        """Wire the resolver; a configured resolution role enables verification."""
         self.store = store
         self.vectors = vectors
         self.policy = policy
         self.settings = settings
         self.clock = clock
         self.relations = relations or TypeRelations()
-        self._verifier = Verifier(llm, settings) if llm is not None else None
+        self._verifier = (
+            Verifier(models, settings)
+            if models.configured(ModelRole.RESOLUTION)
+            else None
+        )
         self._lock = store.resolve_lock
 
     @property

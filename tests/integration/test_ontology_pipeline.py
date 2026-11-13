@@ -1,7 +1,6 @@
 """End-to-end: the ontology manager on each graph backend."""
 
 import asyncio
-import json
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 
@@ -12,6 +11,7 @@ from ontogr_mem.graphstore.protocol import GraphStore
 from ontogr_mem.graphstore.schemas import EPISODES, ONTOLOGY
 from ontogr_mem.graphstore.types import GraphHandle
 from ontogr_mem.ingestion import IngestionPipeline, default_registry
+from ontogr_mem.llm import RoleModels
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import Mode, SetModes
 from ontogr_mem.ontology.settings import OntologySettings
@@ -19,14 +19,12 @@ from ontogr_mem.ontology.validate import Context, EntityItem, ExtractedItems
 from tests.integration.test_pipeline import CHAT, DOCUMENT
 from tests.support.clock import FixedClock
 from tests.support.episodes import graph_harness
-from tests.support.llm import ScriptedLLM
 from tests.support.ontology import base, cs
+from tests.support.scripted_model import scripted_model, scripted_role_models
 from tests.support.tenants import new_tenant
 
 
-GOOD = json.dumps(
-    {"ops": [{"op": "add_entity", "label": "Gadget", "description": "A device."}]}
-)
+GOOD = {"ops": [{"op": "add_entity", "label": "Gadget", "description": "A device."}]}
 
 
 @dataclass
@@ -37,11 +35,13 @@ class Backend:
     handle: GraphHandle
     keyed: bool
 
-    def manager(self, llm: ScriptedLLM | None = None) -> OntologyManager:
+    def manager(self, models: RoleModels | None = None) -> OntologyManager:
         """Build a manager on the tenant's graph."""
+        if models is None:
+            models = scripted_role_models()
         return OntologyManager(
             GraphOntologyStore(self.store, self.handle, tenant_keyed=self.keyed),
-            llm or ScriptedLLM(),
+            models,
             OntologySettings(min_support=2),
             FixedClock(),
         )
@@ -66,7 +66,8 @@ class TestOntologyPipeline:
         pipeline = IngestionPipeline(episodes, default_registry(), FixedClock())
         await pipeline.ingest("message", CHAT)
         await pipeline.ingest("document", [DOCUMENT])
-        manager = backend.manager(ScriptedLLM([GOOD]))
+        model, _ = scripted_model([GOOD])
+        manager = backend.manager(scripted_role_models(ontology=model))
         await manager.load_catalog(base())
 
         first, second = sorted(

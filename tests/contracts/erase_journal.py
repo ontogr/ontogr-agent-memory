@@ -88,7 +88,7 @@ class EraseJournalContract:
         await journal.finish(
             third.erasure_id,
             ErasureStatus.FAILED,
-            ("model_cache",),
+            ("vector:episode",),
             (),
             T0 + timedelta(seconds=3),
         )

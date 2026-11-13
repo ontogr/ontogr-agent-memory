@@ -15,6 +15,7 @@ from ontogr_mem.consolidation.stages.ingest_cleanup import IngestCleanupStage
 from tests.support.consolidation import ConsWorld, new_world
 from tests.support.episodes import make_episode
 from tests.support.graph_backend import GraphBackend
+from tests.support.scripted_model import scripted_role_models
 
 
 def ctx_for(
@@ -26,6 +27,7 @@ def ctx_for(
         clock=world.clock,
         store=world.store,
         settings=world.settings,
+        models=scripted_role_models(),
         resolution=world.resolution if resolution else None,
         temporal=world.temporal if temporal else None,
     )

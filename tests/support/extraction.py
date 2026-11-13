@@ -9,9 +9,8 @@ from ontogr_mem.data_models import (
     TypeCatalog,
 )
 from ontogr_mem.entity_extraction.extractors import RawSpan
-from ontogr_mem.llm import LLMGate, RoleModels
+from ontogr_mem.llm import RoleModels
 from tests.support.episodes import make_episode
-from tests.support.llm import ScriptedLLM
 from tests.support.scripted_model import (
     Scripted,
     scripted_model,
@@ -30,11 +29,6 @@ def catalog() -> TypeCatalog:
 def text_episode(text: str, episode_id: str = "ep1", **kwargs: Any) -> Episode:
     """Build a message episode with the given text."""
     return make_episode(episode_id, content=text, **kwargs)
-
-
-def gate(llm: ScriptedLLM, max_input_tokens: int = 10_000) -> LLMGate:
-    """Build a gate around a scripted client."""
-    return LLMGate(llm, max_input_tokens=max_input_tokens)
 
 
 def entity_models(

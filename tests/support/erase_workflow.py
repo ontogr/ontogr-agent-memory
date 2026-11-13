@@ -11,7 +11,7 @@ from ontogr_mem.data_models import (
     Mention,
     Outcome,
 )
-from ontogr_mem.llm.cache import MemoryResponseCache
+from ontogr_mem.llm import LLMConfig, build_models
 from ontogr_mem.relational_store.memory import MemoryJobStore
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.ids import alias_id
@@ -23,8 +23,9 @@ from ontogr_mem.service.forget.selector import ForgetSelector
 from ontogr_mem.service.relations import load_defaults
 from ontogr_mem.service.runtime import TenantRuntime, build_tenant_runtime
 from ontogr_mem.temporal import TemporalEngine
-from ontogr_mem.vectorstore import Embedder
+from ontogr_mem.vectorstore import Embedder, EmbeddingGateway, VectorStore
 from ontogr_mem.vectorstore.episode_vectors import write_episode_vectors
+from ontogr_mem.vectorstore.memory import InMemoryBackend
 from tests.support.clock import FixedClock
 from tests.support.embedder import MockEmbedder
 from tests.support.episodes import make_episode
@@ -37,25 +38,24 @@ NEEDLE = "Robert Smith works at Acme"
 
 @dataclass
 class EraseWorld:
-    """The runtime, plan, journal and cache for one erase scenario."""
+    """The runtime, plan and journal for one erase scenario."""
 
     runtime: TenantRuntime
     plan: ForgetPlan
     journal: MemoryJobStore
-    cache: MemoryResponseCache
-    needle: str
 
 
-async def make_erase_world(
-    backend: GraphBackend, *, cache: MemoryResponseCache | None = None
-) -> EraseWorld:
+async def make_erase_world(backend: GraphBackend) -> EraseWorld:
     """Create episodes, mentions, one Fact and their search vectors."""
     clock = FixedClock(datetime(2026, 10, 22, tzinfo=UTC))
     embedder: Embedder = MockEmbedder()
     stores = await backend.open_stores(embedder)
+    vectors = VectorStore(InMemoryBackend(), EmbeddingGateway(embedder))
+    await vectors.ensure_ready()
+    stores.vectors = vectors
     runtime = build_tenant_runtime(
         stores,
-        llm=None,
+        models=build_models(LLMConfig.model_construct()),
         embedder=embedder,
         clock=clock,
         policy=ResolutionPolicy(),
@@ -111,7 +111,6 @@ async def make_erase_world(
     for entity in (person, organization):
         await runtime.resolver.embed(entity)
 
-    selected_cache = cache if cache is not None else MemoryResponseCache()
     plan = await build_plan(
         ForgetSelector(episode_ids=("e1",)),
         episodes=stores.episodes,
@@ -122,8 +121,6 @@ async def make_erase_world(
         runtime,
         plan,
         MemoryJobStore(),
-        selected_cache,
-        NEEDLE,
     )
 
 

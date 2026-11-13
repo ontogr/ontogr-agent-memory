@@ -20,6 +20,7 @@ from ontogr_mem.graphstore.ontology_store import GraphOntologyStore
 from ontogr_mem.graphstore.resolver_store import GraphResolverStore
 from ontogr_mem.graphstore.temporal.store import GraphTemporalStore
 from ontogr_mem.ingestion import ChatMessage, IngestionPipeline, default_registry
+from ontogr_mem.llm import LLMConfig, build_models
 from ontogr_mem.ontology.extraction_items import stabilize_facts
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.settings import OntologySettings
@@ -48,8 +49,8 @@ from tests.support.episodes import T0
 from tests.support.extraction import entity_models
 from tests.support.facts import fact, fact_models, reply
 from tests.support.graph_backend import GraphBackend
-from tests.support.llm import ScriptedLLM
 from tests.support.ontology import base
+from tests.support.scripted_model import scripted_role_models
 from tests.support.vectors import HALF, OPPOSITE, ORTHOGONAL, A
 
 
@@ -148,10 +149,11 @@ async def _stack(backend: GraphBackend) -> WriterStack:
         ),
         ResolverSettings(inline_verification=False),
         fixed_clock,
+        models=build_models(LLMConfig.model_construct()),
     )
     manager = OntologyManager(
         GraphOntologyStore(graph, handle, tenant_keyed=keyed),
-        ScriptedLLM(),
+        scripted_role_models(),
         OntologySettings(min_support=3),
         fixed_clock,
     )

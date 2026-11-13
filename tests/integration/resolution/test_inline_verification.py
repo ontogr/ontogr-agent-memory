@@ -1,5 +1,7 @@
 """Behavior tests for the optional inline verification tier."""
 
+from pydantic_ai.exceptions import ModelAPIError
+
 from ontogr_mem.data_models.entities import DecisionMethod, Outcome, VerdictKind
 from ontogr_mem.resolution.decision import collect_matches
 from ontogr_mem.resolution.grouping import build_groups
@@ -13,22 +15,23 @@ from tests.integration.resolution.resolver_helpers import (
     make,
 )
 from tests.support.graph_backend import GraphBackend
-from tests.unit.resolution.helpers import FailingLLM, OracleLLM, entity
+from tests.support.scripted_model import scripted_model, scripted_role_models
+from tests.unit.resolution.helpers import entity, oracle_models
 
 
 async def test_flag_off_by_default_means_no_llm_call_in_resolve(
     graph_backend: GraphBackend,
 ):
     """The inline tier stays off unless the settings turn it on."""
-    llm = OracleLLM(lambda a, b: True)
+    models, scripted = oracle_models(lambda a, b: True)
     store = (await graph_backend.open_stores()).resolver_store
-    resolver = await make(store, llm=llm)
+    resolver = await make(store, models=models)
 
     await resolver.resolve([ex("1", "John Smith", "Person")])
     await resolver.resolve([ex("1", "John Smith", "Person", episode_id="e2")])
 
     mention = await latest_mention(store, "e2")
-    assert llm.requests == []
+    assert scripted.calls == []
     assert mention.decision_outcome is Outcome.CREATED_PROVISIONAL
 
 
@@ -36,9 +39,9 @@ async def test_inline_yes_links_the_mention_to_the_existing_person(
     graph_backend: GraphBackend,
 ):
     """A YES from the verifier links the second mention to the first entity."""
-    llm = OracleLLM(lambda a, b: True)
+    models, _ = oracle_models(lambda a, b: True)
     store = (await graph_backend.open_stores()).resolver_store
-    resolver = await make(store, llm=llm, inline=True)
+    resolver = await make(store, models=models, inline=True)
 
     await resolver.resolve([ex("1", "John Smith", "Person")])
     await resolver.resolve([ex("1", "John Smith", "Person", episode_id="e2")])
@@ -55,9 +58,9 @@ async def test_inline_no_creates_a_resolved_entity_with_no_candidates_left(
     graph_backend: GraphBackend,
 ):
     """A NO settles the pair, so the new entity is not provisional."""
-    llm = OracleLLM(lambda a, b: False)
+    models, _ = oracle_models(lambda a, b: False)
     store = (await graph_backend.open_stores()).resolver_store
-    resolver = await make(store, llm=llm, inline=True)
+    resolver = await make(store, models=models, inline=True)
 
     await resolver.resolve([ex("1", "John Smith", "Person")])
     await resolver.resolve([ex("1", "John Smith", "Person", episode_id="e2")])
@@ -73,7 +76,10 @@ async def test_inline_llm_outage_never_fails_the_job_it_falls_back_to_provisiona
 ):
     """A failed verification leaves the pair pending, not merged."""
     store = (await graph_backend.open_stores()).resolver_store
-    resolver = await make(store, llm=FailingLLM(), inline=True)
+    model, _ = scripted_model([ModelAPIError("test", "down")])
+    resolver = await make(
+        store, models=scripted_role_models(resolution=model), inline=True
+    )
 
     await resolver.resolve([ex("1", "John Smith", "Person")])
     await resolver.resolve([ex("1", "John Smith", "Person", episode_id="e2")])
@@ -85,25 +91,25 @@ async def test_inline_llm_outage_never_fails_the_job_it_falls_back_to_provisiona
 
 async def test_inline_cross_type_yes_needs_two_votes(graph_backend: GraphBackend):
     """A company and an organization need a swapped second YES."""
-    llm = OracleLLM(lambda a, b: True)
+    models, scripted = oracle_models(lambda a, b: True)
     store = (await graph_backend.open_stores()).resolver_store
-    resolver = await make(store, llm=llm, inline=True)
+    resolver = await make(store, models=models, inline=True)
 
     await resolver.resolve([ex("1", "Acme", "Company")])
     await resolver.resolve([ex("1", "Acme", "Organization", episode_id="e2")])
 
     mention = await latest_mention(store, "e2")
     assert mention.decision_method is DecisionMethod.LLM
-    assert len(llm.requests) == 2
+    assert len(scripted.calls) == 2
 
 
 async def test_inline_one_call_per_resolve_for_many_ambiguous_groups(
     graph_backend: GraphBackend,
 ):
     """Two ambiguous groups share one batched verification request."""
-    llm = OracleLLM(lambda a, b: False)
+    models, scripted = oracle_models(lambda a, b: False)
     store = (await graph_backend.open_stores()).resolver_store
-    resolver = await make(store, llm=llm, inline=True)
+    resolver = await make(store, models=models, inline=True)
 
     await resolver.resolve(
         [ex("1", "John Smith", "Person"), ex("2", "Mary Jones", "Person")]
@@ -115,7 +121,7 @@ async def test_inline_one_call_per_resolve_for_many_ambiguous_groups(
         ]
     )
 
-    assert len(llm.requests) == 1
+    assert len(scripted.calls) == 1
 
 
 async def test_a_candidate_the_verifier_never_answered_stays_pending(

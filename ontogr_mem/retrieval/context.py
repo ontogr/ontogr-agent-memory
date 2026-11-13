@@ -7,7 +7,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
-from ontogr_mem.llm import estimate_tokens
+from ontogr_mem.llm.tokens import estimate_tokens
 from ontogr_mem.retrieval.models import (
     ContextBlock,
     EntityCard,
