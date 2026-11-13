@@ -1,8 +1,12 @@
 """Record facts, the kind router and the batch driver."""
 
-from datetime import UTC, datetime
+from collections.abc import Sequence
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
+from pydantic_ai.exceptions import ModelHTTPError
 
 from ontogr_mem.data_models import Kind, Method, Status
 from ontogr_mem.fact_extraction import (
@@ -21,19 +25,18 @@ from ontogr_mem.fact_extraction import (
     TypeView,
     UnknownKindError,
 )
-from ontogr_mem.llm import LLMCallError
 from tests.support.extraction import FakePrevious
 from tests.support.facts import (
     ANA,
     PG,
     T0,
-    ScriptedLLM,
     ent,
     fact,
-    gate,
+    fact_models,
     make_episode,
     reply,
 )
+from tests.support.scripted_model import Scripted
 
 
 ORDER = {
@@ -68,19 +71,22 @@ def mapper(template: FactTemplate = TEMPLATE) -> RecordFactMapper:
     return RecordFactMapper({"shop/orders": FactMapping((template,))})
 
 
-def router(llm: ScriptedLLM | None = None, **maps: FactMapping) -> RoutingFactExtractor:
+def router(
+    replies: Sequence[Any] = (), **maps: FactMapping
+) -> tuple[RoutingFactExtractor, Scripted]:
     """Build a router around a scripted model and record mappings."""
-    return RoutingFactExtractor(
-        LLMFactExtractor(gate(llm or ScriptedLLM())), RecordFactMapper(maps)
-    )
+    models, scripted = fact_models(replies)
+    extractor = RoutingFactExtractor(LLMFactExtractor(models), RecordFactMapper(maps))
+    return extractor, scripted
 
 
 def driver(
-    llm: ScriptedLLM, store: InMemoryFactStore | None = None
-) -> tuple[FactExtraction, InMemoryFactStore]:
-    """Build a batch driver around a scripted model."""
+    replies: Sequence[Any], store: InMemoryFactStore | None = None
+) -> tuple[FactExtraction, InMemoryFactStore, Scripted]:
+    """Build a batch driver around a scripted model and return its recorder."""
     store = store or InMemoryFactStore()
-    return FactExtraction(LLMFactExtractor(gate(llm)), store), store
+    models, scripted = fact_models(replies)
+    return FactExtraction(LLMFactExtractor(models), store), store, scripted
 
 
 def by_episode(episodes, entities=None):
@@ -134,18 +140,16 @@ class TestRecordFacts:
 
     async def test_unmapped_record_is_skipped_never_sent_to_a_model(self) -> None:
         """A record with no mapping is skipped without a model call."""
-        llm = ScriptedLLM()
+        extractor, scripted = router(**{"shop/orders": FactMapping((TEMPLATE,))})
         episode = make_episode(
             "x", kind=Kind.RECORD, content={"a": 1}, source_system="crm"
         )
 
-        result = await router(llm, **{"shop/orders": FactMapping((TEMPLATE,))}).extract(
-            episode, [], None
-        )
+        result = await extractor.extract(episode, [], None)
 
         assert result.status is Status.SKIPPED
         assert result.skip_reason is SkipReason.UNMAPPED_RECORD
-        assert llm.requests == []
+        assert scripted.calls == []
 
     def test_mapping_falls_back_from_table_to_system(self) -> None:
         """A system mapping covers every table of that system."""
@@ -185,10 +189,9 @@ class TestRecordFacts:
             source_system="shop",
             metadata={"table": "orders"},
         )
+        extractor, _ = router(**{"shop/orders": FactMapping((TEMPLATE,))})
 
-        result = await router(**{"shop/orders": FactMapping((TEMPLATE,))}).extract(
-            episode, [ANA, PG], None
-        )
+        result = await extractor.extract(episode, [ANA, PG], None)
 
         assert result.status is Status.OK
 
@@ -196,13 +199,14 @@ class TestRecordFacts:
         self,
     ) -> None:
         """Only structured kinds skip the model; an unknown kind is an error."""
-        llm = ScriptedLLM([reply(fact())])
+        extractor, scripted = router([reply(fact())])
 
-        result = await router(llm).extract(make_episode(), [ANA, PG], None)
+        result = await extractor.extract(make_episode(), [ANA, PG], None)
 
-        assert result.status is Status.OK and len(llm.requests) == 1
+        assert result.status is Status.OK and len(scripted.calls) == 1
+        unknown, _ = router()
         with pytest.raises(UnknownKindError):
-            await router().extract(make_episode(kind="telepathy"), [], None)
+            await unknown.extract(make_episode(kind="telepathy"), [], None)
 
 
 class TestFactExtraction:
@@ -210,31 +214,29 @@ class TestFactExtraction:
 
     async def test_stored_ok_is_not_called_again(self) -> None:
         """A final result comes back without another model call."""
-        llm = ScriptedLLM([reply(fact())])
-        ex, _ = driver(llm)
+        ex, _, scripted = driver([reply(fact())])
         episode = make_episode()
 
         first = await ex.extract([episode], by_episode([episode]))
         second = await ex.extract([episode], by_episode([episode]))
 
-        assert len(llm.requests) == 1
+        assert len(scripted.calls) == 1
         assert second.results[0].facts == first.results[0].facts
 
     async def test_stored_empty_is_final_too(self) -> None:
         """An empty result is final, not retryable."""
-        llm = ScriptedLLM([reply()])
-        ex, _ = driver(llm)
+        ex, _, scripted = driver([reply()])
         episode = make_episode()
 
         await ex.extract([episode], by_episode([episode]))
         await ex.extract([episode], by_episode([episode]))
 
-        assert len(llm.requests) == 1
+        assert len(scripted.calls) == 1
 
     async def test_error_is_retried_and_the_retry_replaces_the_result(self) -> None:
         """A retryable error is called again and the stored error is replaced."""
-        llm = ScriptedLLM([LLMCallError("down")] * 3 + [reply(fact())])
-        ex, _ = driver(llm)
+        provider_down = ModelHTTPError(503, "fact-model", {"error": "down"})
+        ex, _, _ = driver([provider_down, reply(fact())])
         episode = make_episode()
 
         first = await ex.extract([episode], by_episode([episode]))
@@ -247,8 +249,7 @@ class TestFactExtraction:
 
     async def test_parse_failed_is_retried(self) -> None:
         """A schema failure is retryable."""
-        llm = ScriptedLLM(["x", "x", "x", reply(fact())])
-        ex, _ = driver(llm)
+        ex, _, _ = driver(["x", "x", "x", reply(fact())])
         episode = make_episode()
 
         assert (await ex.extract([episode], by_episode([episode]))).retryable
@@ -258,8 +259,7 @@ class TestFactExtraction:
         self,
     ) -> None:
         """A skip is not final: new candidates can make the episode runnable."""
-        llm = ScriptedLLM([reply(fact())])
-        ex, _ = driver(llm)
+        ex, _, _ = driver([reply(fact())])
         episode = make_episode(kind=Kind.DOCUMENT)
 
         first = await ex.extract([episode], {})
@@ -271,44 +271,45 @@ class TestFactExtraction:
     async def test_save_replaces_everything_of_the_episode(self) -> None:
         """A new extractor version replaces the older stored result."""
         store = InMemoryFactStore()
-        llm = ScriptedLLM([reply(fact()), reply(), reply(fact())])
+        models, scripted = fact_models([reply(fact()), reply(), reply(fact())])
         episode = make_episode()
 
-        old, _ = driver(llm, store)
+        old = FactExtraction(LLMFactExtractor(models), store)
         await old.extract([episode], by_episode([episode]))
         new = FactExtraction(
-            LLMFactExtractor(gate(llm), FactExtractionSettings(version="fact-2")),
+            LLMFactExtractor(models, FactExtractionSettings(version="fact-2")),
             store,
         )
         await new.extract([episode], by_episode([episode]))
 
-        assert len(llm.requests) == 2
+        assert len(scripted.calls) == 2
         await new.extract([episode], by_episode([episode]))
-        assert len(llm.requests) == 2
+        assert len(scripted.calls) == 2
 
         # The old version's stored result is gone, so it runs the model again.
         third = await old.extract([episode], by_episode([episode]))
-        assert len(llm.requests) == 3
+        assert len(scripted.calls) == 3
         assert third.results[0].status is Status.OK
 
     async def test_catalog_change_is_a_new_status_key(self, catalog) -> None:
         """The same episode is extracted again for a different catalog."""
-        llm = ScriptedLLM([reply(), reply()])
+        models, scripted = fact_models([reply(), reply()])
         store = InMemoryFactStore()
         episode = make_episode()
-        plain = FactExtraction(LLMFactExtractor(gate(llm)), store)
-        typed = FactExtraction(LLMFactExtractor(gate(llm)), store, TypeView(catalog))
+        plain = FactExtraction(LLMFactExtractor(models), store)
+        typed = FactExtraction(LLMFactExtractor(models), store, TypeView(catalog))
 
         await plain.extract([episode], by_episode([episode]))
         await typed.extract([episode], by_episode([episode]))
 
-        assert len(llm.requests) == 2
+        assert len(scripted.calls) == 2
 
     async def test_one_episode_failure_does_not_affect_another(self) -> None:
         """A failure is scoped to its episode."""
-        llm = ScriptedLLM([LLMCallError("down")] * 3 + [reply(fact())])
+        provider_down = ModelHTTPError(503, "fact-model", {"error": "down"})
+        models, _ = fact_models([provider_down, reply(fact())])
         ex = FactExtraction(
-            LLMFactExtractor(gate(llm)),
+            LLMFactExtractor(models),
             InMemoryFactStore(),
             settings=FactExtractionSettings(concurrency=1),
         )
@@ -320,30 +321,68 @@ class TestFactExtraction:
         assert [r.status for r in report.results] == [Status.ERROR, Status.OK]
         assert report.failed_episode_ids == ["a"]
 
+    async def test_provider_failure_in_a_batch_leaves_the_other_episodes_running(
+        self,
+    ) -> None:
+        """A provider error ends its episode as ERROR; the rest still extract."""
+        provider_down = ModelHTTPError(503, "fact-model", {"error": "down"})
+        models, scripted = fact_models([reply(fact()), provider_down, reply(fact())])
+        ex = FactExtraction(
+            LLMFactExtractor(models),
+            InMemoryFactStore(),
+            settings=FactExtractionSettings(concurrency=1),
+        )
+        episodes = [make_episode(episode_id=name) for name in ("a", "b", "c")]
+
+        report = await ex.extract(episodes, by_episode(episodes))
+
+        assert [r.status for r in report.results] == [
+            Status.OK,
+            Status.ERROR,
+            Status.OK,
+        ]
+        assert report.failed_episode_ids == ["b"]
+        assert len(scripted.calls) == 3
+
+    async def test_exhausted_malformed_replies_end_as_parse_failed_with_usage(
+        self,
+    ) -> None:
+        """Three malformed replies end the episode as PARSE_FAILED, with usage."""
+        ex, _, scripted = driver(["bad", "bad", "bad"])
+        episode = make_episode()
+
+        report = await ex.extract([episode], by_episode([episode]))
+
+        (result,) = report.results
+        assert result.status is Status.PARSE_FAILED
+        assert len(scripted.calls) == 3
+        assert result.usage.buckets["facts/fact_extraction"].calls == 3
+
     async def test_unknown_kind_is_not_swallowed_by_the_driver(self) -> None:
         """An unknown kind stops the batch."""
-        ex = FactExtraction(router(), InMemoryFactStore())
+        extractor, _ = router()
+        ex = FactExtraction(extractor, InMemoryFactStore())
 
         with pytest.raises(UnknownKindError):
             await ex.extract([make_episode(kind="telepathy")])
 
     async def test_remove_episode_clears_its_records(self) -> None:
         """Removing an episode makes the next run call the model again."""
-        llm = ScriptedLLM([reply(fact()), reply(fact())])
-        ex, store = driver(llm)
+        ex, store, scripted = driver([reply(fact()), reply(fact())])
         episode = make_episode()
 
         await ex.extract([episode], by_episode([episode]))
         await store.remove_episode("ep1")
         await ex.extract([episode], by_episode([episode]))
 
-        assert len(llm.requests) == 2
+        assert len(scripted.calls) == 2
 
     async def test_previous_episodes_are_fetched_once_per_episode(self) -> None:
         """The context reader is called once for each episode in the batch."""
         previous = FakePrevious([make_episode("earlier note", episode_id="p1")])
+        models, _ = fact_models([reply(), reply()])
         ex = FactExtraction(
-            LLMFactExtractor(gate(ScriptedLLM([reply(), reply()]))),
+            LLMFactExtractor(models),
             InMemoryFactStore(),
             previous=previous,
         )
@@ -357,9 +396,9 @@ class TestFactExtraction:
     async def test_max_previous_zero_does_not_read_previous_episodes(self) -> None:
         """Zero turns the context reader off."""
         previous = FakePrevious([make_episode("earlier note", episode_id="p1")])
-        llm = ScriptedLLM([reply()])
+        models, scripted = fact_models([reply()])
         ex = FactExtraction(
-            LLMFactExtractor(gate(llm)),
+            LLMFactExtractor(models),
             InMemoryFactStore(),
             previous=previous,
             settings=FactExtractionSettings(max_previous=0),
@@ -369,63 +408,70 @@ class TestFactExtraction:
         await ex.extract([episode], by_episode([episode]))
 
         assert previous.limits == []
-        assert "<previous_episodes>" not in llm.requests[0].prompt
-        assert "earlier note" not in llm.requests[0].prompt
+        assert "<previous_episodes>" not in scripted.calls[0].prompt
+        assert "earlier note" not in scripted.calls[0].prompt
 
-    async def test_oversize_episode_in_a_batch_is_skipped_and_retried(self) -> None:
-        """An over-long episode is skipped, retried, and never blocks another."""
-        llm = ScriptedLLM([reply(fact()), reply(fact())])
-        store = InMemoryFactStore()
-        big = make_episode(
-            "I switched to Postgres. " + "x" * 100_000,
-            kind=Kind.DOCUMENT,
-            episode_id="big",
+    async def test_long_previous_episodes_reach_the_prompt_intact(self) -> None:
+        """Every earlier episode is delivered whole, with no local truncation."""
+        texts = [f"Earlier note {i}. " + "x" * 5_000 for i in range(5)]
+        earlier = [
+            replace(
+                make_episode(text, episode_id=f"p{i}"),
+                occurred_at=T0 - timedelta(minutes=5 - i),
+            )
+            for i, text in enumerate(texts)
+        ]
+        previous = FakePrevious(earlier)
+        models, scripted = fact_models([reply(fact())])
+        ex = FactExtraction(
+            LLMFactExtractor(models),
+            InMemoryFactStore(),
+            previous=previous,
+            settings=FactExtractionSettings(max_previous=5),
         )
-        normal = make_episode()
-        small_cap = FactExtraction(
-            LLMFactExtractor(gate(llm, max_input_tokens=2000)), store
-        )
+        episode = make_episode()
 
-        report = await small_cap.extract(
-            [big, normal], {big.id: [ANA, PG], normal.id: [ANA, PG]}
-        )
+        report = await ex.extract([episode], by_episode([episode]))
 
-        assert [r.status for r in report.results] == [Status.SKIPPED, Status.OK]
-        assert report.results[0].skip_reason is SkipReason.OVERSIZE
-        assert report.results[1].facts
+        assert report.results[0].status is Status.OK
+        prompt = scripted.calls[0].prompt
+        for text in texts:
+            assert text in prompt
 
-        larger_cap = FactExtraction(
-            LLMFactExtractor(gate(llm, max_input_tokens=200_000)), store
-        )
-        retry = await larger_cap.extract([big], {big.id: [ANA, PG]})
+    async def test_long_current_episode_reaches_the_prompt_whole(self) -> None:
+        """A very long episode is sent in full and still yields its grounded fact."""
+        text = "I switched to Postgres in March 2024. " + "x" * 100_000
+        models, scripted = fact_models([reply(fact())])
+        ex = FactExtraction(LLMFactExtractor(models), InMemoryFactStore())
+        episode = make_episode(text)
 
-        assert len(llm.requests) == 2
-        assert retry.results[0].status is Status.OK
+        report = await ex.extract([episode], by_episode([episode]))
+
+        assert report.results[0].status is Status.OK
+        assert text in scripted.calls[0].prompt
 
     async def test_report_counts_statuses_drops_usage_and_skip_codes(self) -> None:
         """The report gives the counts a retry policy needs."""
-        llm = ScriptedLLM([reply(fact(), fact(evidence_quote="never said"))])
-        ex, _ = driver(llm)
+        ex, _, _ = driver([reply(fact(), fact(evidence_quote="never said"))])
         normal = make_episode()
         d1 = make_episode(kind=Kind.DOCUMENT, episode_id="d1")
         d2 = make_episode(kind=Kind.DOCUMENT, episode_id="d2")
-        big = make_episode("x" * 100_000, kind=Kind.DOCUMENT, episode_id="big")
 
         report = await ex.extract(
-            [normal, d1, d2, big],
-            {normal.id: [ANA, PG], d1.id: [], d2.id: [], big.id: [ANA]},
+            [normal, d1, d2],
+            {normal.id: [ANA, PG], d1.id: [], d2.id: []},
         )
 
         assert report.status_counts() == {
             "ok": 1,
             "empty": 0,
             "parse_failed": 0,
-            "skipped": 3,
+            "skipped": 2,
             "error": 0,
         }
-        assert report.skipped_reasons() == {"no_candidates": 2, "oversize": 1}
+        assert report.skipped_reasons() == {"no_candidates": 2}
         drops = report.dropped_by_episode()
         assert drops["ep1"] == {"ungrounded": 1}
         assert all(not counts for episode, counts in drops.items() if episode != "ep1")
-        assert report.usage().buckets["facts/medium"].calls == 1
+        assert report.usage().buckets["facts/fact_extraction"].calls == 1
         assert report.succeeded

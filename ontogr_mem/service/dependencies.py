@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 
 from ontogr_mem.data_models.clock import Clock
-from ontogr_mem.llm import LLMClient
+from ontogr_mem.llm import LLMClient, RoleModels
 from ontogr_mem.observability import Tracer
 from ontogr_mem.relational_store import OperationStore
 from ontogr_mem.relational_store.audit import AuditLog
@@ -23,6 +23,7 @@ class ServiceDeps:
     operations: OperationStore
     clock: Clock
     llm: LLMClient | None
+    models: RoleModels
     backend: str
     limiter: CallerRateLimiter
     tracer: Tracer

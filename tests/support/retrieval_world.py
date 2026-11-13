@@ -60,7 +60,7 @@ from ontogr_mem.vectorstore import (
 from tests.support.clock import FixedClock
 from tests.support.embedder import RecordingEmbedder
 from tests.support.episodes import make_episode as episode_at
-from tests.support.facts import fact, gate, reply
+from tests.support.facts import fact, fact_models, reply
 from tests.support.llm import ScriptedLLM
 from tests.support.ontology import base, cs
 
@@ -202,7 +202,7 @@ async def build_world(backend: RetrievalBackend) -> RetrievalWorld:
             _raw_fact(definition, spec, relation_ids) for definition in spec.facts
         ]
         extraction = FactExtraction(
-            LLMFactExtractor(gate(ScriptedLLM(replies=[reply(*raw_facts)]))),
+            LLMFactExtractor(fact_models([reply(*raw_facts)])[0]),
             InMemoryFactStore(),
             view,
         )

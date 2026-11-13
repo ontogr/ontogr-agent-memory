@@ -12,22 +12,15 @@ from ontogr_mem.data_models import (
     TypeCatalog,
     Usage,
 )
+from ontogr_mem.data_models.extraction import TokenCount
 from ontogr_mem.data_models.text import normalize_name
-from ontogr_mem.entity_extraction.errors import ParseFailedError
+from ontogr_mem.entity_extraction.agent import entity_agent
 from ontogr_mem.entity_extraction.extractors.base import EntityExtractor, Extracted
-from ontogr_mem.entity_extraction.parsing import (
-    RawEntity,
-    SchemaError,
-    parse_entities,
-)
-from ontogr_mem.entity_extraction.prompts import (
-    NER_SYSTEM,
-    build_ner_prompt,
-    ner_schema,
-)
+from ontogr_mem.entity_extraction.parsing import RawEntity
+from ontogr_mem.entity_extraction.prompts import build_ner_prompt
 from ontogr_mem.entity_extraction.settings import EntityExtractionSettings
 from ontogr_mem.entity_extraction.text import find_spans, text_of
-from ontogr_mem.llm import InputTooLargeError, LLMGate, LLMRequest, ModelSize
+from ontogr_mem.llm import ModelRole, RoleModels, run_agent
 
 
 log = logging.getLogger(__name__)
@@ -38,30 +31,20 @@ class LLMExtractor(EntityExtractor):
 
     The model names entities and numeric type ids. Offsets are never trusted: the
     spans are found in the episode text, and an entity that cannot be found there
-    is discarded. Earlier episodes go into the prompt as context only. When the
-    prompt is too large, the oldest earlier episode is dropped first and the
-    current episode is never cut.
+    is discarded. Earlier episodes go into the prompt as context only. The reply
+    shape is validated and re-asked by the shared model run.
     """
 
     def __init__(
         self,
-        gate: LLMGate,
+        models: RoleModels,
         settings: EntityExtractionSettings | None = None,
         *,
-        model_size: ModelSize = ModelSize.SMALL,
         languages: frozenset[str] | None = None,
     ) -> None:
-        """Create the extractor.
-
-        Args:
-            gate: The shared gate that every model call passes through.
-            settings: Threshold, repair budget and default confidence.
-            model_size: Model tier to call.
-            languages: Languages handled, or None for any.
-        """
-        self._gate = gate
+        """Configure model access, confidence thresholds and supported languages."""
+        self._models = models
         self._settings = settings or EntityExtractionSettings()
-        self._size = model_size
         self.languages = languages
 
     async def extract(
@@ -70,47 +53,31 @@ class LLMExtractor(EntityExtractor):
         types: TypeCatalog,
         previous: Sequence[Episode] = (),
     ) -> Extracted:
-        """Run the entity prompt with a repair loop.
+        """Extract typed entities, then bind names and types to the episode.
 
         Raises:
-            ParseFailedError: If the reply stays invalid after the repair budget.
-            InputTooLargeError: If the episode alone exceeds the input cap.
+            ModelFailure: If the model is unavailable or its reply is unusable.
         """
-        usage = Usage()
         if not text_of(episode).strip():
-            return Extracted([], usage)
-        context = list(previous)
-        repair: tuple[str, list[str]] | None = None
-        errors: list[str] = []
-        attempt = 0
-        while attempt <= self._settings.max_repairs:
-            request = LLMRequest(
-                system=NER_SYSTEM,
-                prompt=build_ner_prompt(episode, types, context, repair),
-                model_size=self._size,
-                schema=ner_schema() if attempt == 0 else None,
-            )
-            try:
-                response = await self._gate.complete(request)
-            except InputTooLargeError:
-                if not context:
-                    raise
-                context.pop(0)
-                continue
-            usage.add(
-                "entities",
-                self._size.value,
-                response.input_tokens,
-                response.output_tokens,
-            )
-            try:
-                raw = parse_entities(response.text)
-            except SchemaError as exc:
-                errors, repair = exc.errors, (response.text, exc.errors)
-                attempt += 1
-                continue
-            return Extracted(self._bind(episode, types, raw), usage)
-        raise ParseFailedError("; ".join(errors))
+            return Extracted([], Usage())
+        run = await run_agent(
+            entity_agent,
+            ModelRole.ENTITY_EXTRACTION,
+            build_ner_prompt(episode, types, previous),
+            models=self._models,
+            deps=None,
+        )
+        raw = [RawEntity(**item.model_dump()) for item in run.output.entities]
+        usage = Usage(
+            buckets={
+                "entities/entity_extraction": TokenCount(
+                    run.usage.input_tokens,
+                    run.usage.output_tokens,
+                    run.usage.requests,
+                ),
+            }
+        )
+        return Extracted(self._bind(episode, types, raw), usage)
 
     def _bind(
         self, episode: Episode, types: TypeCatalog, raw: list[RawEntity]

@@ -1,6 +1,9 @@
 """Adds test markers by directory."""
 
+from collections.abc import Iterator
+
 import pytest
+from pydantic_ai import models
 
 
 def pytest_collection_modifyitems(
@@ -26,3 +29,10 @@ def pytest_collection_modifyitems(
                     reruns=3, reruns_delay=30, rerun_except=[AssertionError]
                 )
             )
+
+
+@pytest.fixture(autouse=True)
+def prohibit_model_network() -> Iterator[None]:
+    """Require tests to opt in explicitly before contacting a model provider."""
+    with models.override_allow_model_requests(False):
+        yield

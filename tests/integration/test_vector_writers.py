@@ -45,9 +45,8 @@ from ontogr_mem.vectorstore.text import edge_text
 from tests.support.clock import FixedClock
 from tests.support.embedder import MockEmbedder, gateway
 from tests.support.episodes import T0
-from tests.support.extraction import gate as extraction_gate
-from tests.support.facts import fact, reply
-from tests.support.facts import gate as fact_gate
+from tests.support.extraction import entity_models
+from tests.support.facts import fact, fact_models, reply
 from tests.support.graph_backend import GraphBackend
 from tests.support.llm import ScriptedLLM
 from tests.support.ontology import base
@@ -217,13 +216,13 @@ async def _process(stack: WriterStack, episodes: Sequence[Episode], observer):
         label: projection.view.catalog.entity_by_label(label).id
         for label in ("Person", "Organization")
     }
-    entity_llm = ScriptedLLM(
-        answer=lambda request: _entity_answer(
-            next(e for e in episodes if e.text in request.prompt), type_ids
+    entity_pool, _ = entity_models(
+        answer=lambda call: _entity_answer(
+            next(e for e in episodes if e.text in call.prompt), type_ids
         )
     )
     entities_report = await EntityExtraction(
-        [LLMExtractor(extraction_gate(entity_llm))],
+        [LLMExtractor(entity_pool)],
         RecordMapper({}),
         projection.view.catalog,
         stack.episodes,
@@ -244,13 +243,13 @@ async def _process(stack: WriterStack, episodes: Sequence[Episode], observer):
 
     relation = projection.view.catalog.relation_by_label("works_at")
     assert relation is not None
-    fact_llm = ScriptedLLM(
-        answer=lambda request: _fact_answer(
-            next(e for e in episodes if e.text in request.prompt), relation.id
+    fact_pool, _ = fact_models(
+        answer=lambda call: _fact_answer(
+            next(e for e in episodes if e.text in call.prompt), relation.id
         )
     )
     extraction = FactExtraction(
-        LLMFactExtractor(fact_gate(fact_llm)),
+        LLMFactExtractor(fact_pool),
         InMemoryFactStore(),
         projection.view,
     )

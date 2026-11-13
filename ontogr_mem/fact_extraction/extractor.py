@@ -2,8 +2,10 @@
 
 Three pieces, all behind the `FactExtractor` protocol:
 
-* `LLMFactExtractor`: messages, documents and tool output. One model call per
-  episode (with a fallback chain), then binding validates the reply.
+* `LLMFactExtractor`: messages, documents and tool output. One agent run per
+  episode. The model reply is validated against a typed shape (the library
+  re-asks the model up to twice for malformed output), then binding drops items
+  that fail domain checks.
 * `RecordFactMapper` (record_facts.py): records and events, no model.
 * `RoutingFactExtractor`: picks between them by `Episode.kind`. An unknown kind
   raises; it never falls back to the model.
@@ -11,12 +13,12 @@ Three pieces, all behind the `FactExtractor` protocol:
 Failures come back as a `FactResult` status (error, parse_failed, skipped); an
 unknown kind raises.
 
-The candidates are prepared in `candidates.py`, the prompt and the request in
-`prompting.py`.
+The candidates are prepared in `candidates.py` and the prompt is rendered in
+`prompts.py`.
 """
 
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from typing import Protocol
 
 from ontogr_mem.data_models import (
@@ -27,27 +29,23 @@ from ontogr_mem.data_models import (
     TypeView,
     Usage,
 )
+from ontogr_mem.data_models.extraction import TokenCount
+from ontogr_mem.fact_extraction.agent import fact_agent
 from ontogr_mem.fact_extraction.binding import bind
 from ontogr_mem.fact_extraction.candidates import with_actor
 from ontogr_mem.fact_extraction.errors import UnknownKindError
-from ontogr_mem.fact_extraction.models import (
-    FactResult,
-    SkipReason,
-    skipped,
-    unusable,
-)
-from ontogr_mem.fact_extraction.parsing import RawFact, SchemaError, parse_facts
-from ontogr_mem.fact_extraction.prompting import build_request, fit_prompt
+from ontogr_mem.fact_extraction.models import FactResult, SkipReason, skipped
+from ontogr_mem.fact_extraction.parsing import RawFact
+from ontogr_mem.fact_extraction.prompts import build_prompt
 from ontogr_mem.fact_extraction.record_facts import RecordFactMapper
 from ontogr_mem.fact_extraction.settings import FactExtractionSettings
 from ontogr_mem.fact_extraction.text import language_of
 from ontogr_mem.llm import (
-    InputTooLargeError,
-    LLMCallError,
-    LLMError,
-    LLMGate,
-    ModelSize,
-    estimate_tokens,
+    ModelFailure,
+    ModelOutputError,
+    ModelRole,
+    RoleModels,
+    run_agent,
 )
 
 
@@ -78,29 +76,22 @@ class FactExtractor(Protocol):
 
 
 class LLMFactExtractor:
-    """Runs the fact pass over an `LLMGate`, with up to three attempts per episode.
+    """Runs the fact pass as one typed agent run per episode.
 
-    Attempt 1 sends the schema strictly, attempt 2 non-strictly (providers that
-    reject strict schemas), attempt 3 sends no schema and feeds the validation
-    errors back. A provider failure moves to the next, looser attempt; a timeout
-    ends the episode as `ERROR`.
+    The model reply is validated against a typed shape; the library re-asks the
+    model up to twice for malformed output. A run whose reply never validates or
+    is cut off at the output limit ends the episode as `PARSE_FAILED`. Other
+    model failures end it as `ERROR`. Usage spent before a failure is kept.
     """
 
     def __init__(
         self,
-        gate: LLMGate,
+        models: RoleModels,
         settings: FactExtractionSettings | None = None,
-        *,
-        model_size: ModelSize = ModelSize.MEDIUM,
-        max_output_tokens: int = 4096,
-        count_tokens: Callable[[str], int] = estimate_tokens,
     ) -> None:
-        """Configure model size, extraction settings and the output cap."""
-        self._gate = gate
+        """Configure model access and fact extraction rules."""
+        self._models = models
         self._settings = settings or FactExtractionSettings()
-        self._size = model_size
-        self._max_output = max_output_tokens
-        self._count = count_tokens
         self.languages = self._settings.languages
         self.version = self._settings.version
 
@@ -132,64 +123,55 @@ class LLMFactExtractor:
             )
 
         candidates = with_actor(episode, entities, types)
-        usage = Usage()
-        raws: list[RawFact] | None = None
-        last_reply = ""
-        errors: list[str] = []
-        # `failure` is set by provider or timeout problems; an invalid reply ends
-        # as parse_failed instead.
-        failure: Exception | None = None
-        for attempt in range(3):
-            repair = (last_reply, errors) if attempt == 2 and errors else None
-            try:
-                prompt = fit_prompt(
+        try:
+            run = await run_agent(
+                fact_agent,
+                ModelRole.FACT_EXTRACTION,
+                build_prompt(
                     episode,
                     candidates,
                     types,
                     previous,
-                    repair,
-                    max_input_tokens=self._gate.max_input_tokens,
                     instructions=self._settings.instructions,
-                    count_tokens=self._count,
-                )
-                request = build_request(
-                    attempt,
-                    prompt,
-                    model_size=self._size,
-                    max_output_tokens=self._max_output,
-                    with_types=types is not None,
-                )
-                response = await self._gate.complete(request)
-            except InputTooLargeError as exc:
-                # Raised by the fit check or by the gate's input cap.
-                if repair is not None:
-                    # Only the repair prompt is too large: the episode ends as
-                    # parse_failed with the earlier errors.
-                    break
-                result.usage = usage
-                return skipped(result, SkipReason.OVERSIZE, str(exc))
-            except LLMCallError as exc:
-                failure = exc
-                continue
-            except (LLMError, TimeoutError) as exc:
-                failure = exc
-                break
-            # A reply arrived, so any earlier provider failure no longer applies.
-            failure = None
-            usage.add(
-                "facts", self._size.value, response.input_tokens, response.output_tokens
+                ),
+                models=self._models,
+                deps=None,
             )
-            try:
-                raws = parse_facts(response.text)
-                break
-            except SchemaError as exc:
-                last_reply, errors = response.text, exc.errors
-
-        result.usage = usage
-        if raws is None:
-            if failure is not None:
-                log.warning("fact call failed for %s: %r", episode.id, failure)
-            return unusable(result, failure, errors)
+        except ModelFailure as exc:
+            log.warning("fact call failed for %s: %r", episode.id, exc)
+            if exc.usage is not None:
+                result.usage = Usage(
+                    buckets={
+                        "facts/fact_extraction": TokenCount(
+                            exc.usage.input_tokens,
+                            exc.usage.output_tokens,
+                            exc.usage.requests,
+                        ),
+                    }
+                )
+            result.status = (
+                Status.PARSE_FAILED
+                if isinstance(exc, ModelOutputError)
+                else Status.ERROR
+            )
+            result.detail = str(exc)
+            return result
+        result.usage = Usage(
+            buckets={
+                "facts/fact_extraction": TokenCount(
+                    run.usage.input_tokens,
+                    run.usage.output_tokens,
+                    run.usage.requests,
+                ),
+            }
+        )
+        raws = [
+            RawFact(
+                **item.model_dump(exclude={"entity_refs"}),
+                entity_refs=tuple(item.entity_refs),
+            )
+            for item in run.output.facts
+        ]
 
         bound = bind(
             episode,

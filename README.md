@@ -470,7 +470,7 @@ asyncio.run(main())
 
 The write returns a job receipt, and `wait_seconds` makes the call wait for the job. The search result holds ranked facts, entity cards, and a rendered context block. `result.state` is one of `found`, `none`, `indexing`, or `degraded`.
 
-A free-text or message write needs an injected `LLMClient`, because the text must first be extracted into entities and facts.
+A free-text or message write needs the `ENTITY_EXTRACTION` and `FACT_EXTRACTION` model roles configured, because the text must first be extracted into entities and facts. Without them, the call fails with the `llm_unavailable` error code. A structured fact write does not need a model.
 
 ### 3. Move to durable storage
 
@@ -657,7 +657,7 @@ async def read_memory(query, now, *, vectors, keywords, temporal, entities, epis
 
 ## Language model and embedding layer
 
-The package ships no provider client. You supply an `LLMClient` and an `Embedder`. `LLMGate` is the path for every model call, and it provides:
+The gate path handles the model calls for resolution verification, ontology drafting, consolidation and the pair judge. You supply an `LLMClient` for that path, and an `Embedder` for embeddings. Entity and fact extraction do not use the gate. They use named model roles instead, as described under [Configuration](#configuration). `build_models()` creates the OpenAI-compatible and Anthropic provider clients for those named models from the `MEMORY_LLM_*` settings. The gate provides:
 
 - model tiers (`small` and `medium`) with separate concurrency limits
 - structured output parsing and a schema repair loop
@@ -703,11 +703,135 @@ Settings classes use `pydantic-settings`. They read the repo-root `.env` and use
 | `MEMORY_ONTOLOGY_` | Proposal support, retries, and prompt version. |
 | `MEMORY_ENTITY_EXTRACTION_` | Entity extractor concurrency, context, and thresholds. |
 | `MEMORY_FACT_EXTRACTION_` | Fact extractor concurrency, context, and version. |
-| `MEMORY_LLM_` | Model concurrency, retries, and breaker settings. |
+| `MEMORY_LLM_` | Gate settings for the model calls that do not use named model roles, and the named model role settings. See [Gate settings](#gate-settings) and [Named model roles](#named-model-roles). |
 | `MEMORY_FORGET_` | Forget confirmation secret. |
 | `MEMORY_` | Local stdio principal id, tenant, and grants. |
 
 Nested settings join their names with `__`, for example `MEMORY_FALKORDB_RESILIENCE__MAX_ATTEMPTS`. See [.env.example](https://github.com/ontogr/ontogr-agent-memory/blob/main/.env.example) for the test-service values.
+
+### Named model roles
+
+Entity extraction and fact extraction call their models through named model roles. Each role resolves its own settings, and a role that leaves a field unset uses the global value for that field. The other model-backed features, resolution verification, ontology drafting, consolidation and the pair judge, still use the gate settings described below. The settings also accept roles for resolution, the judge, consolidation, ontology and answer, but no code path reads those roles yet.
+
+The global fields are:
+
+| Field | Environment variable | Default | Description |
+| --- | --- | --- | --- |
+| `model` | `MEMORY_LLM_MODEL` | Unset | Model name with an optional protocol prefix. Roles without their own model use this one. |
+| `base_url` | `MEMORY_LLM_BASE_URL` | Unset | Endpoint URL. Required for every role that has a model. |
+| `api_key` | `MEMORY_LLM_API_KEY` | Unset | Credential for the endpoint. It is hidden from printed settings. |
+| `output_mode` | `MEMORY_LLM_OUTPUT_MODE` | `tool` | How structured output is requested: `tool`, `native` or `prompted`. |
+| `max_output_tokens` | `MEMORY_LLM_MAX_OUTPUT_TOKENS` | Role default | Output cap, an integer of at least 1. It is the cap for each role that sets no `MEMORY_LLM_<ROLE>_MAX_OUTPUT_TOKENS`, and it replaces that role's default. |
+| `reasoning_effort` | `MEMORY_LLM_REASONING_EFFORT` | Unset | Reasoning effort, sent as the OpenAI reasoning effort setting. |
+| `timeout_s` | `MEMORY_LLM_TIMEOUT_S` | `300` | Seconds allowed for each HTTP attempt. Must be greater than 0. |
+| `extra_body` | `MEMORY_LLM_EXTRA_BODY` | Unset | JSON object added to the body of each provider request. |
+| `max_concurrency` | `MEMORY_LLM_MAX_CONCURRENCY` | `4` | Calls allowed at once across all roles in one model pool. This field is global only. |
+
+Each role has the same fields with a role prefix. Replace `<ROLE>` with one of `ENTITY_EXTRACTION`, `FACT_EXTRACTION`, `RESOLUTION`, `JUDGE`, `CONSOLIDATION`, `ONTOLOGY` or `ANSWER`, and replace `<FIELD>` with one of the field names in the table below. For example, `MEMORY_LLM_FACT_EXTRACTION_EXTRA_BODY` sets the request body extras for fact extraction.
+
+| Field | Environment variable | When unset |
+| --- | --- | --- |
+| `model` | `MEMORY_LLM_<ROLE>_MODEL` | The global `model` |
+| `base_url` | `MEMORY_LLM_<ROLE>_BASE_URL` | The global `base_url` |
+| `api_key` | `MEMORY_LLM_<ROLE>_API_KEY` | The global `api_key` |
+| `output_mode` | `MEMORY_LLM_<ROLE>_OUTPUT_MODE` | The global `output_mode` |
+| `max_output_tokens` | `MEMORY_LLM_<ROLE>_MAX_OUTPUT_TOKENS` | The global `max_output_tokens`, then the role default |
+| `reasoning_effort` | `MEMORY_LLM_<ROLE>_REASONING_EFFORT` | The global `reasoning_effort` |
+| `timeout_s` | `MEMORY_LLM_<ROLE>_TIMEOUT_S` | The global `timeout_s` |
+| `extra_body` | `MEMORY_LLM_<ROLE>_EXTRA_BODY` | The global `extra_body` |
+
+When no output cap is set, each role uses the following default `max_output_tokens`.
+
+| Role | Default `max_output_tokens` |
+| --- | --- |
+| `FACT_EXTRACTION` | 16384 |
+| `ENTITY_EXTRACTION`, `RESOLUTION`, `JUDGE`, `CONSOLIDATION`, `ONTOLOGY` | 2048 |
+| `ANSWER` | No cap is sent |
+
+A blank value counts as unset. A blank per-role variable does not replace the global value. A per-role `extra_body` replaces the global object as a whole. The two objects are not merged.
+
+Every role that has a model needs a base URL, either from its own `MEMORY_LLM_<ROLE>_BASE_URL` or from `MEMORY_LLM_BASE_URL`. Settings load fails with an error that names the variable to set when neither is set. The package has no default endpoint. For example, the public OpenAI endpoint is `https://api.openai.com/v1`, and the public Anthropic endpoint is `https://api.anthropic.com`.
+
+The prefix of the model name selects the protocol:
+
+- `openai-chat:` uses the OpenAI Chat Completions protocol. A model name without a prefix also uses this protocol.
+- `openai-responses:` uses the OpenAI Responses protocol.
+- `anthropic:` uses the Anthropic Messages protocol.
+
+A bare `openai:` prefix is rejected when settings load, because it does not name a protocol. Text that does not start with one of the three prefixes stays part of the model name. For example, `llama3:8b` is a chat model named `llama3:8b`.
+
+```bash
+MEMORY_LLM_MODEL=openai-chat:<model name>
+MEMORY_LLM_BASE_URL=https://api.openai.com/v1
+MEMORY_LLM_API_KEY=<api key>
+MEMORY_LLM_FACT_EXTRACTION_MODEL=openai-responses:<model name>
+```
+
+### Model pool and service setup
+
+Build one model pool for each process with `build_models()`. The pool creates one model for each role that has a model. All of those models share one concurrency limit, and roles that use the same protocol, base URL and API key share one HTTP client.
+
+```python
+from ontogr_mem.llm import build_models
+from ontogr_mem.service.bootstrap import open_service
+
+role_models = build_models()
+try:
+    async with open_service(
+        models=role_models,
+        llm=llm,
+        embedder=embedder,
+    ) as runtime:
+        ...
+finally:
+    await role_models.aclose()
+```
+
+`open_service` closes a pool that it builds itself when its context exits. A pool passed in with `models=` belongs to the caller. Call `await role_models.aclose()` after all runs that use the pool have finished. The `llm` argument is the gate client for the other model-backed features.
+
+Entity extraction and fact extraction handle failures in the following way:
+
+1. A failed provider call, such as an HTTP error or a timeout, ends the extraction for that episode. The write fails with the `llm_unavailable` error code.
+2. A reply that does not match the expected output shape gets two re-asks. If the reply is still invalid, the write fails with `llm_unavailable`.
+3. A fact that fails a check after a valid reply is dropped with a reason code, such as `unknown_entity_ref` or `ungrounded`. The model is not asked again for that fact.
+
+`timeout_s` applies to each HTTP attempt.
+
+The extraction pipelines never truncate input. The service API rejects text and message `content` over 64 KiB of UTF-8 bytes (`payload_too_large`) before it queues the job. The episode text and the earlier episodes reach the model in full. The `max_previous` setting (`MEMORY_ENTITY_EXTRACTION_MAX_PREVIOUS` and `MEMORY_FACT_EXTRACTION_MAX_PREVIOUS`) limits how many earlier episodes are sent, not how large they are. If the prompt is larger than the model's context window, the provider rejects the call. A service write then fails with `llm_unavailable`. The fact pipeline saves the episode's result with the `error` status, and a later `extract` call with the same store runs the episode again. The entity pipeline keeps no store. It lists the episode in `failed_episode_ids`, so the caller can pass that episode to a later `extract` call.
+
+### Tracing model calls
+
+Tracing is off by default. PydanticAI instrumentation starts only when the caller turns it on. Run the following code once before extraction runs, with the OpenTelemetry tracer provider that the caller has already configured:
+
+```python
+from pydantic_ai import Agent, InstrumentationSettings
+
+Agent.instrument_all(
+    InstrumentationSettings(
+        tracer_provider=tracer_provider,
+        include_content=False,
+        include_binary_content=False,
+        include_model_request_parameters=False,
+    )
+)
+```
+
+Ordinary service setup never runs this code. The `tracer=` argument of `open_service` controls service tracing only, and it does not turn on PydanticAI instrumentation. The settings above keep prompts, instructions, model responses, binary content and request parameters out of spans. The caller still owns the tracer provider and the exporters.
+
+### Gate settings
+
+These settings apply to the gate, which handles the model calls that do not use named model roles.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `MEMORY_LLM_MAX_CONCURRENCY` | `4` | Calls allowed at once for each model size in the gate. The named model pool reads this variable too. |
+| `MEMORY_LLM_MAX_ATTEMPTS` | `1` | Total provider tries. `1` disables retries. |
+| `MEMORY_LLM_BASE_DELAY_S` | `0.5` | Initial retry delay in seconds. |
+| `MEMORY_LLM_MAX_DELAY_S` | `30.0` | Longest retry delay in seconds. |
+| `MEMORY_LLM_BREAKER_THRESHOLD` | Unset | Consecutive failures that open the circuit breaker. Unset leaves the breaker off. |
+| `MEMORY_LLM_BREAKER_RECOVERY_S` | `30.0` | Seconds before the breaker allows one probe call. |
+| `MEMORY_LLM_REQUESTS_PER_MINUTE` | Unset | Optional request limit for the provider. |
+| `MEMORY_LLM_STRUCTURED_ATTEMPTS` | `3` | Maximum attempts to get a valid structured output. |
 
 ## Development
 

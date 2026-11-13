@@ -28,10 +28,10 @@ from ontogr_mem.vectorstore.memory import InMemoryBackend
 from tests.support.clock import FixedClock
 from tests.support.embedder import MockEmbedder
 from tests.support.episodes import graph_harness
-from tests.support.extraction import gate
-from tests.support.facts import fact, reply
+from tests.support.facts import fact, fact_models, reply
 from tests.support.llm import ScriptedLLM
 from tests.support.ontology import base, cs
+from tests.support.scripted_model import ScriptedCall
 
 
 TEMPORAL_TEXTS = {
@@ -98,8 +98,8 @@ def temporal_replies(view) -> dict[str, str]:
 def scripted_facts(replies: dict[str, str]):
     """Answer each fact request with the reply for its episode text."""
 
-    def answer(request) -> str:
-        text = EPISODE_TEXT.search(request.prompt).group(1)
+    def answer(call: ScriptedCall) -> str:
+        text = EPISODE_TEXT.search(call.prompt).group(1)
         return replies[text]
 
     return answer
@@ -135,9 +135,9 @@ class TemporalStack:
         await self.episodes.write_episodes([episode])
         await self.resolver.resolve(entities)
         view = await self.manager.extraction_view()
-        llm = ScriptedLLM(answer=scripted_facts(temporal_replies(view.view)))
+        models, _ = fact_models(answer=scripted_facts(temporal_replies(view.view)))
         extraction = FactExtraction(
-            LLMFactExtractor(gate(llm)), InMemoryFactStore(), view.view
+            LLMFactExtractor(models), InMemoryFactStore(), view.view
         )
         report = await extraction.extract([episode], {episode.id: entities})
         stabilized = await stabilize_facts(self.manager, report.results[0].facts, view)

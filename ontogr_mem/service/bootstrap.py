@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ontogr_mem.data_models.clock import Clock, SystemClock
 from ontogr_mem.graphstore.protocol import GraphStore
-from ontogr_mem.llm import LLMClient
+from ontogr_mem.llm import LLMClient, LLMConfig, RoleModels, build_models
 from ontogr_mem.llm.cache.port import ResponseCache
 from ontogr_mem.observability import NoOpTracer, Tracer
 from ontogr_mem.relational_store import (
@@ -91,6 +91,7 @@ async def build_service(
     resolver_settings: ResolverSettings,
     retrieval_settings: RetrievalSettings,
     limiter: CallerRateLimiter,
+    models: RoleModels | None = None,
     max_attempts: int = 3,
     tracer: Tracer | None = None,
     audit_log: AuditLog | None = None,
@@ -111,12 +112,17 @@ async def build_service(
         authorizer: Checks grants and records access decisions.
         operations: Persists service operation rows.
         clock: Time source shared by service components.
-        llm: Optional language model client.
+        llm: Optional client for resolution verification, ontology drafting,
+            consolidation and the pair judge. Text extraction uses ``models``
+            and needs both entity extraction and fact extraction configured.
         embedder: Client used by Tenant vector stores.
         policy: Entity resolution policy.
         resolver_settings: Entity resolver configuration.
         retrieval_settings: Retrieval configuration.
         limiter: Per-principal read and write limiter.
+        models: Caller-owned process-wide model pool. The caller closes it.
+            When omitted, an unconfigured pool without HTTP clients is used,
+            which disables text extraction.
         max_attempts: Maximum attempts for each queued job.
         tracer: Optional tracer for service and Tenant spans.
         audit_log: Optional audit chain for service operations.
@@ -134,12 +140,16 @@ async def build_service(
         raise ValueError("a graph cleanup callback is required")
 
     selected_tracer = tracer or NoOpTracer()
+    selected_models = (
+        models if models is not None else build_models(LLMConfig.model_construct())
+    )
 
     async def runtime_factory(tenant_id: str) -> TenantRuntime:
         stores = await stores_factory(tenant_id, embedder, tracer=selected_tracer)
         return build_tenant_runtime(
             stores,
             llm=llm,
+            models=selected_models,
             embedder=embedder,
             clock=clock,
             policy=policy,
@@ -164,6 +174,7 @@ async def build_service(
             operations=operations,
             clock=clock,
             llm=llm,
+            models=selected_models,
             backend=settings.backend,
             limiter=limiter,
             max_attempts=max_attempts,
@@ -184,6 +195,7 @@ async def open_service(
     drop_graph: Callable[[str], Awaitable[None]] | None = None,
     clock: Clock | None = None,
     llm: LLMClient | None = None,
+    models: RoleModels | None = None,
     embedder: Embedder,
     policy: ResolutionPolicy | None = None,
     resolver_settings: ResolverSettings | None = None,
@@ -203,7 +215,12 @@ async def open_service(
         drop_graph: Graph cleanup callback for ``stores_factory``. Ignored
             when the configured backend opens the stores.
         clock: Shared time source; defaults to the system clock.
-        llm: Optional client for text extraction and model-backed operations.
+        llm: Optional client for resolution verification, ontology drafting,
+            consolidation and the pair judge. Text extraction uses ``models``
+            and needs both entity extraction and fact extraction configured.
+        models: Process-wide model pool. When omitted, the pool is built from
+            the environment and its HTTP clients are closed when the context
+            exits. A pool passed in stays owned by the caller.
         embedder: Client used by tenant vector stores.
         policy: Entity resolution policy.
         resolver_settings: Entity resolution settings.
@@ -225,6 +242,10 @@ async def open_service(
     selected_clock = clock or SystemClock()
 
     async with AsyncExitStack() as resources:
+        selected_models = models if models is not None else build_models()
+        if models is None:
+            resources.push_async_callback(selected_models.aclose)
+
         state = await open_state_store(selected_state)
         resources.push_async_callback(state.close)
 
@@ -247,6 +268,7 @@ async def open_service(
             operations=operations,
             clock=selected_clock,
             llm=llm,
+            models=selected_models,
             embedder=embedder,
             policy=policy or ResolutionPolicy(),
             resolver_settings=resolver_settings or ResolverSettings(),
@@ -259,6 +281,7 @@ async def open_service(
             drop_graph=drop_graph,
             erase_cache=erase_cache,
         )
+        # Registered after the model clients so jobs stop before they close.
         resources.push_async_callback(service.stop)
         await service.start()
         yield ServiceRuntime(service=service)
