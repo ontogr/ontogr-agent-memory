@@ -125,7 +125,6 @@ class TestMemoryEntityExtractor:
                     "entities": [
                         {
                             "id": "e0",
-                            "description_evidence": "",
                             "attributes": {
                                 "role": {"value": "manager", "evidence": "manager"},
                                 "count": {"value": 2, "evidence": "meetings"},

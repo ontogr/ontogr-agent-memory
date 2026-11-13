@@ -43,7 +43,7 @@ class EntityAnnotation(BaseModel):
 
     id: str
     description: str = ""
-    description_evidence: str
+    description_evidence: str = ""
     attributes: dict[str, AttributeAnswer] = Field(default_factory=dict)
 
 

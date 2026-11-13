@@ -46,7 +46,8 @@ class MemoryEntityExtractor(EntityExtractor):
     ) -> None:
         """Create the extractor around the base extractor and role models."""
         if max_entities_per_call < 1:
-            raise ValueError("max_entities_per_call must be >= 1")
+            msg = "max_entities_per_call must be >= 1"
+            raise ValueError(msg)
         self._base = base
         self._models = models
         self._allowed = dict(allowed_attributes or DEFAULT_ATTRIBUTES)
