@@ -102,6 +102,16 @@ class FailingFakeTextEmbedding(FakeTextEmbedding):
         raise RuntimeError("onnx session failed")
 
 
+class TypeErrorFakeTextEmbedding(FakeTextEmbedding):
+    """Raises a type error before it yields, as a mismatched argument would."""
+
+    def embed(
+        self, documents: Sequence[str], batch_size: int, parallel: int | None
+    ) -> Iterator[FakeVector]:
+        """Fail on the first call, before any vector is produced."""
+        raise TypeError("model received an unexpected argument")
+
+
 class SlowFakeTextEmbedding(FakeTextEmbedding):
     """Holds each call open so that an overlapping call is detected."""
 
@@ -130,6 +140,38 @@ class UnloadableFakeTextEmbedding(FakeTextEmbedding):
     ) -> None:
         """Raise the OSError that a model loader raises for a bad file."""
         raise OSError("model file could not be read")
+
+
+def blocking_fake_type(
+    started: threading.Event, release: threading.Event
+) -> type[FakeTextEmbedding]:
+    """Return a fake whose first call holds the model until `release` is set.
+
+    Args:
+        started: Set by the fake as soon as a call enters the model.
+        release: Awaited by the fake for at most five seconds, so a failing test
+            cannot leave a worker thread blocked forever.
+    """
+
+    class BlockingFakeTextEmbedding(FakeTextEmbedding):
+        """Blocks inside `embed` and fails if a second call enters the model."""
+
+        def embed(
+            self, documents: Sequence[str], batch_size: int, parallel: int | None
+        ) -> Iterator[FakeVector]:
+            """Hold the model until `release` is set, then yield the vectors."""
+            if self.in_progress:
+                raise AssertionError("embed overlapped with another call")
+            self.in_progress = True
+            try:
+                started.set()
+                release.wait(timeout=5)
+                for document in documents:
+                    yield FakeVector(type(self).vector_for(document))
+            finally:
+                self.in_progress = False
+
+    return BlockingFakeTextEmbedding
 
 
 def install_fake(
@@ -168,6 +210,15 @@ def assert_setup_hint(error: EmbedderUnavailableError) -> None:
     """Assert the hint names the install extra and both embedding settings."""
     for expected in SETUP_HINTS:
         assert expected in error.hint
+
+
+async def wait_for_event(event: threading.Event) -> None:
+    """Poll `event` from the event loop until it is set, failing after five seconds."""
+    for _ in range(500):
+        if event.is_set():
+            return
+        await asyncio.sleep(0.01)
+    pytest.fail("the worker thread never reached the model")
 
 
 class TestLocalEmbedder:
@@ -267,6 +318,16 @@ class TestLocalEmbedder:
         with pytest.raises(PermanentEmbeddingError):
             await embedder.embed_batch(["alpha"])
 
+    async def test_raises_permanent_error_for_a_type_error_from_the_model(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A model error that is not a runtime error still fails permanently."""
+        install_fake(monkeypatch, fake_type=TypeErrorFakeTextEmbedding)
+        embedder = await LocalEmbedder.open()
+
+        with pytest.raises(PermanentEmbeddingError):
+            await embedder.embed_batch(["alpha"])
+
     async def test_concurrent_calls_are_serialized_on_the_model(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -283,6 +344,32 @@ class TestLocalEmbedder:
         assert [len(batch) for batch in results] == [1, 1, 1]
         for batch in results:
             assert batch[0][:2] == pytest.approx([0.6, 0.8])
+
+    async def test_a_cancelled_batch_does_not_overlap_the_next_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A later batch waits while a cancelled batch is still inside the model."""
+        started = threading.Event()
+        release = threading.Event()
+        install_fake(monkeypatch, fake_type=blocking_fake_type(started, release))
+        embedder = await LocalEmbedder.open()
+        first = asyncio.create_task(embedder.embed_batch(["alpha"]))
+
+        try:
+            await wait_for_event(started)
+            first.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await first
+            second = asyncio.create_task(embedder.embed_batch(["beta"]))
+            await asyncio.sleep(0.05)
+            assert not second.done()
+            release.set()
+            results = await second
+        finally:
+            release.set()
+
+        assert len(results) == 1
+        assert results[0][:2] == pytest.approx([0.6, 0.8])
 
     async def test_open_raises_unavailable_with_setup_hint_without_fastembed(
         self, monkeypatch: pytest.MonkeyPatch
@@ -335,3 +422,27 @@ class TestLocalEmbedder:
 
         with pytest.raises(EmbedderUnavailableError):
             await embedder.embed_batch(["alpha"])
+
+    async def test_aclose_waits_for_the_running_batch_to_finish(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Closing waits for the running batch, which still returns its vectors."""
+        started = threading.Event()
+        release = threading.Event()
+        install_fake(monkeypatch, fake_type=blocking_fake_type(started, release))
+        embedder = await LocalEmbedder.open()
+        batch = asyncio.create_task(embedder.embed_batch(["alpha"]))
+
+        try:
+            await wait_for_event(started)
+            closing = asyncio.create_task(embedder.aclose())
+            await asyncio.sleep(0.05)
+            assert not closing.done()
+            release.set()
+            results = await batch
+            await closing
+        finally:
+            release.set()
+
+        assert len(results) == 1
+        assert results[0][:2] == pytest.approx([0.6, 0.8])

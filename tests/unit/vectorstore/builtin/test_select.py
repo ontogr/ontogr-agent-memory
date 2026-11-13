@@ -5,7 +5,7 @@ from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any
 
-import httpx
+import httpx2
 import openai
 import pytest
 
@@ -217,9 +217,9 @@ class TestSelectEmbedder:
         """A failing endpoint probe raises its error and never loads the local model."""
         authentication_error = openai.AuthenticationError(
             "denied",
-            response=httpx.Response(
+            response=httpx2.Response(
                 401,
-                request=httpx.Request(
+                request=httpx2.Request(
                     "POST", "http://embeddings.invalid/v1/embeddings"
                 ),
             ),

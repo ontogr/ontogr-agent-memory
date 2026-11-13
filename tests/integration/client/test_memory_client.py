@@ -27,6 +27,7 @@ from pydantic_ai.messages import (
     ToolCallPart,
     UserPromptPart,
 )
+from pydantic_ai.models.concurrency import ConcurrencyLimitedModel
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.profiles import ModelProfile
 
@@ -167,6 +168,13 @@ def open_default_memory(
         state_settings=state_settings,
         llm_config=LLMConfig.model_construct(),
     )
+
+
+def _judge_model(models: RoleModels) -> Any:
+    """Return the provider model behind the judge role."""
+    wrapped = models.model_for(ModelRole.JUDGE)
+    assert isinstance(wrapped, ConcurrencyLimitedModel)
+    return wrapped.wrapped
 
 
 def _prompt_block(prompt: str, tag: str) -> str:
@@ -576,7 +584,13 @@ class TestMemoryClient:
                 receipt = await memory.write_text("I own Hydra.")
                 assert receipt.status in (JobState.QUEUED, JobState.RUNNING)
 
-                before_facts = await memory.search("Hydra")
+                # The write job runs in the background, so the episode may take a
+                # moment to appear in search. The held model keeps the facts pending.
+                for _ in range(100):
+                    before_facts = await memory.search("Hydra")
+                    if before_facts.state == "found":
+                        break
+                    await asyncio.sleep(0.05)
                 assert before_facts.state == "found"
                 assert before_facts.facts == []
 
@@ -790,8 +804,14 @@ class TestMemoryClient:
                 """Count one close call."""
                 self.close_count += 1
 
-        model, _ = scripted_model()
-        models = scripted_role_models(model)
+        models = build_models(
+            LLMConfig(
+                model="m",
+                base_url="https://llm.invalid/v1",
+                api_key="k",
+                _env_file=None,
+            )
+        )
         embedder = CountingEmbedder()
         try:
             async with Memory.open(
@@ -811,12 +831,14 @@ class TestMemoryClient:
                 context = await memory.search("Where does Ana work?")
                 assert context.state == "found"
 
+            assert not _judge_model(models).client._client.is_closed
             assert embedder.close_count == 0
             assert models.model_for(ModelRole.ANSWER) is not None
             vectors = await embedder.embed_batch(["x"])
             assert len(vectors) == 1
             assert len(vectors[0]) == embedder.dim
         finally:
+            await models.aclose()
             await falkordb_store.erase_tenant(tenant)
 
     async def test_body_exception_still_closes_the_service(

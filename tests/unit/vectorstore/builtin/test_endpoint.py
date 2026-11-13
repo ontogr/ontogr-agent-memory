@@ -1,5 +1,6 @@
-"""Endpoint embedder behavior against a fake OpenAI-compatible client."""
+"""Endpoint embedder behavior against fake clients and a mock HTTP transport."""
 
+import json
 import math
 from collections.abc import Callable
 from types import SimpleNamespace
@@ -17,6 +18,7 @@ from openai import (
     NotFoundError,
     RateLimitError,
 )
+from openai import AsyncOpenAI as RealAsyncOpenAI
 from pydantic import SecretStr
 
 from ontogr_mem.vectorstore.builtin.endpoint import EndpointEmbedder
@@ -66,11 +68,9 @@ class ClientFactory:
     def __init__(self, client: FakeClient) -> None:
         """Store the client that every call returns."""
         self.client = client
-        self.kwargs: list[dict[str, Any]] = []
 
     def __call__(self, **kwargs: Any) -> FakeClient:
-        """Record the constructor keyword arguments and return the client."""
-        self.kwargs.append(kwargs)
+        """Return the prepared client, ignoring the constructor keywords."""
         return self.client
 
 
@@ -139,6 +139,43 @@ def _status_error(
         response=httpx2.Response(status_code, request=_request()),
         body="sentinel-body",
     )
+
+
+def _embedding_reply(request: httpx2.Request) -> httpx2.Response:
+    """Answer each input text with the vector [1, 2, 2], in request order."""
+    inputs = json.loads(request.content)["input"]
+    return httpx2.Response(
+        200,
+        json={
+            "object": "list",
+            "model": MODEL,
+            "usage": {"prompt_tokens": 1, "total_tokens": 1},
+            "data": [
+                {"object": "embedding", "index": index, "embedding": [1.0, 2.0, 2.0]}
+                for index in range(len(inputs))
+            ],
+        },
+    )
+
+
+def _wire_client(
+    monkeypatch: pytest.MonkeyPatch,
+    handler: Callable[[httpx2.Request], httpx2.Response],
+) -> None:
+    """Make `open` build the real SDK client on a mock HTTP transport.
+
+    The handler receives each request as it would go on the wire, so a test
+    can check the URL, headers and body that the SDK sends.
+    """
+
+    def factory(**kwargs: Any) -> RealAsyncOpenAI:
+        """Build the real SDK client with `handler` as its transport."""
+        transport = httpx2.MockTransport(handler)
+        return RealAsyncOpenAI(
+            **kwargs, http_client=httpx2.AsyncClient(transport=transport)
+        )
+
+    monkeypatch.setattr(ENDPOINT_OPENAI, factory)
 
 
 class TestEndpointEmbedder:
@@ -215,6 +252,14 @@ class TestEndpointEmbedder:
         with pytest.raises(PermanentEmbeddingError):
             await embedder.embed_batch(["a"])
 
+    async def test_embed_batch_rejects_non_numeric_vector_values(self) -> None:
+        """A vector whose values are not numbers is a permanent error."""
+        vector: list[Any] = ["a", "b", "c"]
+        client = FakeClient(lambda texts: _response((0, vector)))
+
+        with pytest.raises(PermanentEmbeddingError):
+            await _embedder(client).embed_batch(["a"])
+
     async def test_configured_dimensions_are_used_without_a_probe(self) -> None:
         """A configured dimension sets `dim` and sends no request."""
         embedder = await EndpointEmbedder.open(
@@ -250,6 +295,19 @@ class TestEndpointEmbedder:
 
         with pytest.raises(PermanentEmbeddingError):
             await EndpointEmbedder.open(_settings(dimensions=None), client=client)
+
+    async def test_probe_rejects_non_numeric_values_and_closes_owned_client(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A non-numeric probe vector is a permanent error that closes the client."""
+        vector: list[Any] = ["a", "b", "c"]
+        client = FakeClient(lambda texts: _response((0, vector)))
+        monkeypatch.setattr(ENDPOINT_OPENAI, ClientFactory(client))
+
+        with pytest.raises(PermanentEmbeddingError):
+            await EndpointEmbedder.open(_settings(dimensions=None))
+
+        assert client.close_count == 1
 
     async def test_failed_probe_closes_an_owned_client(
         self, monkeypatch: pytest.MonkeyPatch
@@ -310,6 +368,11 @@ class TestEndpointEmbedder:
                 id="connection",
             ),
             pytest.param(
+                lambda: _status_error(APIStatusError, 408),
+                TransientEmbeddingError,
+                id="request_timeout_408",
+            ),
+            pytest.param(
                 lambda: _status_error(RateLimitError, 429),
                 TransientEmbeddingError,
                 id="rate_limit_429",
@@ -357,30 +420,65 @@ class TestEndpointEmbedder:
         assert "embeddings.invalid" not in message
 
     @pytest.mark.parametrize(
-        ("api_key", "expected_key"),
+        ("api_key", "expected_authorization"),
         [
-            pytest.param(SecretStr("sentinel-key"), "sentinel-key", id="explicit_key"),
-            pytest.param(None, "not-required", id="no_key"),
+            pytest.param(
+                SecretStr("sentinel-key"), "Bearer sentinel-key", id="explicit_key"
+            ),
+            pytest.param(None, "Bearer not-required", id="no_key"),
         ],
     )
-    async def test_client_is_built_from_settings_not_openai_variables(
+    async def test_request_uses_settings_and_ignores_openai_variables(
         self,
         monkeypatch: pytest.MonkeyPatch,
         api_key: SecretStr | None,
-        expected_key: str,
+        expected_authorization: str,
     ) -> None:
-        """The SDK client gets the configured URL and key, not OPENAI_* values."""
-        monkeypatch.setenv("OPENAI_API_KEY", "ambient-key-sentinel")
-        monkeypatch.setenv("OPENAI_BASE_URL", "http://ambient.invalid/v1")
-        factory = ClientFactory(FakeClient(_no_request))
-        monkeypatch.setattr(ENDPOINT_OPENAI, factory)
+        """The request goes to the configured URL with no ambient OpenAI values."""
+        monkeypatch.setenv("OPENAI_API_KEY", "ambient-sentinel-key")
+        monkeypatch.setenv("OPENAI_BASE_URL", "http://ambient-sentinel.invalid/v1")
+        monkeypatch.setenv("OPENAI_ORG_ID", "ambient-sentinel-org")
+        monkeypatch.setenv("OPENAI_PROJECT_ID", "ambient-sentinel-project")
+        seen: list[httpx2.Request] = []
 
-        await EndpointEmbedder.open(_settings(api_key=api_key, dimensions=3))
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            """Record the request and answer with the fixed test vector."""
+            seen.append(request)
+            return _embedding_reply(request)
 
-        (kwargs,) = factory.kwargs
-        assert kwargs["base_url"] == BASE_URL
-        assert kwargs["api_key"] == expected_key
-        assert "ambient" not in repr(kwargs)
+        _wire_client(monkeypatch, handler)
+        embedder = await EndpointEmbedder.open(_settings(api_key=api_key, dimensions=3))
+
+        (vector,) = await embedder.embed_batch(["a"])
+        await embedder.aclose()
+
+        (request,) = seen
+        assert str(request.url) == f"{BASE_URL}/embeddings"
+        assert request.headers["authorization"] == expected_authorization
+        assert not any(name.lower().startswith("openai-") for name in request.headers)
+        observed = [str(request.url), *request.headers.values()]
+        assert not any("ambient-sentinel" in text for text in observed)
+        assert vector == pytest.approx([1 / 3, 2 / 3, 2 / 3])
+
+    async def test_sdk_retries_are_disabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A 503 reply is sent once, not retried by the SDK, and is transient."""
+        seen: list[httpx2.Request] = []
+
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            """Record the request and answer with HTTP 503."""
+            seen.append(request)
+            return httpx2.Response(503, request=request)
+
+        _wire_client(monkeypatch, handler)
+        embedder = await EndpointEmbedder.open(_settings(dimensions=3))
+
+        with pytest.raises(TransientEmbeddingError):
+            await embedder.embed_batch(["a"])
+        await embedder.aclose()
+
+        assert len(seen) == 1
 
     @pytest.mark.parametrize(
         ("model", "base_url"),

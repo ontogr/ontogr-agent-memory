@@ -67,7 +67,9 @@ class EndpointEmbedder:
 
         Args:
             settings: Explicit model, URL and independent embedding key.
-            client: Borrowed client for callers that manage the SDK lifetime.
+            client: Borrowed client for callers that manage the SDK lifetime. A
+                borrowed client keeps the retry and header settings it was built
+                with.
 
         Returns:
             An embedder whose dimensions are ready for a Tenant stack.
@@ -92,7 +94,13 @@ class EndpointEmbedder:
                     if settings.api_key is not None
                     else "not-required"
                 ),
+                # The embedding gateway owns retries; the SDK must not add its own.
+                max_retries=0,
             )
+            # The SDK fills these from OPENAI_ORG_ID and OPENAI_PROJECT_ID, and
+            # this client must not send ambient values.
+            selected.organization = None
+            selected.project = None
         embedder = cls(
             selected,
             model_id=settings.model,
@@ -108,7 +116,7 @@ class EndpointEmbedder:
                     raise PermanentEmbeddingError("unsupported embedding width")
                 embedder.dim = width
                 to_unit(vectors[0], width)
-        except InvalidVectorError as exc:
+        except (InvalidVectorError, TypeError, ValueError) as exc:
             await embedder.aclose()
             raise PermanentEmbeddingError("invalid embedding probe vector") from exc
         except BaseException:
@@ -135,7 +143,7 @@ class EndpointEmbedder:
         vectors = await self._request(texts)
         try:
             return [list(to_unit(vector, self.dim)) for vector in vectors]
-        except InvalidVectorError as exc:
+        except (InvalidVectorError, TypeError, ValueError) as exc:
             raise PermanentEmbeddingError("invalid embedding response vector") from exc
 
     async def aclose(self) -> None:
@@ -157,7 +165,7 @@ class EndpointEmbedder:
         except APIConnectionError as exc:
             raise TransientEmbeddingError("embedding endpoint unavailable") from exc
         except APIStatusError as exc:
-            if exc.status_code == 429 or exc.status_code >= 500:
+            if exc.status_code in {408, 429} or exc.status_code >= 500:
                 raise TransientEmbeddingError(
                     f"embedding endpoint returned HTTP {exc.status_code}"
                 ) from exc
@@ -168,9 +176,15 @@ class EndpointEmbedder:
             raise PermanentEmbeddingError(
                 "invalid embedding endpoint response"
             ) from exc
-        rows = sorted(response.data, key=lambda row: row.index)
+        try:
+            rows = sorted(response.data, key=lambda row: row.index)
+            vectors = [list(row.embedding) for row in rows]
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise PermanentEmbeddingError(
+                "invalid embedding endpoint response"
+            ) from exc
         if [row.index for row in rows] != list(range(len(texts))):
             raise PermanentEmbeddingError(
                 "embedding response indices do not match input"
             )
-        return [list(row.embedding) for row in rows]
+        return vectors

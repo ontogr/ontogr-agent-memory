@@ -395,13 +395,17 @@ Optional extraction extras are `gliner` and `spacy`. The full set is in [pyproje
 
 ### 2. Run the example
 
-The example also needs the `falkordb` and `fastembed` extras:
+The example needs the `falkordb` extra. Add the `fastembed` extra to use the local CPU embedding model. People who use an embedding endpoint skip `fastembed` and set `MEMORY_EMBEDDING_MODEL` and `MEMORY_EMBEDDING_BASE_URL`.
 
 ```bash
+# Install with the local CPU embedding model
 uv add "ontogr-mem[falkordb,fastembed]"
+
+# Install for an embedding endpoint
+uv add "ontogr-mem[falkordb]"
 ```
 
-Run a FalkorDB server before opening `Memory`. The default graph port is 6379. SQLite state is stored in `agent_memory_state.sqlite3` in the current directory. The local embedding model may download files on first use. For an embedding endpoint, set `MEMORY_EMBEDDING_MODEL` and `MEMORY_EMBEDDING_BASE_URL` instead. Set `MEMORY_EMBEDDING_API_KEY` if that endpoint requires authentication.
+Run a FalkorDB server before opening `Memory`. The default graph port is 6379. SQLite state is stored in `agent_memory_state.sqlite3` in the current directory. The local embedding model may download files on first use. Set `MEMORY_EMBEDDING_API_KEY` if the embedding endpoint requires authentication.
 
 Save the example as `example.py` and run it with `uv run python example.py`.
 

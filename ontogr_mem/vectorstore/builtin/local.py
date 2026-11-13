@@ -2,12 +2,13 @@
 
 import asyncio
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING
 
 from ontogr_mem._extras import import_extra
 from ontogr_mem.vectorstore.errors import (
     EmbedderUnavailableError,
-    InvalidVectorError,
+    EmbeddingError,
     PermanentEmbeddingError,
 )
 from ontogr_mem.vectorstore.vecmath import to_unit
@@ -37,7 +38,12 @@ class LocalEmbedder:
             model: Native fastembed model loaded by open, or a test substitute.
         """
         self._model: TextEmbedding | None = model
-        self._lock = asyncio.Lock()
+        # A cancelled caller cannot stop a native call that is already running.
+        # One worker thread runs batches in submission order, so a later batch
+        # waits for an abandoned one instead of entering the model beside it.
+        self._executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="local-embedder"
+        )
 
     @classmethod
     async def open(cls) -> "LocalEmbedder":
@@ -77,6 +83,10 @@ class LocalEmbedder:
     async def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
         """Return aligned unit vectors without blocking the event loop.
 
+        Batches run one at a time on a single worker thread. If the awaiting
+        caller is cancelled, its batch keeps running on that thread, and later
+        batches wait for it to finish.
+
         Args:
             texts: One gateway batch. The tokenizer truncates at 8192 tokens.
 
@@ -87,31 +97,43 @@ class LocalEmbedder:
             PermanentEmbeddingError: If the model fails or returns bad vectors.
             EmbedderUnavailableError: If this embedder has been closed.
         """
-        async with self._lock:
-            model = self._model
-            if model is None:
-                raise EmbedderUnavailableError(
-                    "local embedder is closed", hint="Open a new LocalEmbedder."
-                )
-            if not texts:
-                return []
-            documents = list(texts)
+        # Read the model and submit the batch without yielding to the loop. This
+        # keeps aclose from shutting the executor down between the check and the
+        # submission.
+        model = self._model
+        if model is None:
+            raise EmbedderUnavailableError(
+                "local embedder is closed", hint="Open a new LocalEmbedder."
+            )
+        if not texts:
+            return []
+        documents = list(texts)
 
-            def embed() -> list[list[float]]:
-                vectors = [
-                    list(to_unit(vector.tolist(), self.dim))
-                    for vector in model.embed(documents, batch_size=32, parallel=None)
-                ]
-                if len(vectors) != len(documents):
-                    raise PermanentEmbeddingError("local embedding count mismatch")
-                return vectors
+        def embed() -> list[list[float]]:
+            vectors = [
+                list(to_unit(vector.tolist(), self.dim))
+                for vector in model.embed(documents, batch_size=32, parallel=None)
+            ]
+            if len(vectors) != len(documents):
+                raise PermanentEmbeddingError("local embedding count mismatch")
+            return vectors
 
-            try:
-                return await asyncio.to_thread(embed)
-            except (InvalidVectorError, ValueError, RuntimeError, OSError) as exc:
-                raise PermanentEmbeddingError("local embedding failed") from exc
+        try:
+            return await asyncio.get_running_loop().run_in_executor(
+                self._executor, embed
+            )
+        except EmbeddingError:
+            raise
+        except Exception as exc:
+            raise PermanentEmbeddingError("local embedding failed") from exc
 
     async def aclose(self) -> None:
-        """Release the loaded model after any active batch finishes."""
-        async with self._lock:
-            self._model = None
+        """Close the embedder and wait for batches already submitted to finish.
+
+        Batches started after this call raise EmbedderUnavailableError. Batches
+        submitted before it, queued or running, still finish and return. The
+        wait runs in a worker thread, so the event loop stays free. Calling this
+        method again is safe.
+        """
+        self._model = None
+        await asyncio.to_thread(self._executor.shutdown, wait=True)
