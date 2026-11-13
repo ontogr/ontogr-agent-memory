@@ -217,6 +217,8 @@ class TestImportBoundaries:
                 *{OPTIONAL_SUBPACKAGES!r},
                 "ontogr_mem.service",
                 "ontogr_mem.client",
+                "ontogr_mem.agent",
+                "ontogr_mem.cli",
             )
             import ontogr_mem
 

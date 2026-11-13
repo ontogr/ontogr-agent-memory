@@ -340,3 +340,17 @@ A [[Principal]] with a `parent_id`, created by another principal. Its grants are
 
 **Untrusted data**:
 Text from memory that a model may read but must never follow as an instruction. Every text field of a result is data, already escaped inside the [[Context block]].
+
+**Agent**:
+The caller's AI agent that uses memory through a door or through the [[Memory capability]].
+_Avoid_: agent (for the one this project ships; that is the [[Default agent]])
+
+**Default agent**:
+The chat agent that this project ships. It is an ordinary agent with the [[Memory capability]].
+_Avoid_: reference agent, memory agent
+
+**Memory capability**:
+The reusable unit that gives an [[Agent]] memory. It decides when to read (a [[Context block]] before a reply, or a search the model asks for) and when to write (the turn after a reply). It is a client of the [[Memory client]], not a door: rules about what is stored stay in the [[Memory service]].
+
+**Turn**:
+One user message and the assistant's final reply to it. A turn can produce one [[Episode]] per message.
