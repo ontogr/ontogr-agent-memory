@@ -40,7 +40,7 @@ jobs:
         # no two share a database. services lists the compose services the
         # module uses: falkordb, neo4j, pgvector and relational. A test that
         # needs a service that is not running fails, so keep the list exact.
-        # The small access, llm and observability modules share one job
+        # The small access and observability modules share one job
         # because a runner costs more to start than they take to run.
         suite:
           - name: graphstore
@@ -68,8 +68,8 @@ jobs:
             services: relational
             workers: "0"
             timeout: 15
-          - name: access-llm-observability
-            paths: tests/integration/access tests/integration/llm tests/integration/observability
+          - name: access-observability
+            paths: tests/integration/access tests/integration/observability
             services: ""
             timeout: 10
           # Everything the entries above do not claim: the service and pipeline

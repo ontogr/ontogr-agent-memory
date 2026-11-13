@@ -19,6 +19,7 @@ from ontogr_mem.llm import (
     ModelOutputError,
     ModelRole,
     RoleModels,
+    TokenUsage,
     run_agent,
 )
 from ontogr_mem.llm.tokens import estimate_tokens
@@ -70,6 +71,20 @@ class Verifier:
             windows.append(cur)
         return windows
 
+    @staticmethod
+    def _record_usage(
+        tokens: TokenUsage | None,
+        usage: Usage,
+        stats: VerifyStats,
+    ) -> None:
+        """Record all requests and tokens from one verifier run."""
+        if tokens is None or not tokens.requests:
+            return
+        role = ModelRole.RESOLUTION.value
+        usage.add("resolve_verify", role, tokens.input_tokens, tokens.output_tokens)
+        usage.buckets[f"resolve_verify/{role}"].calls += tokens.requests - 1
+        stats.calls += tokens.requests
+
     async def _ask(
         self,
         pairs: Sequence[PairInput],
@@ -92,45 +107,12 @@ class Verifier:
                 max_output_tokens=120 * len(indices) + 64,
             )
         except ModelOutputError as exc:
-            tokens = exc.usage
-            if tokens is not None and tokens.requests:
-                usage.add(
-                    "resolve_verify",
-                    ModelRole.RESOLUTION.value,
-                    tokens.input_tokens,
-                    tokens.output_tokens,
-                )
-                usage.buckets[f"resolve_verify/{ModelRole.RESOLUTION.value}"].calls += (
-                    tokens.requests - 1
-                )
-                stats.calls += tokens.requests
+            self._record_usage(exc.usage, usage, stats)
             return dict.fromkeys(indices, PassResult.NO_ANSWER)
         except ModelFailure as exc:
-            tokens = exc.usage
-            if tokens is not None and tokens.requests:
-                usage.add(
-                    "resolve_verify",
-                    ModelRole.RESOLUTION.value,
-                    tokens.input_tokens,
-                    tokens.output_tokens,
-                )
-                usage.buckets[f"resolve_verify/{ModelRole.RESOLUTION.value}"].calls += (
-                    tokens.requests - 1
-                )
-                stats.calls += tokens.requests
+            self._record_usage(exc.usage, usage, stats)
             return None
-        tokens = result.usage
-        if tokens.requests:
-            usage.add(
-                "resolve_verify",
-                ModelRole.RESOLUTION.value,
-                tokens.input_tokens,
-                tokens.output_tokens,
-            )
-            usage.buckets[f"resolve_verify/{ModelRole.RESOLUTION.value}"].calls += (
-                tokens.requests - 1
-            )
-            stats.calls += tokens.requests
+        self._record_usage(result.usage, usage, stats)
         found: dict[int, PassResult] = {}
         for item in result.output.pairs:
             if not 1 <= item.id <= len(indices):

@@ -9,7 +9,6 @@ from ontogr_mem.consolidation import (
 from ontogr_mem.consolidation.config import ConsolidationSettings
 from ontogr_mem.data_models.clock import Clock
 from ontogr_mem.llm import RoleModels
-from ontogr_mem.observability import Tracer
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import Ontology
 from ontogr_mem.ontology.settings import OntologySettings
@@ -91,7 +90,6 @@ def build_tenant_runtime(
     resolver_settings: ResolverSettings,
     retrieval_settings: RetrievalSettings,
     ontology_settings: OntologySettings | None = None,
-    tracer: Tracer | None = None,
 ) -> TenantRuntime:
     """Wire the memory components around one tenant's stores."""
     writer = VectorWriter(stores.vectors)

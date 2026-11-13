@@ -10,15 +10,33 @@ from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from ontogr_mem.consolidation.graph import EntityGraph
+    from ontogr_mem.data_models.extraction import Usage
+    from ontogr_mem.llm.run import TokenUsage
 
 from ontogr_mem.consolidation.config import ConsolidationSettings
 from ontogr_mem.consolidation.models import StageResult, Watermark
 from ontogr_mem.consolidation.ports import ResolutionPort, TemporalPort
 from ontogr_mem.consolidation.store import ConsStore
 from ontogr_mem.llm import RoleModels
+from ontogr_mem.llm.roles import ModelRole
 
 
 Clock = Callable[[], datetime]
+
+
+def record_stage_usage(usage: Usage, stage: str, measured: TokenUsage | None) -> None:
+    """Record model token and request usage for one consolidation stage."""
+    if measured is None or measured.requests < 1:
+        return
+    bucket_key = f"{stage}/{ModelRole.CONSOLIDATION.value}"
+    usage.add(
+        stage,
+        ModelRole.CONSOLIDATION.value,
+        measured.input_tokens,
+        measured.output_tokens,
+    )
+    # Token totals include all output-validation re-asks.
+    usage.buckets[bucket_key].calls += measured.requests - 1
 
 
 @dataclass(slots=True)

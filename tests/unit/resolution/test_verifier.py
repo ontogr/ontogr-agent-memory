@@ -272,20 +272,24 @@ async def test_window_caps_match_the_pair_allowance():
 
 
 async def test_unknown_ids_are_counted_and_first_duplicate_wins():
-    """Unknown ids are ignored and duplicate ids keep their first typed vote."""
+    """Votes bind by id when returned out of order; first duplicates still win."""
     models, _ = verifier_models(
         lambda call: {
             "pairs": [
-                {"id": 9, "vote": "NO"},
+                {"id": 2, "vote": "NO"},
                 {"id": 1, "vote": "YES"},
+                {"id": 9, "vote": "NO"},
                 {"id": 1, "vote": "NO"},
             ]
         }
     )
 
-    outcomes, stats = await run(models, [pair("A", "B")])
+    outcomes, stats = await run(models, [pair("A", "B"), pair("C", "D")])
 
-    assert outcomes[0].verdict is VerdictKind.SAME
+    assert [outcome.verdict for outcome in outcomes] == [
+        VerdictKind.SAME,
+        VerdictKind.DISTINCT,
+    ]
     assert stats.invalid_ids == 1
 
 

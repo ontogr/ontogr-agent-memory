@@ -12,7 +12,7 @@ from ontogr_mem.entity_extraction.extractors.memory_agent import (
     memory_agent,
 )
 from ontogr_mem.entity_extraction.text import find_spans, text_of
-from ontogr_mem.llm import ModelFailure, ModelRole, RoleModels, run_agent
+from ontogr_mem.llm import ModelFailure, ModelRole, RoleModels, fence, run_agent
 
 
 log = logging.getLogger(__name__)
@@ -91,7 +91,8 @@ class MemoryEntityExtractor(EntityExtractor):
             result = await run_agent(
                 memory_agent,
                 ModelRole.ENTITY_EXTRACTION,
-                f"TEXT:\n{text}\n\nENTITIES:\n{json.dumps(listing)}",
+                f"TEXT:\n{fence('episode_text', text)}"
+                f"\n\nENTITIES:\n{json.dumps(listing)}",
                 models=self._models,
                 deps=None,
             )
@@ -141,12 +142,13 @@ class MemoryEntityExtractor(EntityExtractor):
                 continue
             if find_spans(text, spec.evidence):
                 attributes[name] = spec.value
+        description = item.description.strip()
+        if description and find_spans(text, item.description_evidence):
+            description = description[:_MAX_DESCRIPTION]
+        else:
+            description = entity.description
         return replace(
             entity,
-            description=(
-                item.description.strip()[:_MAX_DESCRIPTION]
-                if item.description.strip()
-                else entity.description
-            ),
+            description=description,
             attributes={**entity.attributes, **attributes},
         )

@@ -1,4 +1,4 @@
-"""Answers that are stored so the pair is not asked again."""
+"""In-memory pair answers and quote-order restoration for temporal judgments."""
 
 from dataclasses import dataclass, replace
 

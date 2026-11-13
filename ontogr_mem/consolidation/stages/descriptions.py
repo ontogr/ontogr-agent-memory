@@ -11,13 +11,13 @@ from collections import Counter
 from ontogr_mem.consolidation.agents import description_agent
 from ontogr_mem.consolidation.graph import EntityGraph, build_entity_graph
 from ontogr_mem.consolidation.models import StageResult, StageStatus
-from ontogr_mem.consolidation.stage import StageContext
+from ontogr_mem.consolidation.stage import StageContext, record_stage_usage
 from ontogr_mem.consolidation.text import quote, truncate_at_sentence
 from ontogr_mem.data_models.entities import Entity
 from ontogr_mem.data_models.extraction import Usage
 from ontogr_mem.llm.failures import ModelFailure
 from ontogr_mem.llm.roles import ModelRole
-from ontogr_mem.llm.run import TokenUsage, run_agent
+from ontogr_mem.llm.run import run_agent
 
 
 STAGE = "descriptions"
@@ -50,21 +50,6 @@ def _model_prompt(entity: Entity, facts: list[str]) -> str:
         f"Descriptions: {quote(entity.descriptions)}\n"
         f"Facts: {quote(facts)}"
     )
-
-
-def _record_usage(usage: Usage, measured: TokenUsage | None) -> None:
-    """Add all request usage for one consolidation run."""
-    if measured is None or measured.requests < 1:
-        return
-    bucket_key = f"{STAGE}/{ModelRole.CONSOLIDATION.value}"
-    usage.add(
-        STAGE,
-        ModelRole.CONSOLIDATION.value,
-        measured.input_tokens,
-        measured.output_tokens,
-    )
-    # The token totals include all output-validation re-asks.
-    usage.buckets[bucket_key].calls += measured.requests - 1
 
 
 class DescriptionsStage:
@@ -121,10 +106,10 @@ class DescriptionsStage:
                         deps=None,
                     )
                 except ModelFailure as exc:
-                    _record_usage(usage, exc.usage)
+                    record_stage_usage(usage, STAGE, exc.usage)
                     errors.append(f"{entity.entity_id}: {exc}")
                     return "failed"
-                _record_usage(usage, result.usage)
+                record_stage_usage(usage, STAGE, result.usage)
                 text, how = result.output.summary, "llm"
             # Re-read the entity so the write does not overwrite a concurrent change.
             found = await resolution.get_entities([entity.entity_id])

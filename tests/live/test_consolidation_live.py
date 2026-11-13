@@ -112,8 +112,8 @@ def _request_count(result: StageResult) -> int:
 async def test_live_consolidation_stages_use_the_configured_model() -> None:
     """Summaries, communities and reflection succeed with the configured model."""
     config = LLMConfig()
-    if not config.model or not config.resolve(ModelRole.CONSOLIDATION).model:
-        pytest.skip("the global consolidation model is not configured")
+    if config.resolve(ModelRole.CONSOLIDATION).model is None:
+        pytest.skip("the consolidation model is not configured")
 
     person = entity("person", [_LONG_DESCRIPTION])
     company = entity("company", ["Operates in Berlin."])

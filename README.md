@@ -703,7 +703,7 @@ Settings classes use `pydantic-settings`. They read the repo-root `.env` and use
 | `MEMORY_TEMPORAL_` | Temporal retries, batch size, and episode pending time. |
 | `MEMORY_JUDGE_` | Conflict judge threshold and token budget. |
 | `MEMORY_CONSOLIDATION_` | Consolidation leases, feedback, scoring, communities, and retention. |
-| `MEMORY_ONTOLOGY_` | Proposal support and prompt version. |
+| `MEMORY_ONTOLOGY_` | Proposal support, commit retries, and prompt version. |
 | `MEMORY_ENTITY_EXTRACTION_` | Entity extractor concurrency, context, and thresholds. |
 | `MEMORY_FACT_EXTRACTION_` | Fact extractor concurrency, context, and version. |
 | `MEMORY_LLM_` | Global and per-role model settings. See [Named model roles](#named-model-roles). |
@@ -818,7 +818,7 @@ Agent.instrument_all(
 )
 ```
 
-Ordinary service setup never runs this code. The `tracer=` argument of `open_service` controls service tracing only, and it does not turn on PydanticAI instrumentation. The settings above keep prompts, instructions, model responses, binary content and request parameters out of spans. The caller still owns the tracer provider and the exporters.
+The service tracer records service and embedding spans. Typed PydanticAI model spans require caller-owned PydanticAI instrumentation. Ordinary service setup does not enable this instrumentation. Configure it with the OpenTelemetry provider shown above. These settings keep prompts, instructions, model responses, binary content, and request parameters out of spans. The caller still owns the tracer provider and the exporters.
 
 ## Development
 

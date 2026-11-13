@@ -8,7 +8,10 @@ from ontogr_mem.relational_store.jobs.erase_journal import ErasureStatus
 from ontogr_mem.service.contracts import ForgetMode
 from ontogr_mem.service.forget.workflow import EraseWorkflow
 from ontogr_mem.service.runtime import TenantRuntime
+from ontogr_mem.vectorstore import EmbeddingGateway, VectorStore
+from ontogr_mem.vectorstore.memory import InMemoryBackend
 from ontogr_mem.vectorstore.models import VectorKind
+from tests.support.embedder import MockEmbedder
 from tests.support.erase_workflow import EraseWorld, make_erase_world
 from tests.support.graph_backend import GraphBackend
 
@@ -58,6 +61,7 @@ class TestEraseWorkflow:
         assert await stores.temporal_store.observations_of_episode("e1") == []
         facts = await stores.temporal_store.facts_by_ids(world.plan.fact_ids)
         assert facts == []
+        assert await stores.vectors.exists(VectorKind.EPISODE, ["e1"]) == set()
         assert await stores.resolver_store.has_entity("organization") is False
         assert await stores.vectors.exists(VectorKind.NODE, ["organization"]) == set()
         person_rows = await stores.resolver_store.get_entities(["person"])
@@ -80,7 +84,8 @@ class TestEraseWorkflow:
         self, graph_backend: GraphBackend, monkeypatch
     ):
         """Retained episode vectors fail residue checks after graph cleanup."""
-        world = await make_erase_world(graph_backend)
+        vector_store = VectorStore(InMemoryBackend(), EmbeddingGateway(MockEmbedder()))
+        world = await make_erase_world(graph_backend, vector_store=vector_store)
         vectors = world.runtime.stores.vectors
         delete_vectors = vectors.delete
 

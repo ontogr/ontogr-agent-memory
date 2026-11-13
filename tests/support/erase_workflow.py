@@ -23,9 +23,8 @@ from ontogr_mem.service.forget.selector import ForgetSelector
 from ontogr_mem.service.relations import load_defaults
 from ontogr_mem.service.runtime import TenantRuntime, build_tenant_runtime
 from ontogr_mem.temporal import TemporalEngine
-from ontogr_mem.vectorstore import Embedder, EmbeddingGateway, VectorStore
+from ontogr_mem.vectorstore import Embedder, VectorStore
 from ontogr_mem.vectorstore.episode_vectors import write_episode_vectors
-from ontogr_mem.vectorstore.memory import InMemoryBackend
 from tests.support.clock import FixedClock
 from tests.support.embedder import MockEmbedder
 from tests.support.episodes import make_episode
@@ -45,14 +44,16 @@ class EraseWorld:
     journal: MemoryJobStore
 
 
-async def make_erase_world(backend: GraphBackend) -> EraseWorld:
+async def make_erase_world(
+    backend: GraphBackend, *, vector_store: VectorStore | None = None
+) -> EraseWorld:
     """Create episodes, mentions, one Fact and their search vectors."""
     clock = FixedClock(datetime(2026, 10, 22, tzinfo=UTC))
     embedder: Embedder = MockEmbedder()
     stores = await backend.open_stores(embedder)
-    vectors = VectorStore(InMemoryBackend(), EmbeddingGateway(embedder))
-    await vectors.ensure_ready()
-    stores.vectors = vectors
+    if vector_store is not None:
+        await vector_store.ensure_ready()
+        stores.vectors = vector_store
     runtime = build_tenant_runtime(
         stores,
         models=build_models(LLMConfig.model_construct()),

@@ -5,11 +5,11 @@ A curator call per batch proposes lessons. A writer call per lesson returns a
 ACCEPTED when ``auto_accept`` is set. Any other verdict is stored as REJECTED.
 A session's watermark moves only when none of its model calls failed.
 
-Writer calls in a batch run concurrently, and sessions run concurrently too. The
-consolidation role's concurrency limit caps parallel model calls. The lessons a
-writer knows about are the ones stored when the stage started plus the ones the
-same session accepted earlier, so a lesson accepted in one batch is known in the
-next.
+Writer calls in a batch run concurrently, and sessions run concurrently too.
+All roles share the model pool, so its concurrency limit caps parallel calls
+across roles. The lessons a writer knows about are the ones stored when the
+stage started plus the ones the same session accepted earlier, so a lesson
+accepted in one batch is known in the next.
 """
 
 import asyncio
@@ -29,14 +29,14 @@ from ontogr_mem.consolidation.models import (
     StageStatus,
     Watermark,
 )
-from ontogr_mem.consolidation.stage import StageContext
+from ontogr_mem.consolidation.stage import StageContext, record_stage_usage
 from ontogr_mem.consolidation.text import quote, short_hash
 from ontogr_mem.data_models.extraction import Usage
 from ontogr_mem.data_models.text import normalize_name
 from ontogr_mem.llm.failures import ModelFailure
 from ontogr_mem.llm.models import RoleModels
 from ontogr_mem.llm.roles import ModelRole
-from ontogr_mem.llm.run import TokenUsage, run_agent
+from ontogr_mem.llm.run import run_agent
 
 
 STAGE = "reflection"
@@ -84,21 +84,6 @@ def _status(verdict: LessonVerdict, *, auto_accept: bool) -> ProposalStatus:
     return ProposalStatus.ACCEPTED if auto_accept else ProposalStatus.PENDING
 
 
-def _record_usage(usage: Usage, measured: TokenUsage | None) -> None:
-    """Add all request usage for one consolidation run."""
-    if measured is None or measured.requests < 1:
-        return
-    bucket_key = f"{STAGE}/{ModelRole.CONSOLIDATION.value}"
-    usage.add(
-        STAGE,
-        ModelRole.CONSOLIDATION.value,
-        measured.input_tokens,
-        measured.output_tokens,
-    )
-    # The token totals include all output-validation re-asks.
-    usage.buckets[bucket_key].calls += measured.requests - 1
-
-
 async def _curate(
     models: RoleModels,
     usage: Usage,
@@ -115,9 +100,9 @@ async def _curate(
             deps=None,
         )
     except ModelFailure as exc:
-        _record_usage(usage, exc.usage)
+        record_stage_usage(usage, STAGE, exc.usage)
         raise
-    _record_usage(usage, result.usage)
+    record_stage_usage(usage, STAGE, result.usage)
     return result.output.lessons
 
 
@@ -144,9 +129,9 @@ async def _judge(
             deps=None,
         )
     except ModelFailure as exc:
-        _record_usage(usage, exc.usage)
+        record_stage_usage(usage, STAGE, exc.usage)
         raise
-    _record_usage(usage, result.usage)
+    record_stage_usage(usage, STAGE, result.usage)
     return result.output.verdict
 
 

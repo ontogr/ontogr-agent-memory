@@ -116,7 +116,8 @@ async def build_service(
         limiter: Per-principal read and write limiter.
         models: Caller-owned process-wide model pool. The caller closes it.
         max_attempts: Maximum attempts for each queued job.
-        tracer: Optional tracer for service and Tenant spans.
+        tracer: Optional tracer for service and embedding spans. PydanticAI model
+            spans use caller-owned instrumentation.
         audit_log: Optional audit chain for service operations.
         confirm_tokens: Optional signer for forget confirmation tokens.
         drop_graph: Graph cleanup callback that erases one Tenant's graph.
@@ -142,7 +143,6 @@ async def build_service(
             policy=policy,
             resolver_settings=resolver_settings,
             retrieval_settings=retrieval_settings,
-            tracer=selected_tracer,
         )
 
     tenants = TenantRuntimeCache(runtime_factory, state, authorizer)
@@ -207,7 +207,8 @@ async def open_service(
         retrieval_settings: Retrieval settings.
         limiter: Request limiter; defaults to the standard service limits.
         max_attempts: Maximum attempts for queued jobs.
-        tracer: Optional tracer shared by service components.
+        tracer: Optional tracer for service and embedding spans. PydanticAI model
+            spans use caller-owned instrumentation.
 
     Yields:
         A service runtime. The runtime and its stores are closed

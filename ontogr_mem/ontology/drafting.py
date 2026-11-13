@@ -72,7 +72,8 @@ async def run_drafting(
     except ModelOutputError as exc:
         failure = str(exc)[:500]
     except ModelFailure as exc:
-        raise OntologyError(f"draft failed: {exc}") from exc
+        msg = f"draft failed: {exc}"
+        raise OntologyError(msg) from exc
     else:
         draft = result.output
         if not draft.ops:
