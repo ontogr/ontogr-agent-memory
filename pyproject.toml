@@ -42,6 +42,9 @@ dependencies = [
   "python-dotenv>=1.0",
 ]
 
+[project.scripts]
+ontogr-mem = "ontogr_mem.cli:main"
+
 [project.optional-dependencies]
 falkordb = ["falkordb>=1.2", "redis>=5.0.1"]
 neo4j = ["neo4j>=6"]
