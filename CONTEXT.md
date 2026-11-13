@@ -288,6 +288,10 @@ _Avoid_: prompt history
 A limit that refuses calls to a failing model provider until its recovery period ends.
 _Avoid_: retry policy
 
+**Model role**:
+A named kind of model work that can be given its own model: entity extraction, fact extraction, resolution, judge, [[Consolidation]], [[Ontology]] or answer. A model role that has no model of its own uses the global one.
+_Avoid_: tier, model size, role (alone, it means the role of an [[Actor]])
+
 **Span**:
 One timed step of a memory operation, with redacted and size-limited attributes.
 _Avoid_: event, trace (alone)

@@ -18,10 +18,11 @@ from ontogr_mem.ontology.ontology_store import OntologyStore
 from ontogr_mem.ontology.settings import OntologySettings
 from ontogr_mem.ontology.validate import Context, ValidationReport
 from tests.support.clock import FixedClock
-from tests.support.extraction import gate, text_episode
+from tests.support.extraction import entity_models, text_episode
 from tests.support.graph_backend import GraphBackend
 from tests.support.llm import ScriptedLLM
 from tests.support.ontology import base, cs
+from tests.support.scripted_model import ScriptedCall
 
 
 DRAFT = json.dumps(
@@ -30,9 +31,9 @@ DRAFT = json.dumps(
 TYPES_BLOCK = re.compile(r"<entity_types>\n(.*?)\n</entity_types>", re.DOTALL)
 
 
-def answer_with_zorbit(request) -> dict:
+def answer_with_zorbit(call: ScriptedCall) -> dict:
     """Reply as a model would: type Zorbit as Gadget when the catalog lists it."""
-    listed = json.loads(TYPES_BLOCK.search(request.prompt).group(1))
+    listed = json.loads(TYPES_BLOCK.search(call.prompt).group(1))
     gadget = next((t["id"] for t in listed if t["label"] == "Gadget"), None)
     entity = {"name": "Zorbit", "confidence": 0.95}
     if gadget is None:
@@ -73,8 +74,9 @@ async def extract_and_validate(
 ) -> ValidationReport:
     """Extract an episode against the current catalog and validate the result."""
     projection = await manager.extraction_view()
+    models, _ = entity_models(answer=answer_with_zorbit)
     extraction = EntityExtraction(
-        [LLMExtractor(gate(ScriptedLLM(answer=answer_with_zorbit)))],
+        [LLMExtractor(models)],
         RecordMapper({}),
         projection.view.catalog,
         settings=EntityExtractionSettings(max_previous=0),

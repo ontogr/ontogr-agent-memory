@@ -14,14 +14,14 @@ from ontogr_mem.entity_extraction.extractors import (
     SpacyExtractor,
     Trigger,
 )
+from ontogr_mem.llm import ModelCallFailedError, ModelFailure
 from tests.support.extraction import (
     FakeGliner,
     catalog,
     entities_reply,
-    gate,
+    entity_models,
     text_episode,
 )
-from tests.support.llm import ScriptedLLM
 
 
 class FakeEnt:
@@ -135,6 +135,16 @@ class TestCompositeExtractor:
                 text_episode("Ana"), catalog()
             )
 
+    async def test_model_failures_propagate(self):
+        """A failed model call ends the episode instead of being skipped."""
+        models, _ = entity_models([ModelCallFailedError("down", status_code=503)])
+        good = gliner(RawSpan(0, 3, "Ana", "Person", 0.9))
+
+        with pytest.raises(ModelFailure):
+            await CompositeExtractor([LLMExtractor(models), good]).extract(
+                text_episode("Ana"), catalog()
+            )
+
     async def test_raises_the_first_error_when_every_member_fails(self):
         """No member left means the episode fails."""
         with pytest.raises(RuntimeError, match="boom"):
@@ -178,19 +188,20 @@ class TestFallbackExtractor:
 
     def llm(self, *entities):
         """Build a model extractor with a scripted reply."""
-        return LLMExtractor(gate(ScriptedLLM([entities_reply(*entities)])))
+        models, _ = entity_models([entities_reply(*entities)])
+        return LLMExtractor(models)
 
     async def test_does_not_call_the_model_when_the_cheap_pass_is_good(self):
         """No trigger means one pass only."""
-        llm = ScriptedLLM()
+        models, scripted = entity_models()
         cheap = gliner(RawSpan(0, 3, "Ana", "Person", 0.9))
 
-        result = await FallbackExtractor(cheap, LLMExtractor(gate(llm))).extract(
+        result = await FallbackExtractor(cheap, LLMExtractor(models)).extract(
             text_episode("Ana"), catalog()
         )
 
         assert [e.name for e in result.entities] == ["Ana"]
-        assert llm.requests == []
+        assert scripted.calls == []
 
     async def test_the_model_entity_wins_and_untouched_cheap_entities_survive(self):
         """The model is merged first, so it keeps the type for the same name."""
@@ -243,17 +254,17 @@ class TestFallbackExtractor:
 
     async def test_only_on_limits_which_triggers_escalate(self):
         """A trigger outside `only_on` does not call the model."""
-        llm = ScriptedLLM()
+        models, scripted = entity_models()
         cheap = gliner(RawSpan(0, 3, "Ana", "Person", 0.6))
         extractor = FallbackExtractor(
             cheap,
-            LLMExtractor(gate(llm)),
+            LLMExtractor(models),
             thresholds=EscalationThresholds(max_unknown_share=0.4),
             only_on=frozenset({Trigger.TOO_FEW_ENTITIES}),
         )
 
         result = await extractor.extract(text_episode("Ana"), catalog())
 
-        assert llm.requests == []
+        assert scripted.calls == []
         assert result.entities[0].type_id == UNKNOWN_TYPE_ID
         assert result.triggers == (Trigger.HIGH_UNKNOWN_SHARE,)

@@ -145,7 +145,9 @@ class ServiceJobs:
             tenant_id = await self._deps.tenants.require(
                 principal, tenant_id, Grant.WRITE, "memory.add"
             )
-            if request.kind.value != "fact" and self._deps.llm is None:
+            if request.kind.value != "fact" and not (
+                self._deps.llm is not None or self._deps.models.any_configured()
+            ):
                 raise LLMUnavailableError(
                     "a language model is required for text memory",
                     hint="Retry, or write a structured fact with kind=fact.",

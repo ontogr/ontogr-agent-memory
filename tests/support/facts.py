@@ -1,6 +1,7 @@
 """Builders and doubles for fact extraction tests."""
 
 import json
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -16,8 +17,12 @@ from ontogr_mem.data_models import (
     TypeCatalog,
 )
 from ontogr_mem.data_models.extraction import ExtractedEntity
-from ontogr_mem.llm import LLMGate
-from tests.support.llm import ScriptedLLM
+from ontogr_mem.llm import RoleModels
+from tests.support.scripted_model import (
+    Scripted,
+    scripted_model,
+    scripted_role_models,
+)
 
 
 T0 = datetime(2026, 10, 8, 12, 0, tzinfo=UTC)
@@ -101,6 +106,9 @@ def reply(*facts: dict[str, object]) -> str:
     return json.dumps({"facts": list(facts)})
 
 
-def gate(llm: ScriptedLLM, max_input_tokens: int = 20_000) -> LLMGate:
-    """Build a model gate around a scripted client."""
-    return LLMGate(llm, max_input_tokens=max_input_tokens)
+def fact_models(
+    replies: Sequence[Any] = (), **kwargs: Any
+) -> tuple[RoleModels, Scripted]:
+    """Build a model pool around a scripted model and return its recorder."""
+    model, scripted = scripted_model(replies, **kwargs)
+    return scripted_role_models(model), scripted

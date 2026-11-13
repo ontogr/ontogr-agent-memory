@@ -1,14 +1,16 @@
 """Public memory service behavior over isolated in-memory adapters."""
 
+import asyncio
 import json
 import re
 from datetime import UTC, datetime
 
 import pytest
+from pydantic_ai.exceptions import ModelHTTPError
 
 import ontogr_mem.service.writes as memory_writes
 from ontogr_mem.data_models import Role
-from ontogr_mem.llm import LLMRequest
+from ontogr_mem.llm import ModelRole, RoleModels
 from ontogr_mem.ontology.diff import diff
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import Mode
@@ -31,8 +33,12 @@ from ontogr_mem.vectorstore import VectorWriter, write_episode_vectors
 from tests.support.embedder import MockEmbedder
 from tests.support.episodes import make_episode
 from tests.support.graph_backend import GraphBackend
-from tests.support.llm import ScriptedLLM
 from tests.support.memory_service import memory_service_harness
+from tests.support.scripted_model import (
+    ScriptedCall,
+    scripted_model,
+    scripted_role_models,
+)
 
 
 def _prompt_block(prompt: str, tag: str) -> str:
@@ -43,11 +49,11 @@ def _prompt_block(prompt: str, tag: str) -> str:
     return match.group(1)
 
 
-def _memory_llm() -> ScriptedLLM:
-    """Return deterministic entities and facts for memory-write tests."""
+def _memory_models() -> RoleModels:
+    """Return a model pool that answers entity and fact prompts for memory writes."""
 
-    def answer(request: LLMRequest) -> object:
-        prompt = request.prompt
+    def answer(call: ScriptedCall) -> object:
+        prompt = call.prompt
         if "Task: list the entities" in prompt:
             text = _prompt_block(prompt, "episode_text")
             entity_types = json.loads(_prompt_block(prompt, "entity_types"))
@@ -177,7 +183,8 @@ def _memory_llm() -> ScriptedLLM:
             ]
         return {"facts": facts}
 
-    return ScriptedLLM(answer=answer)
+    model, _ = scripted_model(answer=answer)
+    return scripted_role_models(model)
 
 
 class TestMemoryService:
@@ -327,7 +334,7 @@ class TestMemoryService:
     async def test_text_write_without_a_model_fails_before_queueing(
         self, graph_backend: GraphBackend
     ):
-        """A free-text request does not create a job without an LLM client."""
+        """A free-text request does not create a job without any language model."""
         harness = await memory_service_harness(
             graph_backend,
         )
@@ -339,6 +346,115 @@ class TestMemoryService:
             )
 
         assert await harness.state.tenant_ids() == []
+
+    @pytest.mark.parametrize(
+        "configured_role",
+        [ModelRole.ENTITY_EXTRACTION, ModelRole.FACT_EXTRACTION],
+    )
+    async def test_text_write_with_one_extraction_role_fails_the_job(
+        self, graph_backend: GraphBackend, configured_role: ModelRole
+    ):
+        """A text write needs both extraction roles, not just one of them."""
+        model, _ = scripted_model()
+        harness = await memory_service_harness(
+            graph_backend,
+            models=scripted_role_models(**{configured_role.value: model}),
+        )
+
+        receipt = await harness.service.add_memory(
+            harness.principal,
+            AddMemory(
+                tenant="t1",
+                kind=MemoryKind.TEXT,
+                content="Ana works here.",
+                wait_seconds=5,
+            ),
+        )
+        job = await harness.service.get_job(harness.principal, receipt.job_id)
+
+        assert job.status.value == "failed"
+        assert job.error is not None
+        assert job.error.code.value == "llm_unavailable"
+
+    async def test_text_write_with_both_extraction_roles_completes(
+        self, graph_backend: GraphBackend
+    ):
+        """Configuring both extraction roles lets a text write finish."""
+        harness = await memory_service_harness(
+            graph_backend,
+            models=_memory_models(),
+        )
+
+        receipt = await harness.service.add_memory(
+            harness.principal,
+            AddMemory(
+                tenant="t1",
+                kind=MemoryKind.TEXT,
+                content="A violet comet note exists.",
+                wait_seconds=5,
+            ),
+        )
+        job = await harness.service.get_job(harness.principal, receipt.job_id)
+
+        assert job.status.value == "done"
+
+    async def test_text_write_fails_after_output_validation_retries_without_job_retry(
+        self, graph_backend: GraphBackend
+    ):
+        """Malformed extraction output ends the job after the built-in re-asks only."""
+        model, scripted = scripted_model(answer=lambda call: "not json")
+        harness = await memory_service_harness(
+            graph_backend,
+            models=scripted_role_models(model),
+        )
+
+        receipt = await harness.service.add_memory(
+            harness.principal,
+            AddMemory(
+                tenant="t1",
+                kind=MemoryKind.TEXT,
+                content="Ana works here.",
+                wait_seconds=5,
+            ),
+        )
+        job = await harness.service.get_job(harness.principal, receipt.job_id)
+
+        assert job.status.value == "failed"
+        assert job.error is not None
+        assert job.error.code.value == "llm_unavailable"
+        assert len(scripted.calls) == 3
+        await asyncio.sleep(0.2)
+        assert len(scripted.calls) == 3
+
+    async def test_text_write_with_provider_failure_calls_the_model_once(
+        self, graph_backend: GraphBackend
+    ):
+        """A provider HTTP failure fails the job after a single model call."""
+        model, scripted = scripted_model(
+            [ModelHTTPError(503, "m", {"error": "unavailable"})]
+        )
+        harness = await memory_service_harness(
+            graph_backend,
+            models=scripted_role_models(model),
+        )
+
+        receipt = await harness.service.add_memory(
+            harness.principal,
+            AddMemory(
+                tenant="t1",
+                kind=MemoryKind.TEXT,
+                content="Ana works here.",
+                wait_seconds=5,
+            ),
+        )
+        job = await harness.service.get_job(harness.principal, receipt.job_id)
+
+        assert job.status.value == "failed"
+        assert job.error is not None
+        assert job.error.code.value == "llm_unavailable"
+        assert len(scripted.calls) == 1
+        await asyncio.sleep(0.2)
+        assert len(scripted.calls) == 1
 
     async def test_update_closes_the_current_fact_and_adds_its_replacement(
         self, graph_backend: GraphBackend
@@ -566,7 +682,7 @@ class TestMemoryService:
         self, graph_backend: GraphBackend, monkeypatch: pytest.MonkeyPatch
     ):
         """A retry keeps item outcomes, facts, episode metadata and actor data."""
-        harness = await memory_service_harness(graph_backend, llm=_memory_llm())
+        harness = await memory_service_harness(graph_backend, models=_memory_models())
         await harness.service.add_memory(
             harness.principal,
             AddMemory(
@@ -689,7 +805,7 @@ class TestMemoryService:
         self, graph_backend: GraphBackend
     ):
         """STRICT drops unknown text links but does not reject the episode."""
-        harness = await memory_service_harness(graph_backend, llm=_memory_llm())
+        harness = await memory_service_harness(graph_backend, models=_memory_models())
         first_receipt = await harness.service.add_memory(
             harness.principal,
             AddMemory(

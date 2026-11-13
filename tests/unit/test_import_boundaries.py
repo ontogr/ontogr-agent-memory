@@ -18,7 +18,6 @@ BLOCKED_EXTRAS = (
     "gliner",
     "spacy",
     "yaml",
-    "opentelemetry",
 )
 
 OPTIONAL_SUBPACKAGES = (

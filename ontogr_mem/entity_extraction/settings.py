@@ -15,7 +15,6 @@ class EntityExtractionSettings(BaseSettings):
         max_previous: Earlier episodes shown to the model as context. Zero turns
             the context off.
         threshold: Model confidence below which an entity is typed Unknown.
-        max_repairs: Extra model calls allowed after an invalid reply.
         default_confidence: Confidence used when the model gives none.
     """
 
@@ -29,5 +28,4 @@ class EntityExtractionSettings(BaseSettings):
     concurrency: int = Field(default=8, ge=1)
     max_previous: int = Field(default=3, ge=0)
     threshold: float = Field(default=0.75, ge=0.0, le=1.0)
-    max_repairs: int = Field(default=1, ge=0)
     default_confidence: float = Field(default=0.5, ge=0.0, le=1.0)

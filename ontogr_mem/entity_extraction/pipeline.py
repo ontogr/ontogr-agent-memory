@@ -13,7 +13,9 @@ from ontogr_mem.data_models import (
     Method,
     PreviousEpisodes,
     Status,
+    TokenCount,
     TypeCatalog,
+    Usage,
 )
 from ontogr_mem.data_models.text import same_name
 from ontogr_mem.entity_extraction.errors import (
@@ -29,7 +31,7 @@ from ontogr_mem.entity_extraction.extractors import (
 from ontogr_mem.entity_extraction.report import ExtractionReport
 from ontogr_mem.entity_extraction.settings import EntityExtractionSettings
 from ontogr_mem.entity_extraction.text import language_of
-from ontogr_mem.llm import InputTooLargeError, LLMError
+from ontogr_mem.llm import LLMError, ModelFailure, ModelOutputError
 
 
 log = logging.getLogger(__name__)
@@ -73,9 +75,7 @@ class EntityExtraction:
     and escalation triggers. With several extractors the triggers in the
     report are the composite's, computed over the merged entities. Records and
     events go to the record mapper. A failure in one episode never affects
-    another. An episode too long for the model is skipped with the detail
-    `oversize`, and the caller splits it. A message episode also gets an `actor`
-    entity for its speaker.
+    another. A message episode also gets an `actor` entity for its speaker.
     """
 
     def __init__(
@@ -122,20 +122,25 @@ class EntityExtraction:
                 return await self._extract_one(episode)
             except UnknownKindError:
                 raise
-            except InputTooLargeError:
-                oversize = ExtractionResult(
-                    episode.id, Status.SKIPPED, detail="oversize"
-                )
-                return oversize, []
-            except (ExtractionError, LLMError, TimeoutError) as exc:
+            except (ExtractionError, LLMError, ModelFailure, TimeoutError) as exc:
                 log.warning("extraction failed for %s: %r", episode.id, exc)
                 status = (
                     Status.PARSE_FAILED
-                    if isinstance(exc, ParseFailedError)
+                    if isinstance(exc, ParseFailedError | ModelOutputError)
                     else Status.ERROR
                 )
                 detail = f"{type(exc).__name__}: {exc}"
-                return ExtractionResult(episode.id, status, detail=detail), []
+                usage = Usage()
+                if isinstance(exc, ModelFailure) and exc.usage is not None:
+                    usage.buckets["entities/entity_extraction"] = TokenCount(
+                        exc.usage.input_tokens,
+                        exc.usage.output_tokens,
+                        calls=exc.usage.requests,
+                    )
+                result = ExtractionResult(
+                    episode.id, status, usage=usage, detail=detail
+                )
+                return result, []
 
     async def _extract_one(
         self, episode: Episode

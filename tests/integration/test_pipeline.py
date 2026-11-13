@@ -48,7 +48,7 @@ from ontogr_mem.temporal.query import TemporalQuery
 from tests.support.clock import FixedClock
 from tests.support.episodes import T0, graph_harness
 from tests.support.episodes import make_episode as episode_at
-from tests.support.extraction import catalog, gate
+from tests.support.extraction import catalog, entity_models
 from tests.support.llm import ScriptedLLM
 from tests.support.ontology import cs
 from tests.support.pipeline_stack import (
@@ -60,6 +60,7 @@ from tests.support.pipeline_stack import (
     relation_id,
     temporal_stack,
 )
+from tests.support.scripted_model import Scripted, ScriptedCall
 from tests.support.tenants import new_tenant
 
 
@@ -94,9 +95,9 @@ NAME_TYPES = {"Berlin": 1, "Kreuzberg": 1, "Acme": 2}
 EPISODE_TEXT = re.compile(r"<episode_text>\n(.*?)\n</episode_text>", re.DOTALL)
 
 
-def scripted_entities(request) -> dict:
+def scripted_entities(call: ScriptedCall) -> dict:
     """Reply with the known names that appear in the episode text."""
-    text = EPISODE_TEXT.search(request.prompt).group(1)
+    text = EPISODE_TEXT.search(call.prompt).group(1)
     return {
         "entities": [
             {"name": name, "type_id": type_id, "confidence": 0.9}
@@ -108,21 +109,21 @@ def scripted_entities(request) -> dict:
 
 async def extract_entities(
     store: EpisodeStore, episodes: list[Episode]
-) -> tuple[ExtractionReport, ScriptedLLM]:
+) -> tuple[ExtractionReport, Scripted]:
     """Extract entities with a scripted model and the two latest earlier episodes.
 
-    Returns the report and the model client with its recorded requests.
+    Returns the report and the recorder holding the model's calls.
     """
-    llm = ScriptedLLM(answer=scripted_entities)
+    models, scripted = entity_models(answer=scripted_entities)
     extraction = EntityExtraction(
-        [LLMExtractor(gate(llm))],
+        [LLMExtractor(models)],
         RecordMapper({}),
         catalog(),
         store,
         EntityExtractionSettings(max_previous=2),
     )
     report = await extraction.extract(episodes)
-    return report, llm
+    return report, scripted
 
 
 def assert_entities_extracted(
@@ -235,21 +236,21 @@ class TestEntityExtraction:
 
     async def run_on(
         self, store: EpisodeStore
-    ) -> tuple[list[Episode], ExtractionReport, ScriptedLLM]:
+    ) -> tuple[list[Episode], ExtractionReport, Scripted]:
         """Ingest into `store`, then extract from the handed-off episodes."""
         episodes: list[Episode] = []
         await ingest_all(store, episodes)
-        report, llm = await extract_entities(store, episodes)
-        return episodes, report, llm
+        report, scripted = await extract_entities(store, episodes)
+        return episodes, report, scripted
 
-    def assert_context_was_given(self, llm: ScriptedLLM) -> None:
+    def assert_context_was_given(self, scripted: Scripted) -> None:
         """Check that a later message saw the earlier one as context only."""
-        (request,) = [
-            r
-            for r in llm.requests
-            if "Kreuzberg. I work" in r.prompt.split("<episode_text>")[-1]
+        (call,) = [
+            c
+            for c in scripted.calls
+            if "Kreuzberg. I work" in c.prompt.split("<episode_text>")[-1]
         ]
-        context = request.prompt.split("<episode_text>")[0]
+        context = call.prompt.split("<episode_text>")[0]
         assert "I moved to Berlin last week." in context
         assert "Welcome to Berlin!" in context
 
@@ -265,9 +266,9 @@ class TestEntityExtraction:
                 store.runner(handle), tenant_keyed=backend == "neo4j"
             )
 
-            episodes, report, llm = await self.run_on(harness.store)
+            episodes, report, scripted = await self.run_on(harness.store)
 
-            self.assert_context_was_given(llm)
+            self.assert_context_was_given(scripted)
             assert_entities_extracted(report, episodes)
         finally:
             await store.erase_tenant(handle.tenant)

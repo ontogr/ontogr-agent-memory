@@ -20,12 +20,14 @@ from ontogr_mem.data_models import (
     ExtractedEntity,
     PreviousEpisodes,
     Status,
+    TokenCount,
     TypeView,
+    Usage,
 )
 from ontogr_mem.fact_extraction.extractor import FactExtractor
 from ontogr_mem.fact_extraction.models import FactReport, FactResult
 from ontogr_mem.fact_extraction.settings import FactExtractionSettings
-from ontogr_mem.llm import LLMError
+from ontogr_mem.llm import LLMError, ModelFailure, ModelOutputError
 
 
 log = logging.getLogger(__name__)
@@ -169,11 +171,24 @@ class FactExtraction:
                 result = await self._extractor.extract(
                     episode, list(entities), self._types, previous
                 )
-            except (LLMError, TimeoutError) as exc:
+            except (LLMError, ModelFailure, TimeoutError) as exc:
                 log.warning("fact extraction failed for %s: %r", episode.id, exc)
+                status = (
+                    Status.PARSE_FAILED
+                    if isinstance(exc, ModelOutputError)
+                    else Status.ERROR
+                )
+                usage = Usage()
+                if isinstance(exc, ModelFailure) and exc.usage is not None:
+                    usage.buckets["facts/fact_extraction"] = TokenCount(
+                        exc.usage.input_tokens,
+                        exc.usage.output_tokens,
+                        calls=exc.usage.requests,
+                    )
                 result = FactResult(
                     episode.id,
-                    Status.ERROR,
+                    status,
+                    usage=usage,
                     detail=f"{type(exc).__name__}: {exc}",
                 )
             # Status, facts, drops and usage are saved together.

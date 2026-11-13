@@ -8,7 +8,7 @@ from ontogr_mem.consolidation import (
 )
 from ontogr_mem.consolidation.config import ConsolidationSettings
 from ontogr_mem.data_models.clock import Clock
-from ontogr_mem.llm import LLMClient, LLMGate
+from ontogr_mem.llm import LLMClient, LLMConfig, LLMGate, RoleModels, build_models
 from ontogr_mem.observability import Tracer
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import Ontology
@@ -43,11 +43,15 @@ class TenantRuntime:
     ontology: OntologyManager
     clock: Clock
     _labels: dict[int, str] = field(default_factory=dict)
+    models: RoleModels = field(
+        default_factory=lambda: build_models(LLMConfig.model_construct()),
+        kw_only=True,
+    )
 
     @property
     def llm_available(self) -> bool:
-        """Whether a language-model client was injected."""
-        return self.llm is not None
+        """Whether an injected LLM client or any configured model is available."""
+        return self.llm is not None or self.models.any_configured()
 
     def engine(self, ontology: Ontology, refs: EntityRefResolver) -> TemporalEngine:
         """Build an engine with cardinality rules from the supplied ontology."""
@@ -88,6 +92,7 @@ def build_tenant_runtime(
     stores: TenantStores,
     *,
     llm: LLMClient | None,
+    models: RoleModels | None = None,
     embedder: Embedder,
     clock: Clock,
     policy: ResolutionPolicy,
@@ -97,6 +102,9 @@ def build_tenant_runtime(
     tracer: Tracer | None = None,
 ) -> TenantRuntime:
     """Wire the memory components around one tenant's stores."""
+    selected_models = (
+        models if models is not None else build_models(LLMConfig.model_construct())
+    )
     gate = (
         LLMGate(llm, max_input_tokens=_MAX_LLM_INPUT_TOKENS, tracer=tracer)
         if llm
@@ -139,4 +147,5 @@ def build_tenant_runtime(
         ontology,
         clock,
         labels,
+        models=selected_models,
     )
