@@ -124,6 +124,30 @@ class TestBuildServer:
             properties = set(tool.input_schema.get("properties", {}))
             assert properties.isdisjoint(FORBIDDEN_PROPERTIES), tool.name
 
+    async def test_add_memory_schema_exposes_content_and_options_only(self):
+        """add_memory takes the content and its optional fields and nothing else."""
+        memory = build_memory(
+            FakeMemoryService(), ModelRole.ENTITY_EXTRACTION, ModelRole.FACT_EXTRACTION
+        )
+        server = build_server(memory, settings=_settings())
+
+        async with Client(server) as client:
+            tools = {tool.name: tool for tool in await client.list_tools()}
+
+        schema = tools["add_memory"].input_schema
+        assert set(schema["properties"]) == {
+            "content",
+            "idempotency_key",
+            "reference_time",
+            "role",
+            "session_id",
+            "speaker",
+            "thread",
+            "wait_seconds",
+        }
+        assert schema.get("required", []) == ["content"]
+        assert set(schema["properties"]).isdisjoint(FORBIDDEN_PROPERTIES)
+
     @pytest.mark.parametrize(
         ("name", "expected"),
         [

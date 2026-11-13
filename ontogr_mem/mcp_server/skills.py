@@ -15,8 +15,10 @@ async def get_skill(name: Literal["memory-write", "memory-recall"]) -> str:
     Returns the complete packaged skill text. It does not search or write memory.
     """
     if name not in {"memory-write", "memory-recall"}:
-        raise InvalidArgumentError("unknown skill name")
+        msg = "unknown skill name"
+        raise InvalidArgumentError(msg)
     path = (SKILLS_ROOT / name / "SKILL.md").resolve()
     if not path.is_relative_to(SKILLS_ROOT):
-        raise InvalidArgumentError("skill path is outside the packaged directory")
+        msg = "skill path is outside the packaged directory"
+        raise InvalidArgumentError(msg)
     return path.read_text(encoding="utf-8")

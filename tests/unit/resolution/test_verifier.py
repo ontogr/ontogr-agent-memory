@@ -264,11 +264,8 @@ async def test_window_caps_match_the_pair_allowance():
         if settings is None:
             raise AssertionError("A verifier run did not expose its model settings")
         output_caps.append(settings["max_tokens"])
-    assert output_caps == [
-        424,
-        424,
-        184,
-    ]
+    # Windows run concurrently, so the order of the calls is not fixed.
+    assert sorted(output_caps, reverse=True) == [424, 424, 184]
 
 
 async def test_unknown_ids_are_counted_and_first_duplicate_wins():

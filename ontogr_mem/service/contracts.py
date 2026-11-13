@@ -27,7 +27,7 @@ from ontogr_mem.service.errors import (
     PayloadTooLargeError,
     ServiceError,
 )
-from ontogr_mem.service.limits import MAX_CONTENT_BYTES, MAX_RESULTS
+from ontogr_mem.service.limits import MAX_CONTENT_BYTES, MAX_HOST_FACTS, MAX_RESULTS
 
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -129,7 +129,7 @@ class AddMemory(WriteRequest):
     and text, one triple for fact, and source text plus host facts for
     sourced_facts. ``speaker`` is the actor id and display name; ``role``
     defaults to ``user``. Content is limited to ``MAX_CONTENT_BYTES`` UTF-8
-    bytes.
+    bytes. A sourced_facts request carries at most ``MAX_HOST_FACTS`` facts.
     """
 
     kind: MemoryKind = MemoryKind.TEXT
@@ -156,7 +156,11 @@ class AddMemory(WriteRequest):
     )
     facts: list[HostFact] | None = Field(
         default=None,
-        description="Host facts for kind=sourced_facts, in input order.",
+        max_length=MAX_HOST_FACTS,
+        description=(
+            "Host facts for kind=sourced_facts, in input order. "
+            f"At most {MAX_HOST_FACTS} facts."
+        ),
     )
     speaker: str | None = Field(
         default=None,

@@ -58,8 +58,16 @@ class McpSettings(BaseSettings):
     @field_validator("api_key", mode="before")
     @classmethod
     def _empty_key(cls, value: object) -> object:
-        """Map a blank key to None so an empty variable disables the check."""
-        return None if value == "" else value
+        """Map a blank key to None so a blank variable disables the check.
+
+        A SecretStr is checked by its secret text. A key counts as blank when it
+        has only whitespace. Any other key is returned unchanged, including one
+        with spaces around its text.
+        """
+        text = value.get_secret_value() if isinstance(value, SecretStr) else value
+        if isinstance(text, str) and not text.strip():
+            return None
+        return value
 
     @field_validator("tools", mode="before")
     @classmethod

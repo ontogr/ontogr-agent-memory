@@ -5,7 +5,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from pydantic import ValidationError
 
-from ontogr_mem.service.contracts import AddMemory, HostFact
+from ontogr_mem.service.contracts import AddMemory, HostFact, validate_request
+from ontogr_mem.service.errors import InvalidArgumentError
 
 
 NOW = datetime(2026, 4, 1, 12, 0, tzinfo=UTC)
@@ -45,6 +46,24 @@ class TestSourcedFactContracts:
         model = AddMemory.model_validate(_sourced_request(facts=[]))
 
         assert model.facts == []
+
+    def test_request_with_exactly_1000_facts_validates(self):
+        """A sourced_facts request may carry up to 1000 host facts."""
+        model = AddMemory.model_validate(_sourced_request(facts=[ANA_FACT] * 1000))
+
+        assert len(model.facts or []) == 1000
+
+    def test_request_with_1001_facts_fails_validation(self):
+        """A sourced_facts request with more than 1000 host facts is refused."""
+        with pytest.raises(ValidationError) as excinfo:
+            AddMemory.model_validate(_sourced_request(facts=[ANA_FACT] * 1001))
+
+        assert [error["loc"] for error in excinfo.value.errors()] == [("facts",)]
+
+    def test_request_with_1001_facts_raises_invalid_argument(self):
+        """The service boundary reports too many facts as an invalid argument."""
+        with pytest.raises(InvalidArgumentError, match="facts"):
+            validate_request(AddMemory, _sourced_request(facts=[ANA_FACT] * 1001))
 
     def test_sourced_facts_without_facts_fails(self):
         """A sourced_facts request must send facts, even an empty list."""

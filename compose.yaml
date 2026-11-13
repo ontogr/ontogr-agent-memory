@@ -25,7 +25,7 @@ services:
       MEMORY_STATE_SQLITE_PATH: /data/state/agent_memory_state.sqlite3
       FASTEMBED_CACHE_PATH: /data/models
       MEMORY_MCP_API_KEY: ${MEMORY_MCP_API_KEY:-}
-      MEMORY_MCP_TOOLS: ${MEMORY_MCP_TOOLS:-search_memory,get_entity,get_job,add_memory,write_facts,forget_memory,get_skill}
+      MEMORY_MCP_TOOLS: ${MEMORY_MCP_TOOLS-search_memory,get_entity,get_job,add_memory,write_facts,forget_memory,get_skill}
       MEMORY_MCP_SKILLS_EXTENSION: ${MEMORY_MCP_SKILLS_EXTENSION:-true}
       MEMORY_LLM_MODEL: ${MEMORY_LLM_MODEL:-}
       MEMORY_LLM_BASE_URL: ${MEMORY_LLM_BASE_URL:-}

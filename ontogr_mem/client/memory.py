@@ -247,7 +247,8 @@ class Memory:
 
         Args:
             source_text: Original text to retain as one Episode.
-            facts: Extracted facts in the order used by dropped indices.
+            facts: Extracted facts in the order used by dropped indices. A
+                request carries at most 1000 facts.
             role: Role of the source's author.
             idempotency_key: Reuse for a retry of this same write.
             wait_seconds: Maximum time to wait for the job before returning.

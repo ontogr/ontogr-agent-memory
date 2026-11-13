@@ -23,10 +23,10 @@ def build_server(memory: Memory, *, settings: McpSettings | None = None) -> Fast
     Returns:
         An unstarted server. The caller owns the client's lifetime.
     """
-    cfg = settings if settings is not None else McpSettings()
+    server_settings = settings if settings is not None else McpSettings()
     auth = (
-        ApiKeyVerifier(cfg.api_key.get_secret_value())
-        if cfg.api_key is not None
+        ApiKeyVerifier(server_settings.api_key.get_secret_value())
+        if server_settings.api_key is not None
         else None
     )
     server = FastMCP(
@@ -35,7 +35,7 @@ def build_server(memory: Memory, *, settings: McpSettings | None = None) -> Fast
         mask_error_details=True,
         auth=auth,
     )
-    enabled = set(cfg.tools)
+    enabled = set(server_settings.tools)
     if not (
         memory.models.configured(ModelRole.ENTITY_EXTRACTION)
         and memory.models.configured(ModelRole.FACT_EXTRACTION)
@@ -59,7 +59,7 @@ def build_server(memory: Memory, *, settings: McpSettings | None = None) -> Fast
         )
     if "get_skill" in enabled:
         server.tool(guard_errors(get_skill), name="get_skill", tags={"skills"})
-    if cfg.skills_extension:
+    if server_settings.skills_extension:
         provider = SkillsDirectoryProvider(SKILLS_ROOT, experimental_skills=True)
         server.add_provider(provider)
         server.add_extension(SkillsExtension(providers=[provider]))

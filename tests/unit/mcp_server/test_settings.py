@@ -128,6 +128,31 @@ class TestMcpSettings:
 
         assert settings.api_key is None
 
+    @pytest.mark.parametrize("blank_key", [SecretStr(""), "   "])
+    def test_blank_api_key_argument_is_treated_as_unset(self, blank_key):
+        """An empty or whitespace-only key passed to the constructor is None."""
+        settings = McpSettings(_env_file=None, api_key=blank_key)
+
+        assert settings.api_key is None
+
+    def test_whitespace_only_api_key_variable_is_treated_as_unset(self, monkeypatch):
+        """A key variable that holds only spaces means no bearer token is required."""
+        monkeypatch.setenv("MEMORY_MCP_API_KEY", "  ")
+
+        settings = McpSettings(_env_file=None)
+
+        assert settings.api_key is None
+
+    @pytest.mark.parametrize("key", ["s3cret", " key "])
+    def test_non_blank_api_key_is_kept_unchanged(self, monkeypatch, key):
+        """A key that has text is kept as written, including its outer spaces."""
+        monkeypatch.setenv("MEMORY_MCP_API_KEY", key)
+
+        settings = McpSettings(_env_file=None)
+
+        assert isinstance(settings.api_key, SecretStr)
+        assert settings.api_key.get_secret_value() == key
+
     def test_api_key_is_secret_and_absent_from_repr(self, monkeypatch):
         """The key is stored as SecretStr and repr does not reveal it."""
         monkeypatch.setenv("MEMORY_MCP_API_KEY", "sentinel-key")
