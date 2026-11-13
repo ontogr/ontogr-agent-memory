@@ -1,16 +1,15 @@
 """Build the chat agent with the answer model and memory support."""
 
-from typing import Any, cast
+from typing import Any
 
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIChatModelSettings
 
 from ontogr_mem.agent.capability import MemoryCapability
 from ontogr_mem.agent.instructions import DEFAULT_INSTRUCTIONS
 from ontogr_mem.client import Memory
 from ontogr_mem.llm.failures import ModelNotConfiguredError
 from ontogr_mem.llm.roles import ModelRole
-from ontogr_mem.llm.run import OUTPUT_RETRIES
+from ontogr_mem.llm.run import OUTPUT_RETRIES, role_model_settings
 
 
 def build_default_agent(
@@ -39,19 +38,12 @@ def build_default_agent(
     if capability is not None and capability.memory is not memory:
         raise ValueError("capability must use the supplied Memory client")
     config = memory.models.config_for(ModelRole.ANSWER)
-    settings = OpenAIChatModelSettings(timeout=config.timeout_s)
-    if config.max_output_tokens is not None:
-        settings["max_tokens"] = config.max_output_tokens
-    if config.reasoning_effort is not None:
-        settings["openai_reasoning_effort"] = cast("Any", config.reasoning_effort)
-    if config.extra_body is not None:
-        settings["extra_body"] = dict(config.extra_body)
     return Agent(
         model=model,
         output_type=str,
         name="assistant",
         instructions=DEFAULT_INSTRUCTIONS if instructions is None else instructions,
-        model_settings=settings,
+        model_settings=role_model_settings(config, config.max_output_tokens),
         retries={"output": OUTPUT_RETRIES},
         capabilities=[capability or MemoryCapability(memory)],
     )

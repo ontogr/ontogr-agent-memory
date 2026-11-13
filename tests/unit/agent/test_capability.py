@@ -1,18 +1,20 @@
 """Guards retrieval reuse, stored history, run isolation, writes and failed runs."""
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator, Callable, Sequence
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
-from typing import cast
 
 import pytest
 from pydantic_ai import Agent
 from pydantic_ai.messages import (
+    ImageUrl,
     ModelMessage,
     ModelMessagesTypeAdapter,
     ModelRequest,
     ModelResponse,
+    TextContent,
     TextPart,
     ToolCallPart,
     UserPromptPart,
@@ -21,10 +23,15 @@ from pydantic_ai.models import Model
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from ontogr_mem.agent import MemoryCapability
-from ontogr_mem.client import Memory
 from ontogr_mem.data_models import Role
-from ontogr_mem.service.contracts import MemoryContext
-from tests.support.fake_memory import FakeMemory
+from ontogr_mem.service.contracts import MemoryContext, WriteReceipt
+from ontogr_mem.service.errors import (
+    PayloadTooLargeError,
+    RateLimitedError,
+    ServiceError,
+)
+from tests.support.clock import FixedClock
+from tests.support.fake_memory import FakeMemory, as_memory
 
 
 FRAME = (
@@ -66,6 +73,40 @@ def stored_turns(fake: FakeMemory) -> list[tuple[Role | None, str]]:
     return [(text.role, text.content) for text in fake.texts]
 
 
+def capability_warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
+    """Return the warning messages logged by the memory capability module."""
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "ontogr_mem.agent.capability"
+        and record.levelno == logging.WARNING
+    ]
+
+
+class RefusingWritesMemory(FakeMemory):
+    """A fake memory that refuses every text write with one service error."""
+
+    def __init__(self, error: ServiceError) -> None:
+        """Keep the error that write_text raises."""
+        super().__init__()
+        self._error = error
+
+    async def write_text(
+        self,
+        content: str,
+        *,
+        role: Role | None = None,
+        speaker: str | None = None,
+        session_id: str | None = None,
+        thread: str | None = None,
+        reference_time: datetime | None = None,
+        idempotency_key: str | None = None,
+        wait_seconds: float = 0.0,
+    ) -> WriteReceipt:
+        """Raise the configured error instead of storing the text."""
+        raise self._error
+
+
 def recording_text_model(reply: str) -> tuple[FunctionModel, list[list[ModelMessage]]]:
     """Return a model that answers with the reply and records each request."""
     seen: list[list[ModelMessage]] = []
@@ -88,7 +129,7 @@ def build_agent(
 ) -> Agent[None, str]:
     """Build a text agent whose memory capability reads and writes the fake."""
     capability = MemoryCapability(
-        memory=cast("Memory", fake),
+        memory=as_memory(fake),
         inject=inject,
         tools=(),
         write=write,
@@ -239,6 +280,55 @@ class TestMemoryCapability:
         assert before <= user.reference_time <= after
         assert assistant.reference_time == result.all_messages()[-1].timestamp
 
+    async def test_text_content_prompt_is_searched_and_stored(self) -> None:
+        """A TextContent prompt part is used as the retrieval query and user text."""
+        fake = FakeMemory()
+        model, _ = recording_text_model("hi there")
+        agent = build_agent(model, fake)
+
+        await agent.run([TextContent("Ana works at Acme.")], conversation_id="conv-1")
+
+        assert fake.queries == ["Ana works at Acme."]
+        assert stored_turns(fake)[0] == (Role.USER, "Ana works at Acme.")
+
+    async def test_mixed_prompt_keeps_text_parts_and_skips_images(self) -> None:
+        """Joins string and TextContent parts with newlines and skips images."""
+        fake = FakeMemory()
+        model, _ = recording_text_model("hi there")
+        agent = build_agent(model, fake)
+        prompt = [
+            "Ana works at Acme.",
+            TextContent("Ana moved to Berlin."),
+            ImageUrl(url="http://images.invalid/org-chart.png"),
+        ]
+
+        await agent.run(prompt, conversation_id="conv-1")
+
+        expected = "Ana works at Acme.\nAna moved to Berlin."
+        assert fake.queries == [expected]
+        assert stored_turns(fake)[0] == (Role.USER, expected)
+
+    async def test_user_turn_time_comes_from_the_injected_clock(self) -> None:
+        """The user text keeps the time that the injected clock reports."""
+        fake = FakeMemory()
+        model, _ = recording_text_model("hi there")
+        capability = MemoryCapability(
+            memory=as_memory(fake),
+            tools=(),
+            clock=FixedClock(datetime(2026, 3, 4, 5, 6, 7, tzinfo=UTC)),
+        )
+        agent = Agent(
+            model,
+            output_type=str,
+            name="assistant",
+            capabilities=[capability],
+        )
+
+        await agent.run("hello", conversation_id="conv-1")
+
+        [user, _] = fake.texts
+        assert user.reference_time == datetime(2026, 3, 4, 5, 6, 7, tzinfo=UTC)
+
     async def test_second_turn_appends_two_texts_and_keeps_the_first_pair(self) -> None:
         """A second turn on the same conversation adds two texts after the first."""
         fake = FakeMemory()
@@ -359,7 +449,7 @@ class TestMemoryCapability:
                 parts=[ToolCallPart(info.output_tools[0].name, {"response": 42})]
             )
 
-        capability = MemoryCapability(memory=cast("Memory", fake), tools=())
+        capability = MemoryCapability(memory=as_memory(fake), tools=())
         agent = Agent(
             FunctionModel(answer_with_number),
             output_type=int,
@@ -394,3 +484,46 @@ class TestMemoryCapability:
             await agent.run("hello", conversation_id="conv-1")
 
         assert stored_turns(fake) == [(Role.USER, "hello")]
+
+    async def test_refused_user_write_is_logged_and_the_reply_is_still_stored(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A refused user write is logged, and the run still stores the reply."""
+        fake = FakeMemory(
+            write_error_on=1,
+            write_error=PayloadTooLargeError("text is over the byte limit"),
+        )
+        model, _ = recording_text_model("hi there")
+        agent = build_agent(model, fake)
+
+        with caplog.at_level(logging.WARNING, logger="ontogr_mem.agent.capability"):
+            result = await agent.run("Ana moved to Berlin.", conversation_id="conv-1")
+
+        assert result.output == "hi there"
+        assert stored_turns(fake) == [(Role.ASSISTANT, "hi there")]
+        [warning] = capability_warnings(caplog)
+        assert "payload_too_large" in warning
+        assert "text is over the byte limit" in warning
+        assert "Berlin" not in warning
+
+    async def test_refused_writes_are_each_logged_and_the_answer_is_returned(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Both refused writes are logged, and the run returns its answer."""
+        fake = RefusingWritesMemory(
+            RateLimitedError("tokens for this minute are spent")
+        )
+        model, _ = recording_text_model("hi there")
+        agent = build_agent(model, fake)
+
+        with caplog.at_level(logging.WARNING, logger="ontogr_mem.agent.capability"):
+            result = await agent.run("Ana moved to Berlin.", conversation_id="conv-1")
+
+        assert result.output == "hi there"
+        assert fake.texts == []
+        warnings = capability_warnings(caplog)
+        assert len(warnings) == 2
+        for warning in warnings:
+            assert "rate_limited" in warning
+            assert "tokens for this minute are spent" in warning
+            assert "Berlin" not in warning

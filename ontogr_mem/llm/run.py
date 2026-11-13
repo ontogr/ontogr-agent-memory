@@ -13,6 +13,7 @@ from pydantic_ai.exceptions import (
 from pydantic_ai.models.openai import OpenAIChatModelSettings
 from pydantic_ai.usage import RunUsage
 
+from ontogr_mem.llm.config import RoleConfig
 from ontogr_mem.llm.failures import (
     ModelCallFailedError,
     ModelNotConfiguredError,
@@ -47,6 +48,31 @@ class ModelRun(Generic[Out]):
 
 def _tokens(usage: RunUsage) -> TokenUsage:
     return TokenUsage(usage.input_tokens, usage.output_tokens, usage.requests)
+
+
+def role_model_settings(
+    config: RoleConfig, max_output_tokens: int | None
+) -> OpenAIChatModelSettings:
+    """Build the model settings for one kind of work from its role config.
+
+    Args:
+        config: Resolved settings for the role, including the timeout, reasoning
+            effort and extra request body.
+        max_output_tokens: Output token cap to send, or None to omit the cap.
+
+    Returns:
+        Settings to pass to an agent run.
+    """
+    settings = OpenAIChatModelSettings(timeout=config.timeout_s)
+    if max_output_tokens is not None:
+        settings["max_tokens"] = max_output_tokens
+    if config.reasoning_effort is not None:
+        # Providers accept effort strings beyond the literals that PydanticAI types, so
+        # the configured string is passed through.
+        settings["openai_reasoning_effort"] = cast("Any", config.reasoning_effort)
+    if config.extra_body is not None:
+        settings["extra_body"] = dict(config.extra_body)
+    return settings
 
 
 async def run_agent(
@@ -88,13 +114,7 @@ async def run_agent(
     )
     if output_cap is not None and output_cap < 1:
         raise ValueError("max_output_tokens must be positive")
-    settings = OpenAIChatModelSettings(timeout=role_config.timeout_s)
-    if output_cap is not None:
-        settings["max_tokens"] = output_cap
-    if role_config.reasoning_effort is not None:
-        settings["openai_reasoning_effort"] = cast("Any", role_config.reasoning_effort)
-    if role_config.extra_body is not None:
-        settings["extra_body"] = dict(role_config.extra_body)
+    settings = role_model_settings(role_config, output_cap)
     usage = RunUsage()
     try:
         result = await agent.run(

@@ -267,21 +267,20 @@ class TestMemoryAgent:
                 "episodes": [
                     {
                         "episode_id": user_episode.id,
-                        "role": "user",
-                        "speaker": "user",
-                        "content": _USER_SENTENCE,
+                        "role": user_episode.actor.role.value,
+                        "speaker": user_episode.actor.id,
+                        "content": user_episode.content,
                     },
                     {
                         "episode_id": assistant_episode.id,
-                        "role": "assistant",
-                        "speaker": "assistant",
-                        "content": _ASSISTANT_REPLY,
+                        "role": assistant_episode.actor.role.value,
+                        "speaker": assistant_episode.actor.id,
+                        "content": assistant_episode.content,
                     },
                 ],
                 "recall_answer": recall.output,
             }
             artifact = tmp_path / "chat_memory.json"
             artifact.write_text(json.dumps(record, indent=2))
-            assert json.loads(artifact.read_text()) == record
         finally:
             await falkordb_store.erase_tenant(tenant)

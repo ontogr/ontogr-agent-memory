@@ -518,9 +518,10 @@ A custom agent owns its model settings and its shutdown policy. This example doe
 - `memory`: the open client. The caller owns its lifetime.
 - `inject`: retrieve once per Turn and add the Context block to every model request of that Turn as untrusted data. The block is never stored in the message history.
 - `tools`: a tuple chosen from `search`, `remember` and `forget`. The default is all three. An empty tuple offers no tools. `remember` queues a text note. `forget` only invalidates a Fact and never deletes data.
-- `write`: queue the user message and the final assistant reply as separate Episodes after a successful run. This setting does not disable the explicit tools.
+- `write`: queue the user message and the final assistant reply as separate Episodes after a successful run. This setting does not disable the explicit tools. A failed automatic write is logged and does not fail the run.
 - `assistant_writes`: include the final assistant reply in those writes.
 - `budget_tokens`: retrieval budget for the Context block, 2000 by default.
+- `clock`: time source for the Turn time, the system clock by default.
 
 To use memory only for answers, pass `MemoryCapability(memory, inject=True, tools=(), write=False)`.
 

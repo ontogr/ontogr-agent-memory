@@ -11,12 +11,20 @@ from pydantic import ValidationError
 from ontogr_mem.agent import build_default_agent
 from ontogr_mem.cli.chat import run_chat
 from ontogr_mem.client import Memory
-from ontogr_mem.data_models.tenant import validate_tenant_id
+from ontogr_mem.data_models.tenant import InvalidTenantError, validate_tenant_id
 from ontogr_mem.errors import AgentMemoryError, MissingExtraError
 from ontogr_mem.llm import build_models
 from ontogr_mem.llm.failures import ModelNotConfiguredError
 from ontogr_mem.llm.roles import ModelRole
 from ontogr_mem.vectorstore.builtin import EmbedderUnavailableError
+
+
+def _tenant_id_argument(value: str) -> str:
+    """Validate a tenant id argument and report the validator's message on failure."""
+    try:
+        return validate_tenant_id(value)
+    except InvalidTenantError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
 
 
 async def _chat(tenant: str) -> None:
@@ -51,7 +59,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ontogr-mem")
     commands = parser.add_subparsers(dest="command", required=True)
     chat = commands.add_parser("chat", help="chat with persistent memory")
-    chat.add_argument("--tenant", default="default", type=validate_tenant_id)
+    chat.add_argument("--tenant", default="default", type=_tenant_id_argument)
     args = parser.parse_args(argv)
     os.environ["PYDANTIC_AI_NO_BANNER"] = "1"
     status = 0

@@ -7,7 +7,7 @@ import threading
 from collections import deque
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import suppress
-from typing import Any, cast
+from typing import Any
 
 import pytest
 from pydantic_ai import Agent
@@ -17,7 +17,7 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 from ontogr_mem.agent import MemoryCapability
 from ontogr_mem.cli.chat import run_chat
 from ontogr_mem.client.memory import Memory
-from tests.support.fake_memory import FakeMemory
+from tests.support.fake_memory import FakeMemory, as_memory
 
 
 StreamFunction = Callable[[list[ModelMessage], AgentInfo], AsyncIterator[str]]
@@ -103,7 +103,7 @@ class TestChat:
     async def test_prints_each_streamed_delta_once_then_a_newline(self) -> None:
         """Each streamed delta is printed once and the answer ends with a newline."""
         fake = FakeMemory()
-        memory = cast(Memory, fake)
+        memory = as_memory(fake)
         output = io.StringIO()
 
         async with asyncio.timeout(5):
@@ -121,7 +121,7 @@ class TestChat:
     async def test_second_turn_sees_the_first_prompt_in_one_conversation(self) -> None:
         """A second turn receives the first prompt, and both turns share a session."""
         fake = FakeMemory()
-        memory = cast(Memory, fake)
+        memory = as_memory(fake)
         output = io.StringIO()
 
         async with asyncio.timeout(5):
@@ -157,7 +157,7 @@ class TestChat:
     ) -> None:
         """Exit, blank lines and end of input never call the model but still drain."""
         fake = FakeMemory()
-        memory = cast(Memory, fake)
+        memory = as_memory(fake)
         model_calls: list[list[ModelMessage]] = []
 
         async def stream(
@@ -183,7 +183,7 @@ class TestChat:
     ) -> None:
         """The event loop keeps running while the reader waits for a line."""
         fake = FakeMemory()
-        memory = cast(Memory, fake)
+        memory = as_memory(fake)
         ticks = 0
         ticks_when_read: list[int] = []
 
@@ -227,7 +227,7 @@ class TestChat:
     ) -> None:
         """A failed stream re-raises after the drain and stores no partial answer."""
         fake = FakeMemory()
-        memory = cast(Memory, fake)
+        memory = as_memory(fake)
         output = io.StringIO()
 
         async def failing_stream(
@@ -254,7 +254,7 @@ class TestChat:
     ) -> None:
         """Cancelling the loop drains memory before the cancellation propagates."""
         fake = FakeMemory()
-        memory = cast(Memory, fake)
+        memory = as_memory(fake)
         reader_started = threading.Event()
 
         def read_after_gate(prompt: str) -> str:
@@ -288,7 +288,7 @@ class TestChat:
         monkeypatch.setattr("ontogr_mem.cli.chat._DRAIN_TIMEOUT_SECONDS", 0.05)
         fake = FakeMemory()
         fake.drain_gate = asyncio.Event()
-        memory = cast(Memory, fake)
+        memory = as_memory(fake)
         output = io.StringIO()
 
         async with asyncio.timeout(5):
@@ -319,7 +319,7 @@ class TestChat:
         monkeypatch.setattr("ontogr_mem.cli.chat.signal.signal", record_signal)
         fake = FakeMemory()
         fake.drain_gate = asyncio.Event()
-        memory = cast(Memory, fake)
+        memory = as_memory(fake)
         output = io.StringIO()
 
         chat = asyncio.create_task(

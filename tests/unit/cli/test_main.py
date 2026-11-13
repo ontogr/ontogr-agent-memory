@@ -86,7 +86,10 @@ class TestMain:
             main(["chat", "--tenant", "bad tenant!"])
 
         assert excinfo.value.code == 2
-        assert "usage:" in capsys.readouterr().err
+        stderr = capsys.readouterr().err
+        assert "usage:" in stderr
+        assert "use 1 to 60 letters, digits, dashes or underscores" in stderr
+        assert "validate_tenant_id" not in stderr
 
     def test_normal_exit_returns_zero(self, monkeypatch):
         """A chat session that ends without error returns status zero."""

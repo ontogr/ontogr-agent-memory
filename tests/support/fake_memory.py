@@ -8,11 +8,13 @@ background work.
 """
 
 import asyncio
+import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
+from typing import Literal, cast
 
+from ontogr_mem.client import Memory
 from ontogr_mem.data_models import Role
 from ontogr_mem.data_models.jobs import JobState
 from ontogr_mem.llm.models import RoleModels
@@ -22,7 +24,15 @@ from ontogr_mem.service.contracts import (
     MemoryContext,
     WriteReceipt,
 )
+from ontogr_mem.service.errors import InvalidArgumentError
 from tests.support.scripted_model import scripted_role_models
+
+
+# The service refuses a search query longer than this many characters.
+_MAX_SEARCH_QUERY_CHARS = 2000
+
+# Methods of Memory that the fake must accept with the same argument names.
+_CHECKED_METHODS = ("search", "write_text", "invalidate", "drain")
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,8 +83,10 @@ class FakeMemory:
             ``tests.support.scripted_model`` are used.
         tenant: The tenant id reported by ``tenant`` and set on every receipt.
         write_error_on: The one-based number of the ``write_text`` call that
-            raises ``RuntimeError``. Every call counts, including the failed
-            one. None means no call raises.
+            raises. Every call counts, including the failed one. None means no
+            call raises.
+        write_error: The exception raised by the failing call. When None, that
+            call raises ``RuntimeError``.
 
     Attributes:
         queries: Every query given to ``search``, in order.
@@ -95,12 +107,14 @@ class FakeMemory:
         models: RoleModels | None = None,
         tenant: str = "tenant",
         write_error_on: int | None = None,
+        write_error: Exception | None = None,
     ) -> None:
         """Create a fake client with the scripted context and models."""
         self._context = context
         self._models = models if models is not None else scripted_role_models()
         self._tenant = tenant
         self._write_error_on = write_error_on
+        self._write_error = write_error
         self._write_calls = 0
         self.queries: list[str] = []
         self.budgets: list[int] = []
@@ -132,8 +146,15 @@ class FakeMemory:
         """Record the query and budget, then return the scripted context.
 
         The time, history and limit arguments are accepted so that calls match
-        the client signature, but they do not change the result.
+        the client signature, but they do not change the result. A query longer
+        than 2000 characters raises ``InvalidArgumentError`` with the service
+        message and records nothing.
         """
+        if len(query) > _MAX_SEARCH_QUERY_CHARS:
+            raise InvalidArgumentError(
+                "query: String should have at most "
+                f"{_MAX_SEARCH_QUERY_CHARS} characters"
+            )
         self.queries.append(query)
         self.budgets.append(budget_tokens)
         context = self._context
@@ -159,12 +180,14 @@ class FakeMemory:
 
         The idempotency key and wait time are accepted so that calls match the
         client signature, but they are not recorded. The call selected by
-        ``write_error_on`` raises ``RuntimeError`` and records nothing.
+        ``write_error_on`` raises ``write_error`` and records nothing.
         """
         # Count failed calls too, so write_error_on names the nth call the test
         # made rather than the nth accepted write.
         self._write_calls += 1
         if self._write_calls == self._write_error_on:
+            if self._write_error is not None:
+                raise self._write_error
             msg = "write failed"
             raise RuntimeError(msg)
         self.texts.append(
@@ -207,6 +230,44 @@ class FakeMemory:
             status=JobState.QUEUED,
             tenant=self._tenant,
         )
+
+
+def as_memory(fake: FakeMemory) -> Memory:
+    """Return the fake as a Memory after checking that it accepts the real arguments.
+
+    For each checked method, every parameter of the real ``Memory`` method must be
+    accepted by the fake's method, either by name or through ``**kwargs``.
+
+    Args:
+        fake: The fake to pass where a ``Memory`` is expected.
+
+    Returns:
+        The same fake, typed as a ``Memory``.
+
+    Raises:
+        AssertionError: If a fake method lacks a parameter of the real method.
+    """
+    for method_name in _CHECKED_METHODS:
+        real_parameters = inspect.signature(getattr(Memory, method_name)).parameters
+        fake_parameters = inspect.signature(getattr(fake, method_name)).parameters
+        accepts_any_keyword = any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in fake_parameters.values()
+        )
+        missing = [
+            name
+            for name in real_parameters
+            if name != "self" and name not in fake_parameters
+        ]
+        if missing and not accepts_any_keyword:
+            msg = (
+                f"{type(fake).__name__}.{method_name} lacks parameter(s): "
+                f"{', '.join(missing)}"
+            )
+            raise AssertionError(msg)
+    # The structural check above shows the fake answers every call that the
+    # real client answers, so the cast only changes the static type.
+    return cast("Memory", fake)
 
 
 def fact_context(

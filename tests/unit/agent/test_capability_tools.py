@@ -19,21 +19,13 @@ from pydantic_ai.tools import ToolDefinition
 from ontogr_mem.agent import MemoryCapability
 from ontogr_mem.service.contracts import WriteReceipt
 from ontogr_mem.service.errors import InvalidArgumentError, PayloadTooLargeError
+from tests.support.clock import FixedClock
 from tests.support.fake_memory import FakeMemory, Invalidation, fact_context
 
 
 NOTE = "Ana moved to Berlin."
 REASON = "Ana no longer works at Acme."
 ANSWER_RULE = "Answer only from the memory context."
-HARD_DELETE_CONTROLS = {
-    "mode",
-    "confirm",
-    "confirm_token",
-    "confirmation_token",
-    "episode_id",
-    "hard_delete",
-    "force",
-}
 
 
 @pytest.fixture(autouse=True)
@@ -138,17 +130,20 @@ class TestMemoryCapabilityTools:
 
         assert forget_arguments == {"fact_id", "reason"}
 
-    async def test_no_tool_exposes_a_hard_delete_control(self) -> None:
-        """Offers no argument that could select a hard delete on any tool."""
+    async def test_each_tool_exposes_exactly_its_documented_arguments(self) -> None:
+        """Offers each tool with exactly its documented arguments and no others."""
         offered = await _offered_tools(MemoryCapability(FakeMemory()))
 
-        all_arguments = {
-            argument
+        arguments_by_tool = {
+            tool.name: set(tool.parameters_json_schema["properties"])
             for tool in offered
-            for argument in tool.parameters_json_schema["properties"]
         }
 
-        assert all_arguments.isdisjoint(HARD_DELETE_CONTROLS)
+        assert arguments_by_tool == {
+            "search": {"query"},
+            "remember": {"content"},
+            "forget": {"fact_id", "reason"},
+        }
 
     async def test_forgets_a_fact_found_by_search_and_queues_a_note(self) -> None:
         """Forgets the fact whose id the search result showed, then queues a note."""
@@ -196,6 +191,35 @@ class TestMemoryCapabilityTools:
         )
         assert note.reference_time is not None
         assert before <= note.reference_time <= after
+
+    async def test_remember_note_time_comes_from_the_injected_clock(self) -> None:
+        """A remember note is stamped with the time that the injected clock reports."""
+        memory = FakeMemory()
+        capability = MemoryCapability(
+            memory,
+            tools=("remember",),
+            write=False,
+            clock=FixedClock(datetime(2026, 3, 4, 5, 6, 7, tzinfo=UTC)),
+        )
+
+        def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+            if not _tool_returns(messages):
+                return ModelResponse(
+                    parts=[ToolCallPart("remember", {"content": NOTE})]
+                )
+            return ModelResponse(parts=[TextPart("Noted.")])
+
+        agent = Agent(
+            FunctionModel(respond),
+            output_type=str,
+            name="assistant",
+            capabilities=[capability],
+        )
+
+        await agent.run("Remember that Ana moved.")
+
+        [note] = memory.texts
+        assert note.reference_time == datetime(2026, 3, 4, 5, 6, 7, tzinfo=UTC)
 
     async def test_keeps_queued_note_when_the_run_fails_after_it(self) -> None:
         """Keeps a note that a tool call queued even when the run then fails."""
@@ -310,3 +334,37 @@ class TestMemoryCapabilityTools:
         assert len(feedback) == 1
         assert str(error) in feedback[0]
         assert memory.invalidations == []
+
+    async def test_overlong_search_query_is_refused_and_a_shorter_retry_finishes(
+        self,
+    ) -> None:
+        """Sends the refusal of a 2001 character query back so a shorter retry runs."""
+        memory = FakeMemory(context=fact_context(("fact-1", "Ana works at Acme")))
+        overlong_query = "a" * 2001
+        feedback: list[str] = []
+
+        def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+            search_results = [
+                part for part in _tool_returns(messages) if part.tool_name == "search"
+            ]
+            if not search_results:
+                return ModelResponse(
+                    parts=[ToolCallPart("search", {"query": overlong_query})]
+                )
+            if not feedback:
+                feedback.append(str(search_results[0].content))
+                return ModelResponse(parts=[ToolCallPart("search", {"query": "Acme"})])
+            return ModelResponse(parts=[TextPart("Ana works at Acme.")])
+
+        agent = Agent(
+            FunctionModel(respond),
+            output_type=str,
+            name="assistant",
+            capabilities=[MemoryCapability(memory, inject=False)],
+        )
+
+        run = await agent.run("Where does Ana work?")
+
+        assert run.output == "Ana works at Acme."
+        assert feedback == ["query: String should have at most 2000 characters"]
+        assert memory.queries == ["Acme"]

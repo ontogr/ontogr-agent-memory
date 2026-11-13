@@ -350,7 +350,7 @@ The chat agent that this project ships. It is an ordinary agent with the [[Memor
 _Avoid_: reference agent, memory agent
 
 **Memory capability**:
-The reusable unit that gives an [[Agent]] memory. It decides when to read (a [[Context block]] before a reply, or a search the model asks for) and when to write (the turn after a reply). It is a client of the [[Memory client]], not a door: rules about what is stored stay in the [[Memory service]].
+The reusable unit that gives an [[Agent]] memory. It decides when to read (a [[Context block]] before a reply, or a search the model asks for) and when to write (after each successful run, for the user message and the final reply). It is a client of the [[Memory client]], not a door: rules about what is stored stay in the [[Memory service]].
 
 **Turn**:
 One user message and the assistant's final reply to it. A turn can produce one [[Episode]] per message.

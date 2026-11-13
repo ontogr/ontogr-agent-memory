@@ -2,28 +2,36 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
 from pydantic_ai import AgentRunResult, ModelRetry, RunContext
 from pydantic_ai.capabilities import AbstractCapability
-from pydantic_ai.messages import ModelRequest, UserPromptPart
+from pydantic_ai.messages import ModelRequest, TextContent, UserPromptPart
 from pydantic_ai.models import ModelRequestContext
 from pydantic_ai.toolsets import FunctionToolset
 
 from ontogr_mem.client import Memory
 from ontogr_mem.data_models import Role
+from ontogr_mem.data_models.clock import Clock, SystemClock
 from ontogr_mem.service.contracts import MemoryContext, WriteReceipt
-from ontogr_mem.service.errors import InvalidArgumentError, PayloadTooLargeError
+from ontogr_mem.service.errors import (
+    InvalidArgumentError,
+    PayloadTooLargeError,
+    ServiceError,
+)
 
 
 ALL_TOOLS = ("search", "remember", "forget")
 
 # The service rejects search queries longer than this many characters.
 _MAX_QUERY_CHARS = 2000
+
+log = logging.getLogger(__name__)
 
 
 def _context_data(context: MemoryContext) -> str:
@@ -33,6 +41,35 @@ def _context_data(context: MemoryContext) -> str:
         f"Memory state: {context.state}\n"
         f"{context.rendered or ''}"
     )
+
+
+async def _write_turn_text(
+    memory: Memory,
+    text: str,
+    *,
+    role: Role,
+    speaker: str,
+    conversation_id: str | None,
+    reference_time: datetime | None,
+) -> None:
+    """Store one automatic Turn text and log a refused write instead of raising.
+
+    A service refusal must not fail a run whose model call already succeeded.
+    The warning carries the error code and message, never the stored text.
+    """
+    try:
+        await memory.write_text(
+            text,
+            role=role,
+            speaker=speaker,
+            session_id=conversation_id,
+            thread=conversation_id,
+            reference_time=reference_time,
+        )
+    except ServiceError as error:
+        log.warning(
+            "automatic memory write refused (%s): %s", error.code, error.message
+        )
 
 
 @contextmanager
@@ -52,9 +89,12 @@ class MemoryCapability(AbstractCapability[Any]):
         memory: Open client for one Tenant. The caller owns its lifetime.
         inject: Retrieve once and add the Context block to each model request.
         tools: Enabled names from search, remember and forget, in fixed order.
-        write: Queue automatic Turn writes. Explicit tools are independent.
+        write: Queue automatic Turn writes. Explicit tools are independent. A
+            write that the service refuses is logged as a warning and does not
+            fail the run.
         assistant_writes: Include a final string reply in automatic writes.
         budget_tokens: Retrieval budget for the Context block, default 2000.
+        clock: Time source for the Turn time, the system clock by default.
     """
 
     memory: Memory
@@ -63,6 +103,7 @@ class MemoryCapability(AbstractCapability[Any]):
     write: bool = True
     assistant_writes: bool = True
     budget_tokens: int = 2000
+    clock: Clock = field(default_factory=SystemClock)
     _user_text: str = field(default="", init=False, repr=False)
     _user_time: datetime | None = field(default=None, init=False, repr=False)
     _context: MemoryContext | None = field(default=None, init=False, repr=False)
@@ -83,9 +124,11 @@ class MemoryCapability(AbstractCapability[Any]):
             capability._user_text = prompt
         elif prompt is not None:
             capability._user_text = "\n".join(
-                item for item in prompt if isinstance(item, str)
+                item if isinstance(item, str) else item.content
+                for item in prompt
+                if isinstance(item, str | TextContent)
             )
-        capability._user_time = datetime.now(UTC)
+        capability._user_time = self.clock.now()
         return capability
 
     async def before_model_request(
@@ -116,12 +159,12 @@ class MemoryCapability(AbstractCapability[Any]):
         """Queue new user text and a final text answer as separate Episodes."""
         if not self.write or not self._user_text.strip():
             return result
-        await self.memory.write_text(
+        await _write_turn_text(
+            self.memory,
             self._user_text,
             role=Role.USER,
             speaker="user",
-            session_id=ctx.conversation_id,
-            thread=ctx.conversation_id,
+            conversation_id=ctx.conversation_id,
             reference_time=self._user_time,
         )
         if (
@@ -129,12 +172,12 @@ class MemoryCapability(AbstractCapability[Any]):
             and isinstance(result.output, str)
             and result.output.strip()
         ):
-            await self.memory.write_text(
+            await _write_turn_text(
+                self.memory,
                 result.output,
                 role=Role.ASSISTANT,
                 speaker=ctx.agent.name if ctx.agent and ctx.agent.name else "assistant",
-                session_id=ctx.conversation_id,
-                thread=ctx.conversation_id,
+                conversation_id=ctx.conversation_id,
                 reference_time=result.response.timestamp,
             )
         return result
@@ -158,7 +201,7 @@ class MemoryCapability(AbstractCapability[Any]):
             """
             with _retryable_arguments():
                 context = await self.memory.search(
-                    query[:_MAX_QUERY_CHARS], budget_tokens=self.budget_tokens
+                    query, budget_tokens=self.budget_tokens
                 )
             return _context_data(context)
 
@@ -184,7 +227,7 @@ class MemoryCapability(AbstractCapability[Any]):
                     else "assistant",
                     session_id=ctx.conversation_id,
                     thread=ctx.conversation_id,
-                    reference_time=datetime.now(UTC),
+                    reference_time=self.clock.now(),
                 )
 
         async def forget(fact_id: str, reason: str = "") -> WriteReceipt:
