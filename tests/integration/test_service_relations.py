@@ -56,6 +56,18 @@ async def test_defaults_load_once_and_relation_updates_follow_ontology(manager):
             ops=[SetModes(relation_mode=Mode.PREFERRED)],
         )
     )
+    with pytest.raises(
+        InvalidArgumentError, match="relation label is not in the ontology"
+    ):
+        await ensure_relation(manager, "Mentors")
+
+    head = await manager.catalog()
+    await manager.apply(
+        ChangeSet(
+            base_version=head.version,
+            ops=[SetModes(relation_mode=Mode.OPEN)],
+        )
+    )
     mentor = await ensure_relation(manager, "Mentors")
     assert mentor.label == "Mentors"
     assert (

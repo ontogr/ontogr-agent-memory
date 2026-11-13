@@ -103,6 +103,7 @@ wheel-test: build
 	uv venv .wheelenv
 	uv pip install --python .wheelenv/bin/python dist/*.whl
 	cd /tmp && "$(CURDIR)/.wheelenv/bin/python" -c "import ontogr_mem, ontogr_mem.consolidation, ontogr_mem.data_models, ontogr_mem.entity_extraction, ontogr_mem.fact_extraction, ontogr_mem.graphstore, ontogr_mem.ingestion, ontogr_mem.llm, ontogr_mem.observability, ontogr_mem.ontology, ontogr_mem.relational_store, ontogr_mem.resolution, ontogr_mem.resilience, ontogr_mem.retrieval, ontogr_mem.service, ontogr_mem.temporal, ontogr_mem.vectorstore; print(ontogr_mem.__version__)"
+	cd /tmp && "$(CURDIR)/.wheelenv/bin/python" -c "from ontogr_mem.mcp_server.skills import SKILLS_ROOT; names = ['memory-write', 'memory-recall']; assert all((SKILLS_ROOT / name / 'SKILL.md').read_text(encoding='utf-8').strip() for name in names), 'packaged skill file is missing or empty'; print('packaged skills ok:', ', '.join(names))"
 
 changelog:
 	@test -n "$(VERSION)" || { echo "Usage: make changelog VERSION=x.y.z"; exit 1; }

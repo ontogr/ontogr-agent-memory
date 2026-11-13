@@ -12,5 +12,30 @@ services:
       timeout: 3s
       retries: 20
 
+  mcp:
+    build: .
+    depends_on:
+      falkordb:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      MEMORY_FALKORDB_HOST: falkordb
+      MEMORY_FALKORDB_PORT: "6379"
+      MEMORY_STATE_SQLITE_PATH: /data/state/agent_memory_state.sqlite3
+      FASTEMBED_CACHE_PATH: /data/models
+      MEMORY_MCP_API_KEY: ${MEMORY_MCP_API_KEY:-}
+      MEMORY_MCP_TOOLS: ${MEMORY_MCP_TOOLS-search_memory,get_entity,get_job,add_memory,write_facts,forget_memory,get_skill}
+      MEMORY_MCP_SKILLS_EXTENSION: ${MEMORY_MCP_SKILLS_EXTENSION:-true}
+      MEMORY_LLM_MODEL: ${MEMORY_LLM_MODEL:-}
+      MEMORY_LLM_BASE_URL: ${MEMORY_LLM_BASE_URL:-}
+      MEMORY_LLM_API_KEY: ${MEMORY_LLM_API_KEY:-}
+    volumes:
+      - mcp-state:/data/state
+      - mcp-model-cache:/data/models
+    stop_grace_period: 5m
+
 volumes:
   falkordb-data:
+  mcp-state:
+  mcp-model-cache:

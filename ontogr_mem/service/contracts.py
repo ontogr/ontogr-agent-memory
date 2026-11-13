@@ -27,7 +27,12 @@ from ontogr_mem.service.errors import (
     PayloadTooLargeError,
     ServiceError,
 )
-from ontogr_mem.service.limits import MAX_CONTENT_BYTES, MAX_RESULTS
+from ontogr_mem.service.limits import (
+    MAX_CONTENT_BYTES,
+    MAX_HOST_FACT_CHARS,
+    MAX_HOST_FACTS,
+    MAX_RESULTS,
+)
 
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -66,6 +71,7 @@ class MemoryKind(StrEnum):
     MESSAGE = "message"
     TEXT = "text"
     FACT = "fact"
+    SOURCED_FACTS = "sourced_facts"
 
 
 class ForgetMode(StrEnum):
@@ -95,18 +101,48 @@ class WriteRequest(ScopedRequest):
     wait_seconds: float = Field(default=0.0, ge=0.0, le=60.0)
 
 
+class HostFact(ContractModel):
+    """A host-extracted link supported by the accompanying source text.
+
+    Every text field holds at most ``MAX_HOST_FACT_CHARS`` characters.
+
+    Attributes:
+        subject: Subject name as written in the source.
+        subject_type: Ontology label for the subject type.
+        relation: Ontology label for the directed relation.
+        object: Object name as written in the source.
+        object_type: Ontology label for the object type.
+        evidence_quote: Verbatim supporting text from this source.
+        statement: Optional sentence expressing the fact.
+        valid_from: Optional UTC start of validity.
+        valid_to: Optional UTC end of validity.
+    """
+
+    subject: str = Field(max_length=MAX_HOST_FACT_CHARS)
+    subject_type: str = Field(max_length=MAX_HOST_FACT_CHARS)
+    relation: str = Field(max_length=MAX_HOST_FACT_CHARS)
+    object: str = Field(max_length=MAX_HOST_FACT_CHARS)
+    object_type: str = Field(max_length=MAX_HOST_FACT_CHARS)
+    evidence_quote: str = Field(max_length=MAX_HOST_FACT_CHARS)
+    statement: str | None = Field(default=None, max_length=MAX_HOST_FACT_CHARS)
+    valid_from: UtcDatetime | None = None
+    valid_to: UtcDatetime | None = None
+
+
 class AddMemory(WriteRequest):
     """Store a fact or extract facts from text.
 
     ``kind`` decides which fields the request needs: free text for message
-    and text, one triple for fact. ``speaker`` is the actor id and display name;
-    ``role`` defaults to ``user``. Content is limited to ``MAX_CONTENT_BYTES``
-    UTF-8 bytes.
+    and text, one triple for fact, and source text plus host facts for
+    sourced_facts. ``speaker`` is the actor id and display name; ``role``
+    defaults to ``user``. Content is limited to ``MAX_CONTENT_BYTES`` UTF-8
+    bytes. A sourced_facts request carries at most ``MAX_HOST_FACTS`` facts.
     """
 
     kind: MemoryKind = MemoryKind.TEXT
     content: str | None = Field(
-        default=None, description="Free text for kind=text|message."
+        default=None,
+        description="Source text for text, message or sourced_facts.",
     )
     subject: str | None = Field(default=None, description="kind=fact: subject name.")
     relation: str | None = Field(
@@ -124,6 +160,14 @@ class AddMemory(WriteRequest):
     single_valued: bool | None = Field(
         default=None,
         description="kind=fact: true when a new object replaces the old.",
+    )
+    facts: list[HostFact] | None = Field(
+        default=None,
+        max_length=MAX_HOST_FACTS,
+        description=(
+            "Host facts for kind=sourced_facts, in input order. "
+            f"At most {MAX_HOST_FACTS} facts."
+        ),
     )
     speaker: str | None = Field(
         default=None,
@@ -170,6 +214,27 @@ class AddMemory(WriteRequest):
                 raise ValueError(msg)
         elif not (self.content and self.content.strip()):
             msg = f"kind={self.kind.value} needs non-empty content"
+            raise ValueError(msg)
+        if self.kind is MemoryKind.SOURCED_FACTS:
+            if self.facts is None:
+                msg = "kind=sourced_facts needs facts"
+                raise ValueError(msg)
+            if any(
+                value is not None
+                for value in (
+                    self.subject,
+                    self.relation,
+                    self.object,
+                    self.statement,
+                    self.valid_from,
+                    self.valid_to,
+                    self.single_valued,
+                )
+            ):
+                msg = "kind=sourced_facts uses facts, not triple fields"
+                raise ValueError(msg)
+        elif self.facts is not None:
+            msg = "facts is only valid for kind=sourced_facts"
             raise ValueError(msg)
         if self.valid_from and self.valid_to and self.valid_to <= self.valid_from:
             msg = "valid_to must be after valid_from"

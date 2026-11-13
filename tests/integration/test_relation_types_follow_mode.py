@@ -123,18 +123,17 @@ class TestRelationTypesFollowMode:
         assert await manager.unmatched() == []
         assert await manager.catalog() == before
 
-    async def test_preferred_keeps_the_fact_untyped_and_replaces_rows(self, world):
+    async def test_preferred_drops_the_fact_and_replaces_review_rows(self, world):
         """The label is recorded per episode; a rerun replaces the episode's rows."""
         manager = await manager_with_mode(world, Mode.PREFERRED)
         view = await manager.extraction_view()
+        mentors_fact = fact(fact_id="f1", relation_label="mentors")
 
-        first = await stabilize_facts(
-            manager, [fact(fact_id="f1", relation_label="mentors")], view
-        )
+        first = await stabilize_facts(manager, [mentors_fact], view)
 
-        assert first.dropped == ()
-        (typed,) = first.typed
-        assert typed.relation_type is None
+        assert first.typed == ()
+        assert first.dropped == (mentors_fact,)
+        assert first.counts == {"unknown_relation": 1}
         assert [
             (row.kind, row.raw_label, row.episode_id)
             for row in await manager.unmatched()

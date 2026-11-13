@@ -39,7 +39,7 @@ from ontogr_mem.llm import LLMConfig, ModelRole, RoleModels, build_models
 from ontogr_mem.relational_store.config import StateSettings
 from ontogr_mem.relational_store.jobs.errors import EphemeralStateError
 from ontogr_mem.service.bootstrap import ServiceSettings
-from ontogr_mem.service.contracts import ForgetMode
+from ontogr_mem.service.contracts import ForgetMode, HostFact
 from ontogr_mem.service.errors import (
     ConflictError,
     InvalidArgumentError,
@@ -931,5 +931,535 @@ class TestMemoryClient:
                     pass
 
             assert fake_embedding_client.close_count == 1
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+
+class TestWriteFacts:
+    """Keyless fact writes store the source text and only grounded facts."""
+
+    async def test_valid_fact_is_stored_and_searchable(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """A grounded fact is stored and searchable, and its source is kept."""
+        tenant = new_tenant()
+        source = "Ana works at Acme."
+        try:
+            async with open_memory(tenant) as memory:
+                receipt = await memory.write_facts(
+                    source,
+                    [
+                        HostFact(
+                            subject="Ana",
+                            subject_type="Person",
+                            relation="WORKS_AT",
+                            object="Acme",
+                            object_type="Organization",
+                            evidence_quote="Ana works at Acme",
+                        )
+                    ],
+                    role=Role.USER,
+                )
+                await memory.drain()
+
+                job = await memory.get_job(receipt.job_id)
+                assert job.status is JobState.DONE
+                assert job.error is None
+                assert job.result is not None
+                assert len(job.result["fact_ids"]) == 1
+                assert job.result["dropped"] == []
+
+                context = await memory.search("Where does Ana work?")
+                matches = [
+                    fact
+                    for fact in context.facts
+                    if fact.subject.name == "Ana" and fact.object.name == "Acme"
+                ]
+                assert len(matches) == 1
+
+                episode, _ = await _stored_episode(
+                    falkordb_store, tenant, job.result["episode_id"]
+                )
+                assert episode.content == source
+                assert episode.kind is Kind.DOCUMENT
+                assert episode.actor.role is Role.USER
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_source_text_is_kept_verbatim_not_rebuilt_from_the_fact(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """The stored Episode holds the whole source text, not the fact alone."""
+        tenant = new_tenant()
+        source = (
+            "Ana joined the data team in May. Ana works at Acme. "
+            "She leads the analytics group."
+        )
+        try:
+            async with open_memory(tenant) as memory:
+                receipt = await memory.write_facts(
+                    source,
+                    [
+                        HostFact(
+                            subject="Ana",
+                            subject_type="Person",
+                            relation="WORKS_AT",
+                            object="Acme",
+                            object_type="Organization",
+                            evidence_quote="Ana works at Acme",
+                        )
+                    ],
+                )
+                await memory.drain()
+
+                job = await memory.get_job(receipt.job_id)
+                assert job.status is JobState.DONE
+                assert job.result is not None
+
+                episode, _ = await _stored_episode(
+                    falkordb_store, tenant, job.result["episode_id"]
+                )
+                assert episode.content == source
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_mixed_validity_reports_original_indices(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """Valid facts are stored and each dropped fact keeps its input index."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant) as memory:
+                receipt = await memory.write_facts(
+                    "Ana works at Acme.",
+                    [
+                        HostFact(
+                            subject="Ana",
+                            subject_type="Person",
+                            relation="WORKS_AT",
+                            object="Acme",
+                            object_type="Organization",
+                            evidence_quote="Ana works at Acme",
+                        ),
+                        HostFact(
+                            subject="Ana",
+                            subject_type="Person",
+                            relation="WORKS_AT",
+                            object="Acme",
+                            object_type="Organization",
+                            evidence_quote="Ana runs Acme",
+                        ),
+                        HostFact(
+                            subject="Ana",
+                            subject_type="Person",
+                            relation="WORKS_AT",
+                            object="",
+                            object_type="Organization",
+                            evidence_quote="Ana works at Acme",
+                        ),
+                    ],
+                )
+                await memory.drain()
+
+                job = await memory.get_job(receipt.job_id)
+                assert job.status is JobState.DONE
+                assert job.result is not None
+                assert len(job.result["fact_ids"]) == 1
+                assert job.result["dropped"] == [
+                    {
+                        "index": 1,
+                        "reason": "ungrounded",
+                        "detail": "quote not found in episode",
+                    },
+                    {"index": 2, "reason": "missing_field", "detail": "object"},
+                ]
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_all_invalid_facts_keep_the_source_episode(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """When every fact is dropped, the source Episode is still stored."""
+        tenant = new_tenant()
+        source = "Ana works at Acme."
+        try:
+            async with open_memory(tenant) as memory:
+                receipt = await memory.write_facts(
+                    source,
+                    [
+                        HostFact(
+                            subject="Ana",
+                            subject_type="Person",
+                            relation="WORKS_AT",
+                            object="Acme",
+                            object_type="Organization",
+                            evidence_quote="Ana runs Acme",
+                        ),
+                        HostFact(
+                            subject="Ana",
+                            subject_type="Person",
+                            relation="WORKS_AT",
+                            object="",
+                            object_type="Organization",
+                            evidence_quote="Ana works at Acme",
+                        ),
+                    ],
+                )
+                await memory.drain()
+
+                job = await memory.get_job(receipt.job_id)
+                assert job.status is JobState.DONE
+                assert job.result is not None
+                assert job.result["fact_ids"] == []
+                assert [
+                    (drop["index"], drop["reason"]) for drop in job.result["dropped"]
+                ] == [(0, "ungrounded"), (1, "missing_field")]
+
+                episode, _ = await _stored_episode(
+                    falkordb_store, tenant, job.result["episode_id"]
+                )
+                assert episode.content == source
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_empty_facts_store_only_the_source_episode(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """An empty fact list stores the source Episode and no facts."""
+        tenant = new_tenant()
+        source = "Ana works at Acme."
+        try:
+            async with open_memory(tenant) as memory:
+                receipt = await memory.write_facts(source, [])
+                await memory.drain()
+
+                job = await memory.get_job(receipt.job_id)
+                assert job.status is JobState.DONE
+                assert job.result is not None
+                assert job.result["fact_ids"] == []
+                assert job.result["dropped"] == []
+
+                episode, _ = await _stored_episode(
+                    falkordb_store, tenant, job.result["episode_id"]
+                )
+                assert episode.content == source
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_same_idempotency_key_replays_the_job_and_adds_no_second_mention(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """A repeated key replays the first job and links Ana to one mention."""
+        tenant = new_tenant()
+        source = "Ana works at Acme."
+        facts = [
+            HostFact(
+                subject="Ana",
+                subject_type="Person",
+                relation="WORKS_AT",
+                object="Acme",
+                object_type="Organization",
+                evidence_quote="Ana works at Acme",
+            )
+        ]
+        try:
+            async with open_memory(tenant) as memory:
+                first = await memory.write_facts(
+                    source, facts, idempotency_key="ana-works-at-acme"
+                )
+                second = await memory.write_facts(
+                    source, facts, idempotency_key="ana-works-at-acme"
+                )
+                assert first.idempotent_replay is False
+                assert second.job_id == first.job_id
+                assert second.idempotent_replay is True
+                await memory.drain()
+
+                stores = await GraphBackend(
+                    store=falkordb_store, name="falkordb"
+                ).stores_for(tenant)
+                assert len(await stores.episodes.list_episodes(limit=10)) == 1
+                entities = [
+                    entity
+                    for entity in await stores.resolver_store.active_entities()
+                    if entity.canonical_name == "Ana"
+                ]
+                assert len(entities) == 1
+                mentions = await stores.resolver_store.mentions_of(
+                    entities[0].entity_id
+                )
+                assert len(mentions) == 1
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_wrong_direction_is_dropped(self, falkordb_store: FalkorDBGraphStore):
+        """A WORKS_AT fact with its endpoints swapped is dropped as wrong_direction."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant) as memory:
+                receipt = await memory.write_facts(
+                    "Ana works at Acme.",
+                    [
+                        HostFact(
+                            subject="Acme",
+                            subject_type="Organization",
+                            relation="WORKS_AT",
+                            object="Ana",
+                            object_type="Person",
+                            evidence_quote="Ana works at Acme",
+                        )
+                    ],
+                )
+                await memory.drain()
+
+                job = await memory.get_job(receipt.job_id)
+                assert job.status is JobState.DONE
+                assert job.result is not None
+                assert job.result["fact_ids"] == []
+                assert [
+                    (drop["index"], drop["reason"]) for drop in job.result["dropped"]
+                ] == [(0, "wrong_direction")]
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_self_relation_is_dropped(self, falkordb_store: FalkorDBGraphStore):
+        """A relation from an entity to itself is dropped as self_relation."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant) as memory:
+                receipt = await memory.write_facts(
+                    "Ana knows herself.",
+                    [
+                        HostFact(
+                            subject="Ana",
+                            subject_type="Person",
+                            relation="KNOWS",
+                            object="Ana",
+                            object_type="Person",
+                            evidence_quote="Ana knows herself",
+                        )
+                    ],
+                )
+                await memory.drain()
+
+                job = await memory.get_job(receipt.job_id)
+                assert job.status is JobState.DONE
+                assert job.result is not None
+                assert job.result["fact_ids"] == []
+                assert [
+                    (drop["index"], drop["reason"]) for drop in job.result["dropped"]
+                ] == [(0, "self_relation")]
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_inverted_time_window_is_dropped(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """A fact whose valid_from is after valid_to is dropped as time_order."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant) as memory:
+                receipt = await memory.write_facts(
+                    "Ana works at Acme.",
+                    [
+                        HostFact(
+                            subject="Ana",
+                            subject_type="Person",
+                            relation="WORKS_AT",
+                            object="Acme",
+                            object_type="Organization",
+                            evidence_quote="Ana works at Acme",
+                            valid_from=datetime(2024, 6, 1, tzinfo=UTC),
+                            valid_to=datetime(2024, 1, 1, tzinfo=UTC),
+                        )
+                    ],
+                )
+                await memory.drain()
+
+                job = await memory.get_job(receipt.job_id)
+                assert job.status is JobState.DONE
+                assert job.result is not None
+                assert job.result["fact_ids"] == []
+                assert [
+                    (drop["index"], drop["reason"]) for drop in job.result["dropped"]
+                ] == [(0, "time_order")]
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_duplicate_facts_are_merged(self, falkordb_store: FalkorDBGraphStore):
+        """A repeated fact in one write is stored once and reported as merged."""
+        tenant = new_tenant()
+        fact = HostFact(
+            subject="Ana",
+            subject_type="Person",
+            relation="WORKS_AT",
+            object="Acme",
+            object_type="Organization",
+            evidence_quote="Ana works at Acme",
+        )
+        try:
+            async with open_memory(tenant) as memory:
+                receipt = await memory.write_facts("Ana works at Acme.", [fact, fact])
+                await memory.drain()
+
+                job = await memory.get_job(receipt.job_id)
+                assert job.status is JobState.DONE
+                assert job.result is not None
+                assert len(job.result["fact_ids"]) == 1
+                assert [
+                    (drop["index"], drop["reason"]) for drop in job.result["dropped"]
+                ] == [(1, "duplicate_merged")]
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_quote_from_another_episode_is_ungrounded(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """A quote that appears only in an earlier episode does not ground a fact."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant) as memory:
+                first = await memory.write_facts(
+                    "Ana works at Acme.",
+                    [
+                        HostFact(
+                            subject="Ana",
+                            subject_type="Person",
+                            relation="WORKS_AT",
+                            object="Acme",
+                            object_type="Organization",
+                            evidence_quote="Ana works at Acme",
+                        )
+                    ],
+                )
+                await memory.drain()
+                first_job = await memory.get_job(first.job_id)
+                assert first_job.result is not None
+                assert len(first_job.result["fact_ids"]) == 1
+
+                second = await memory.write_facts(
+                    "The weather is mild.",
+                    [
+                        HostFact(
+                            subject="Ana",
+                            subject_type="Person",
+                            relation="WORKS_AT",
+                            object="Acme",
+                            object_type="Organization",
+                            evidence_quote="Ana works at Acme",
+                        )
+                    ],
+                )
+                await memory.drain()
+
+                job = await memory.get_job(second.job_id)
+                assert job.status is JobState.DONE
+                assert job.result is not None
+                assert job.result["fact_ids"] == []
+                assert [
+                    (drop["index"], drop["reason"]) for drop in job.result["dropped"]
+                ] == [(0, "ungrounded")]
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_unknown_relation_is_dropped_and_not_declared(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """A relation outside the ontology is dropped and never stored."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant) as memory:
+                receipt = await memory.write_facts(
+                    "Ana mentors Ben.",
+                    [
+                        HostFact(
+                            subject="Ana",
+                            subject_type="Person",
+                            relation="MENTORS",
+                            object="Ben",
+                            object_type="Person",
+                            evidence_quote="Ana mentors Ben",
+                        )
+                    ],
+                )
+                await memory.drain()
+
+                job = await memory.get_job(receipt.job_id)
+                assert job.status is JobState.DONE
+                assert job.result is not None
+                assert job.result["fact_ids"] == []
+                assert [
+                    (drop["index"], drop["reason"]) for drop in job.result["dropped"]
+                ] == [(0, "unknown_relation")]
+
+                context = await memory.search("mentor")
+                assert context.facts == []
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_unknown_entity_type_keeps_the_fact_with_an_unknown_endpoint(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """A fact with an undeclared entity type is stored, not dropped."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant) as memory:
+                receipt = await memory.write_facts(
+                    "Voyager is related to Acme.",
+                    [
+                        HostFact(
+                            subject="Voyager",
+                            subject_type="Spaceship",
+                            relation="RELATED_TO",
+                            object="Acme",
+                            object_type="Organization",
+                            evidence_quote="Voyager is related to Acme",
+                        )
+                    ],
+                )
+                await memory.drain()
+
+                job = await memory.get_job(receipt.job_id)
+                assert job.status is JobState.DONE
+                assert job.result is not None
+                assert len(job.result["fact_ids"]) == 1
+                assert job.result["dropped"] == []
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_keyless_write_never_calls_a_model(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """A keyless fact write stores the fact without calling any model."""
+        tenant = new_tenant()
+
+        def refuse(call: ScriptedCall) -> object:
+            """Fail the test if the write reaches a model."""
+            raise AssertionError("keyless write called a model")
+
+        model, recorded = scripted_model(answer=refuse)
+        try:
+            async with open_memory(
+                tenant, models=scripted_role_models(model)
+            ) as memory:
+                receipt = await memory.write_facts(
+                    "Ana works at Acme.",
+                    [
+                        HostFact(
+                            subject="Ana",
+                            subject_type="Person",
+                            relation="WORKS_AT",
+                            object="Acme",
+                            object_type="Organization",
+                            evidence_quote="Ana works at Acme",
+                        )
+                    ],
+                )
+                await memory.drain()
+
+                job = await memory.get_job(receipt.job_id)
+                assert job.status is JobState.DONE
+                assert job.error is None
+                assert recorded.calls == []
         finally:
             await falkordb_store.erase_tenant(tenant)

@@ -56,6 +56,7 @@ spacy = ["spacy>=3.7"]
 yaml = ["pyyaml>=6"]
 otel = ["opentelemetry-api>=1.30"]
 fastembed = ["fastembed>=0.9.0"]
+mcp = ["fastmcp>=4.1.8"]
 
 [project.urls]
 Homepage = "https://github.com/ontogr/ontogr-agent-memory"

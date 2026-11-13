@@ -58,6 +58,7 @@ class TestMain:
         [
             pytest.param(["--help"], "chat", id="top-level"),
             pytest.param(["chat", "--help"], "--tenant", id="chat"),
+            pytest.param(["--help"], "mcp", id="top-level-names-mcp"),
         ],
     )
     def test_help_prints_usage_and_exits_with_status_zero(
@@ -69,6 +70,15 @@ class TestMain:
 
         assert excinfo.value.code == 0
         assert expected_text in capsys.readouterr().out
+
+    @pytest.mark.parametrize("flag", ["--transport", "--host", "--port", "--tenant"])
+    def test_mcp_help_names_each_flag(self, capsys, flag):
+        """The mcp subcommand help lists its flags and exits with status zero."""
+        with pytest.raises(SystemExit) as excinfo:
+            main(["mcp", "--help"])
+
+        assert excinfo.value.code == 0
+        assert flag in capsys.readouterr().out
 
     def test_missing_subcommand_exits_with_status_two(self):
         """A command line without the chat subcommand is a usage error."""
@@ -159,7 +169,7 @@ class TestMain:
             ),
             pytest.param(
                 RuntimeError("sentinel-secret-value"),
-                "Chat failed; check the model endpoint and memory services.",
+                "Command failed; check the model endpoint and memory services.",
                 id="unexpected-error",
             ),
         ],

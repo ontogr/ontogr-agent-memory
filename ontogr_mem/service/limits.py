@@ -11,6 +11,12 @@ from ontogr_mem.service.errors import RateLimitedError
 MAX_CONTENT_BYTES: Final = 64 * 1024
 """Most UTF-8 bytes one content field may hold."""
 
+MAX_HOST_FACTS: Final = 1000
+"""Most host facts one sourced_facts request may carry."""
+
+MAX_HOST_FACT_CHARS: Final = 4096
+"""Most characters one text field of a host fact may hold."""
+
 MAX_RESULTS: Final = 100
 """Most results a read request may ask for."""
 

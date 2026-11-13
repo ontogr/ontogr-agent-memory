@@ -94,9 +94,9 @@ async def stabilize_facts(
     """Map each fact's relation to a stable type id under the ontology mode.
 
     A dense id is mapped through `view`. A free-text label is resolved by the
-    manager in one validation pass per episode, so preferred mode records the
-    unmatched label and open mode registers it. In strict mode a fact with an
-    unknown label is dropped.
+    manager in one validation pass per episode. A label without a stable type
+    is dropped in strict and preferred mode, and preferred mode also records it
+    as an unmatched row for review. Open mode registers the label instead.
 
     Args:
         manager: The ontology manager that resolves labels and records rows.
@@ -145,7 +145,7 @@ async def stabilize_facts(
             Context(episode_id),
         )
         for (index, fact), verdict in zip(group, report.relations, strict=True):
-            if not verdict.kept:
+            if not verdict.kept or verdict.type_id is None:
                 dropped_at.add(index)
                 counts[_UNKNOWN_RELATION] += 1
             else:

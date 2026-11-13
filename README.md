@@ -399,7 +399,112 @@ You need Python 3.11 or newer, Docker with Compose, and a model endpoint with an
 
 5. Each completed Turn queues the user message and final assistant reply as separate Episodes. Extraction runs in the background. A search may report `indexing` before those Jobs finish. Exit waits up to 30 seconds for queued work, and a slow model can need longer. Another Ctrl-C stops waiting; unfinished Jobs resume when the same state store opens again. A Job that stopped after its entities were resolved can fail when it resumes, so its facts may be missing. A failed answer does not queue automatic Turn Episodes. Explicit remember and forget operations that the model already requested are separate operations.
 
-### 2. Use memory from Python
+### 2. Use memory over MCP
+
+`ontogr-mem mcp` serves memory over the Model Context Protocol (MCP). A host is the application that connects to the server on behalf of a model, such as a coding agent. One server process serves one tenant. The tenant comes from `MEMORY_MCP_TENANT` or `--tenant`, and every call uses a fixed local caller. No tool accepts a tenant or a caller argument.
+
+The server uses stdio by default. Pass `--transport http` to serve Streamable HTTP at `/mcp`. Run the server directly only to test it, because a host normally starts the stdio process itself.
+
+Install the package and start the graph, then run the server:
+
+```bash
+uv add "ontogr-mem[falkordb,fastembed,mcp]"
+docker compose up -d --wait falkordb
+uv run ontogr-mem mcp
+# Or, in a separate terminal:
+uv run ontogr-mem mcp --transport http --host 127.0.0.1 --port 8000
+# Container alternative, with state and model-cache volumes:
+docker compose up -d --build mcp
+```
+
+`docker compose up -d --wait falkordb` runs from a clone or a copy of `compose.yaml`, as the earlier sections explain. The container serves HTTP at `http://127.0.0.1:8000/mcp`, and Compose publishes that port on host loopback only. The image sets `MEMORY_MCP_TRANSPORT`, `MEMORY_MCP_HOST` and `MEMORY_MCP_PORT` to `http`, `0.0.0.0` and `8000`, and environment variables or Compose can override them. The image binds all container interfaces and the server only warns when no key is set, so set `MEMORY_MCP_API_KEY` before publishing the port beyond host loopback or sharing the container network.
+
+Connect a host with one of these snippets. They assume `ontogr-mem` is on the host's PATH, for example after `uv tool install "ontogr-mem[falkordb,fastembed,mcp]"`. Inside a uv project, prefix the command with `uv run`.
+
+```bash
+claude mcp add --transport stdio memory -- ontogr-mem mcp
+claude mcp add --transport http memory http://127.0.0.1:8000/mcp
+```
+
+OpenCode local:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "memory": {
+      "type": "local",
+      "command": ["ontogr-mem", "mcp"],
+      "environment": {"PYDANTIC_AI_NO_BANNER": "1"}
+    }
+  }
+}
+```
+
+OpenCode HTTP, instead of the local entry:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "memory": {
+      "type": "remote",
+      "url": "http://127.0.0.1:8000/mcp"
+    }
+  }
+}
+```
+
+The four snippets do not change between server modes. The server has two modes.
+
+- **Keyless mode** needs no language model on the server. Run the server where no global or role-specific model is configured. Removing only `MEMORY_LLM_API_KEY` does not disable a configured model.
+- **Model mode** lets the server extract facts from text. Set `MEMORY_LLM_MODEL`, `MEMORY_LLM_BASE_URL` and the key in the environment, or in the server working directory's `.env`, before the process starts. Use a model key for these settings. Never copy a host subscription token into them.
+
+Keyless mode works as follows. The host's model extracts the facts and calls `write_facts` with the source text and the facts. A `write_facts` request carries at most 1000 facts, and each text field of a fact holds at most 4096 characters. The service stores the exact source text as one Episode, checks every quote and name against that text, applies the ontology rules, and stores the valid facts. The server's model settings are independent of the host's subscription.
+
+`add_memory` is listed only in model mode, when both extraction roles (`ENTITY_EXTRACTION` and `FACT_EXTRACTION`) have models. It extracts entities and facts from plain text on the server.
+
+The bearer key `MEMORY_MCP_API_KEY` authenticates HTTP requests. It is not a model key, and it does not protect stdio. Stdio access means access to the launched process, so it is not a tenant authorization mechanism. Set the key through the host's documented bearer header mechanism. The snippets above do not include it.
+
+The local embedder loads its model while the server process starts, before the server answers any request. On a fresh install it first downloads the model, about 190 MB, into `FASTEMBED_CACHE_PATH`, so startup can take half a minute or more. A host that launches the stdio server may need a longer startup timeout, or you can start the server once beforehand so the model is already cached.
+
+The server registers these tools:
+
+- `search_memory`
+- `get_entity`
+- `get_job`
+- `write_facts`
+- `forget_memory`
+- `get_skill`
+- `add_memory`, only in model mode
+
+`MEMORY_MCP_TOOLS` can only remove tools. It cannot enable `add_memory` or any administrative operation. The server has no hard delete, clear, export or ontology tool. `forget_memory` closes a fact's validity and keeps its history. It does not erase the source.
+
+Writes are queued. The receipt names a job, so call `get_job` until its status is terminal. A finished `write_facts` result has `fact_ids` and `dropped`. Each `dropped` entry has an `index`, a `reason` and a `detail`. The `index` is the zero-based position in the submitted facts. The reasons are `missing_field`, `ungrounded`, `ambiguous_entity_ref`, `unknown_relation`, `unknown_entity_type`, `wrong_direction`, `self_relation`, the time reasons (for example `time_order`) and `duplicate_merged`. The source Episode is kept even when every fact is dropped.
+
+The tenant's ontology modes decide what happens to an unknown relation or entity type, and each kind has its own mode. A tenant that loaded the default catalog is strict for relations and preferred for entity types. In strict mode the fact is dropped and nothing is recorded. In preferred mode a relation label is recorded for review and the fact is dropped, while an unknown entity type is recorded for review and the entity is kept with an Unknown type. In open mode the label is registered and the fact is stored. Set the relation mode to preferred to collect review rows for unknown relations.
+
+The package ships two skills, `memory-write` and `memory-recall`. Call `get_skill` with either name to read its text. A host that supports the experimental skills extension also lists them. A host does not need that extension.
+
+The default HTTP setup is safe for a single machine only. A bind outside loopback without a key logs a warning and still starts. Compose publishes the port on host loopback, and the network is not authentication.
+
+Set the server with these `MEMORY_MCP_*` variables. The CLI flags `--transport`, `--host`, `--port` and `--tenant` override the environment. No flag sets the key.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `MEMORY_MCP_TRANSPORT` | `stdio` | Transport, `stdio` or `http`. |
+| `MEMORY_MCP_HOST` | `127.0.0.1` | Interface the HTTP transport binds to. |
+| `MEMORY_MCP_PORT` | `8000` | Port the HTTP transport binds to. |
+| `MEMORY_MCP_TENANT` | `default` | Tenant the server reads and writes. |
+| `MEMORY_MCP_API_KEY` | Unset | Bearer key for HTTP clients. A blank value counts as unset. |
+| `MEMORY_MCP_TOOLS` | All tools | Comma list of tools to register. An empty value removes every tool. An unknown name is an error. |
+| `MEMORY_MCP_SKILLS_EXTENSION` | `true` | Whether the server advertises the skills extension. |
+
+To narrow the tools, set `MEMORY_MCP_TOOLS=search_memory,get_entity,get_job,get_skill`.
+
+Compose stops the MCP service with a grace period of five minutes. Unfinished jobs resume on the next start. Keep one MCP process per state volume.
+
+### 3. Use memory from Python
 
 The package installs as `ontogr-mem` and imports as `ontogr_mem`.
 
@@ -470,7 +575,7 @@ A receipt can be `queued`, `running`, `done` or `failed`. `wait_seconds` waits a
 
 `Memory.open` owns only the models and embedder that it creates. To inject a PydanticAI model object or model string, use `build_models` with per-Model-role overrides, then pass its `RoleModels` to `Memory.open(models=...)`. The caller closes injected `RoleModels` and injected embedders after their last use.
 
-### 3. Add memory to your own agent
+### 4. Add memory to your own agent
 
 `MemoryCapability` gives any PydanticAI agent persistent memory. It needs an open `Memory` client and no Tenant or Principal in your agent's dependencies.
 
@@ -529,7 +634,7 @@ A receipt from `remember` or `forget` confirms that a Job was queued, not that e
 
 To evaluate answers over a fixed history, follow these steps. First, ingest the history directly through the `Memory` client with the original roles, speakers and timestamps. Second, wait for the ingestion Jobs to finish. Third, answer with the default agent built from `MemoryCapability(memory, inject=True, tools=(), write=False)` and your own answer instructions. `MemoryCapability` has no setting that overrides the current time for retrieval.
 
-### 4. Move to durable storage
+### 5. Move to durable storage
 
 The example above already uses FalkorDB for the graph and SQLite for state. The matching environment variables are:
 
@@ -633,6 +738,7 @@ A read does not create a job. A search that finds nothing reports an `indexing` 
 | `invalidate` | forget | Closes one current fact and keeps its history. |
 | `consolidate_memory` | write | Queues a consolidation run. |
 | `memory_feedback` | write | Records a rating on an entity or a fact. |
+| `write_facts` | write | `Memory` client method. Queues source text with facts the caller extracted. It needs no model. |
 
 ### Read verbs
 
