@@ -12,6 +12,10 @@ from uuid import uuid4
 
 import pytest
 
+from ontogr_mem.consolidation.agents import (
+    COMMUNITY_DESCRIPTION_SYSTEM,
+    COMMUNITY_SYSTEM,
+)
 from ontogr_mem.consolidation.archive import archive_item
 from ontogr_mem.consolidation.config import CommunitySettings, ConsolidationSettings
 from ontogr_mem.consolidation.models import (
@@ -27,23 +31,30 @@ from ontogr_mem.consolidation.stages.communities import CommunitiesStage
 from ontogr_mem.consolidation.stages.ingest_cleanup import IngestCleanupStage
 from ontogr_mem.data_models.facts import Precision, TimeBasis
 from ontogr_mem.data_models.observation import Observation, ObservationKind
-from ontogr_mem.llm import LLMClient, LLMGate
-from ontogr_mem.llm.errors import LLMCallError
+from ontogr_mem.llm import ModelCallFailedError, RoleModels
 from tests.support.consolidation import ConsWorld, new_world
 from tests.support.graph_backend import GraphBackend
-from tests.support.llm import ScriptedLLM
+from tests.support.scripted_model import (
+    Scripted,
+    ScriptedCall,
+    scripted_model,
+    scripted_role_models,
+)
 
 
-def merged_llm() -> ScriptedLLM:
-    """Return a model that answers every summary and description request."""
-    return ScriptedLLM(
-        answer=lambda _: {"summary": "Merged.", "description": "A group."}
-    )
+def _answer(call: ScriptedCall) -> dict[str, str]:
+    """Return typed outputs for community summaries and descriptions."""
+    if call.system == COMMUNITY_SYSTEM:
+        return {"summary": "Merged."}
+    if call.system == COMMUNITY_DESCRIPTION_SYSTEM:
+        return {"description": "A group."}
+    raise AssertionError(f"unexpected agent instructions: {call.system}")
 
 
-def _gate(llm: LLMClient) -> LLMGate:
-    """Build a gate around a client."""
-    return LLMGate(llm, max_input_tokens=10_000)
+def merged_models() -> tuple[RoleModels, Scripted]:
+    """Build a consolidation model for summary and description requests."""
+    model, calls = scripted_model(answer=_answer)
+    return scripted_role_models(consolidation=model), calls
 
 
 def _calls(result: StageResult) -> int:
@@ -51,29 +62,29 @@ def _calls(result: StageResult) -> int:
     return sum(bucket.calls for bucket in result.usage.buckets.values())
 
 
-def runner_for(world: ConsWorld, llm: LLMClient | None) -> ConsolidationRunner:
+def runner_for(world: ConsWorld, models: RoleModels) -> ConsolidationRunner:
     """Run the communities stage after the fatal cleanup stage."""
     return ConsolidationRunner(
         [IngestCleanupStage(), CommunitiesStage()],
         world.store,
         world.clock,
         world.settings,
+        models=models,
         resolution=world.resolution,
         temporal=world.temporal,
-        llm=_gate(llm) if llm is not None else None,
     )
 
 
-def stage_context(world: ConsWorld, llm: LLMClient | None) -> StageContext:
+def stage_context(world: ConsWorld, models: RoleModels) -> StageContext:
     """Build a stage context over the world with the given model."""
     return StageContext(
         run_id="r1",
         clock=world.clock,
         store=world.store,
         settings=world.settings,
+        models=models,
         resolution=world.resolution,
         temporal=world.temporal,
-        llm=_gate(llm) if llm is not None else None,
     )
 
 
@@ -139,7 +150,8 @@ async def test_two_clusters_become_summarised_communities_under_one_bucket(
     )
     await two_clusters(world)
 
-    result = await runner_for(world, merged_llm()).run()
+    models, _ = merged_models()
+    result = await runner_for(world, models).run()
 
     communities = await stored_communities(world)
     assert sorted(c.member_ids for c in communities) == [
@@ -158,19 +170,19 @@ async def test_second_build_with_unchanged_content_makes_no_model_call(
     graph_backend: GraphBackend,
 ) -> None:
     """Rebuilding unchanged communities makes no model call and changes nothing."""
-    llm = merged_llm()
+    models, calls = merged_models()
     world = await new_world(
         graph_backend,
     )
     await two_clusters(world)
-    await CommunitiesStage().run(stage_context(world, llm))
+    await CommunitiesStage().run(stage_context(world, models))
     communities = await stored_communities(world)
     buckets = await world.store.list(Bucket)
-    calls_after_first_build = len(llm.requests)
+    calls_after_first_build = len(calls.calls)
 
-    result = await CommunitiesStage().run(stage_context(world, llm))
+    result = await CommunitiesStage().run(stage_context(world, models))
 
-    assert len(llm.requests) == calls_after_first_build
+    assert len(calls.calls) == calls_after_first_build
     assert _calls(result) == 0
     assert result.status is StageStatus.OK
     assert await stored_communities(world) == communities
@@ -181,19 +193,19 @@ async def test_unchanged_graph_is_skipped_by_the_fingerprint(
     graph_backend: GraphBackend,
 ) -> None:
     """A second run over an unchanged graph is skipped and calls no model."""
-    llm = merged_llm()
+    models, calls = merged_models()
     world = await new_world(
         graph_backend,
     )
     await two_clusters(world)
-    runner = runner_for(world, llm)
+    runner = runner_for(world, models)
     await runner.run()
-    calls_after_first_run = len(llm.requests)
+    calls_after_first_run = len(calls.calls)
 
     result = await runner.run()
 
     assert result.stage("communities").status is StageStatus.SKIPPED
-    assert len(llm.requests) == calls_after_first_run
+    assert len(calls.calls) == calls_after_first_run
 
 
 async def test_without_a_model_communities_are_stored_unbuilt_with_a_note(
@@ -205,11 +217,13 @@ async def test_without_a_model_communities_are_stored_unbuilt_with_a_note(
     )
     await two_clusters(world)
 
-    result = await runner_for(world, llm=None).run()
+    result = await runner_for(world, scripted_role_models()).run()
 
     stage = result.stage("communities")
     assert stage.status is StageStatus.PARTIAL
-    assert stage.notes == ["no llm: communities stored without summaries"]
+    assert stage.notes == [
+        "no consolidation model configured: communities stored without summaries"
+    ]
     communities = await stored_communities(world)
     assert sorted(c.member_ids for c in communities) == [
         ["a", "b", "c"],
@@ -228,7 +242,8 @@ async def test_more_communities_than_a_bucket_holds_build_a_second_level(
     await add_triangle(world, "def")
     await add_triangle(world, "ghi")
 
-    await runner_for(world, merged_llm()).run()
+    models, _ = merged_models()
+    await runner_for(world, models).run()
 
     buckets = await world.store.list(Bucket)
     root = max(buckets, key=lambda b: b.level)
@@ -239,7 +254,7 @@ async def test_more_communities_than_a_bucket_holds_build_a_second_level(
 
 @pytest.mark.parametrize(
     "outage",
-    [LLMCallError("model is down"), "this is prose, not json"],
+    [ModelCallFailedError("model is down"), "this is prose, not json"],
     ids=["call_fails", "malformed_answer"],
 )
 async def test_failed_build_leaves_the_community_unbuilt_and_retries(
@@ -252,14 +267,16 @@ async def test_failed_build_leaves_the_community_unbuilt_and_retries(
     )
     await two_clusters(world)
 
-    failed = await runner_for(world, ScriptedLLM(answer=lambda _: outage)).run()
+    model, _ = scripted_model(answer=lambda _: outage)
+    failed = await runner_for(world, scripted_role_models(consolidation=model)).run()
 
     assert failed.status is RunStatus.PARTIAL
     assert failed.stage("communities").status is StageStatus.PARTIAL
     assert failed.stage("communities").errors
     assert all(c.summary == "" for c in await stored_communities(world))
 
-    retried = await runner_for(world, merged_llm()).run()
+    models, _ = merged_models()
+    retried = await runner_for(world, models).run()
 
     assert retried.stage("communities").status is StageStatus.OK
     assert all(c.summary == "Merged." for c in await stored_communities(world))
@@ -273,9 +290,10 @@ async def test_communities_whose_members_vanished_are_deleted(
         graph_backend,
     )
     await two_clusters(world)
-    runner = runner_for(world, merged_llm())
+    models, _ = merged_models()
+    runner = runner_for(world, models)
     await runner.run()
-    ctx = stage_context(world, merged_llm())
+    ctx = stage_context(world, models)
     for entity_id in "xyz":
         await archive_item(ctx, entity_id, "entity", "gone")
 

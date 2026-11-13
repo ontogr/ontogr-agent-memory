@@ -1,34 +1,41 @@
-"""The model judge: fenced prompts, strict parsing and two passes.
+"""The typed model judge and its two-pass contradiction check.
 
 The judge gives one answer per pair: contradicts, compatible, refines,
 duplicate, unrelated or uncertain. A contradiction that would change state needs
 a second pass with the sides swapped, which must agree with a confidence at or
 above the floor. Otherwise the pair is stored as uncertain, a visible review
-item and not a dropped one. A failed pair is counted and asked again later. It
-is never recorded as "no contradiction".
+item and not a dropped one. A failed pair is counted, never recorded as "no
+contradiction".
 
-The model is any ``LLMClient`` behind an ``LLMGate``, so this module never
-imports a provider. The prompt it sends lives in
-``ontogr_mem.temporal.prompt``, the answers it reads in
-``ontogr_mem.temporal.answers`` and the pairs it judges in
-``ontogr_mem.temporal.pairs``.
+The prompt lives in ``ontogr_mem.temporal.prompt`` and the typed output in
+``ontogr_mem.temporal.judge_agent``. Pair membership remains a domain check here.
 """
 
 import asyncio
+import re
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol
 
-from ontogr_mem.llm import LLMError, LLMGate, LLMRequest, estimate_tokens
-from ontogr_mem.temporal.answers import Answer, parse_answers, unswap
+from ontogr_mem.llm import (
+    ModelFailure,
+    ModelOutputError,
+    ModelRole,
+    RoleModels,
+    TokenUsage,
+    run_agent,
+)
+from ontogr_mem.llm.tokens import estimate_tokens
+from ontogr_mem.temporal.answers import Answer, unswap
+from ontogr_mem.temporal.judge_agent import judge_agent
 from ontogr_mem.temporal.pairs import (  # noqa: F401
     JudgeFact,
     PairInput,
     pair_input,
 )
-from ontogr_mem.temporal.prompt import SYSTEM_PROMPT, build_prompt
+from ontogr_mem.temporal.prompt import build_prompt
 from ontogr_mem.temporal.report import Outcome
 from ontogr_mem.temporal.settings import JudgeSettings
 from ontogr_mem.temporal.verdicts import (
@@ -47,12 +54,14 @@ class JudgeOutcome:
         counts: Failure and invalid-answer counts, by ``Outcome`` value.
         tokens_in: Input tokens the calls used.
         tokens_out: Output tokens the calls used.
+        requests: Model requests, including output-validation retries.
     """
 
     verdicts: list[FactVerdict] = field(default_factory=list)
     counts: Counter[str] = field(default_factory=Counter)
     tokens_in: int = 0
     tokens_out: int = 0
+    requests: int = 0
 
 
 class PairJudge(Protocol):
@@ -80,16 +89,16 @@ class NullJudge:
 
 
 class LLMPairJudge:
-    """The judge over a language model behind a gate.
+    """The judge over the configured model role.
 
     Args:
-        gate: Gate that caps input size and concurrency and calls the client.
-        settings: Floor, prompt version, batching and re-ask limits.
+        models: Shared role models and concurrency limit.
+        settings: Contradiction floor, prompt version, and batch limits.
     """
 
-    def __init__(self, gate: LLMGate, settings: JudgeSettings) -> None:
-        """Bind the judge to its gate and settings."""
-        self._gate = gate
+    def __init__(self, models: RoleModels, settings: JudgeSettings) -> None:
+        """Bind the judge to its model pool and settings."""
+        self._models = models
         self._settings = settings
 
     @property
@@ -122,26 +131,48 @@ class LLMPairJudge:
         """Ask one pass. Return the answers by pair key, for answered pairs."""
         answered: dict[str, Answer] = {}
 
+        def collect_usage(usage: TokenUsage | None) -> None:
+            if usage is not None:
+                outcome.tokens_in += usage.input_tokens
+                outcome.tokens_out += usage.output_tokens
+                outcome.requests += usage.requests
+
         async def ask_batch(batch: list[PairInput]) -> None:
-            """Ask one independent batch through the shared concurrency gate."""
+            """Ask one independent batch through the shared model pool."""
             shown = [p.swapped() if swapped else p for p in batch]
             try:
-                reply = await self._gate.complete(
-                    LLMRequest(
-                        system=SYSTEM_PROMPT,
-                        prompt=build_prompt(shown),
-                        model_size=self._settings.model_size,
-                    )
+                result = await run_agent(
+                    judge_agent,
+                    ModelRole.JUDGE,
+                    build_prompt(shown),
+                    models=self._models,
+                    deps=None,
                 )
-            except (LLMError, TimeoutError):
+            except ModelOutputError as exc:
+                collect_usage(exc.usage)
+                outcome.counts[Outcome.JUDGE_PARSE_FAILED.value] += len(batch)
+                return
+            except ModelFailure as exc:
+                collect_usage(exc.usage)
                 outcome.counts[Outcome.JUDGE_LLM_ERROR.value] += len(batch)
                 return
-            outcome.tokens_in += reply.input_tokens
-            outcome.tokens_out += reply.output_tokens
-            found, invalid, parsed = parse_answers(reply.text, len(batch))
-            outcome.counts[Outcome.JUDGE_INVALID_ID.value] += invalid
-            if not parsed:
-                outcome.counts[Outcome.JUDGE_PARSE_FAILED.value] += len(batch)
+            collect_usage(result.usage)
+            found: dict[int, Answer] = {}
+            for item in result.output.pairs:
+                match = re.fullmatch(r"P([0-9]+)", item.id)
+                index = int(match.group(1)) - 1 if match else -1
+                if not 0 <= index < len(batch):
+                    outcome.counts[Outcome.JUDGE_INVALID_ID.value] += 1
+                    continue
+                found[index] = Answer(
+                    verdict=item.verdict,
+                    confidence=item.confidence,
+                    kind=item.kind,
+                    rule=item.rule,
+                    reason=item.reason,
+                    quote_a=item.quote_a,
+                    quote_b=item.quote_b,
+                )
             for index, answer in found.items():
                 answered[batch[index].pair_key] = unswap(answer) if swapped else answer
 
@@ -151,7 +182,7 @@ class LLMPairJudge:
     async def judge_pairs(
         self, pairs: Sequence[PairInput], *, now: datetime
     ) -> JudgeOutcome:
-        """Judge the pairs: ask, re-ask the unanswered, then confirm contradictions.
+        """Judge the pairs and confirm above-floor contradictions.
 
         Returns:
             One verdict per answered pair. A pair left unanswered or unconfirmed
@@ -159,11 +190,6 @@ class LLMPairJudge:
         """
         outcome = JudgeOutcome()
         first = await self._ask(pairs, False, outcome)
-        for _ in range(self._settings.reask):
-            missing = [p for p in pairs if p.pair_key not in first]
-            if not missing:
-                break
-            first.update(await self._ask(missing, False, outcome))
         outcome.counts[Outcome.JUDGE_FAILED.value] += sum(
             1 for p in pairs if p.pair_key not in first
         )

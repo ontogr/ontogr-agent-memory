@@ -21,6 +21,7 @@ from ontogr_mem.service.relations import (
 )
 from tests.support.clock import FixedClock
 from tests.support.graph_backend import GraphBackend
+from tests.support.scripted_model import scripted_role_models
 
 
 @pytest.fixture
@@ -31,7 +32,7 @@ async def manager(graph_backend: GraphBackend) -> OntologyManager:
         GraphOntologyStore(
             graph_backend.store, handle, tenant_keyed=graph_backend.tenant_keyed
         ),
-        None,
+        scripted_role_models(),
         OntologySettings(),
         FixedClock(),
     )

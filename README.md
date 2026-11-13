@@ -362,7 +362,7 @@ Forget has four modes:
 | `invalidate` | Closes the fact now and keeps its history. |
 | `delete` | Removes the observations and the stored episode. |
 | `memory_only` | Removes derived facts and keeps the episode record. |
-| `erase` | Deletes, then scans the graph, indexes, and model cache for residue. |
+| `erase` | Deletes, then scans the graph and indexes for residue. |
 
 - **Dry run first:** A hard forget and a tenant clear require a preview. The preview returns a short-lived HMAC token bound to the caller, tenant, target, and mode, and the confirmed call must present it. A preview also reports collateral facts in touched slots and facts that may reopen.
 - **Erase reports residue:** Erase fails when it finds residue it cannot clean and lists what it could not remove.
@@ -559,7 +559,7 @@ A read does not create a job. A search that finds nothing reports an `indexing` 
 
 1. The service checks the forget grant and verifies the confirmation token from the preview.
 2. The workflow writes a row to the erase journal in the relation store.
-3. The workflow removes temporal evidence, then vectors, entity text, cached model responses, and episodes, and updates the journal row after each step. An erase also scans for residue.
+3. The workflow removes temporal evidence, indexes, entities, and episodes, and updates the journal row after each step. Erase then scans for residue.
 4. The workflow closes the journal row as completed, or as failed with the residue it found. The service appends an audit row for the result.
 5. After a crash, startup resumes every journal row that is still running. Audit rows and operation rows stay after a forget.
 
@@ -657,15 +657,18 @@ async def read_memory(query, now, *, vectors, keywords, temporal, entities, epis
 
 ## Language model and embedding layer
 
-The gate path handles the model calls for resolution verification, ontology drafting, consolidation and the pair judge. You supply an `LLMClient` for that path, and an `Embedder` for embeddings. Entity and fact extraction do not use the gate. They use named model roles instead, as described under [Configuration](#configuration). `build_models()` creates the OpenAI-compatible and Anthropic provider clients for those named models from the `MEMORY_LLM_*` settings. The gate provides:
+Model calls use typed agents and role-based configuration. Each role resolves its model, output mode, timeout, and output-token allowance. The model pool applies one concurrency limit across all roles. Invalid output can be requested again twice, and domain checks run after output validation. Provider clients handle transient retries.
 
-- model tiers (`small` and `medium`) with separate concurrency limits
-- structured output parsing and a schema repair loop
-- input-size and deadline checks
-- a response cache with in-memory and SQLite implementations, and tag-based eviction
-- pricing and usage accounting
-- a circuit breaker and retry policy for provider failures
-- fenced prompts for untrusted text
+The model pool serves these consumers:
+
+- `ENTITY_EXTRACTION` handles entity extraction and memory entity enrichment.
+- `FACT_EXTRACTION` handles fact extraction.
+- `RESOLUTION` handles entity-resolution verification.
+- `JUDGE` handles temporal pair judgments.
+- `ONTOLOGY` handles ontology proposal drafting.
+- `CONSOLIDATION` handles community summaries, entity descriptions, and reflection.
+
+The `ANSWER` role is available in configuration, but no current service consumer uses it. The model layer has no gate, response cache, model-price table, or input-token cap. Graph stores and the embedding gateway retain their own resilience behavior.
 
 The embedding gateway batches texts, splits long inputs, retries transient failures, and enforces a request deadline. A failed embedding is returned with a typed reason, and the vector writer keeps failed writes for an explicit retry. A committed fact or episode is not rolled back when its vector write fails.
 
@@ -678,7 +681,7 @@ The embedding gateway batches texts, splits long inputs, retries transient failu
 | Metrics | Plain counters and latency observations, exported by the caller. |
 | Operation rows | One row per write, read, invalidate, erase, export, or history call, with timing, outcome, error summary, and usage. |
 | Audit rows | Access decisions and destructive operations, linked by a hash chain. |
-| Request context | Principal, tenant, trace id, session, operation id, latency budget, usage, and cache tags for one call. |
+| Request context | Principal, tenant, trace id, session, operation id, latency budget, and usage for one call. |
 
 Trace attributes are redacted and size limited. Audit rows never hold memory text. `stats` returns tenant counts and usage without creating an operation row.
 
@@ -698,12 +701,12 @@ Settings classes use `pydantic-settings`. They read the repo-root `.env` and use
 | `MEMORY_KEYWORD_` | Tenant-scoped fulltext search limits. |
 | `MEMORY_RESOLUTION_` | Entity resolution thresholds and verification budgets. |
 | `MEMORY_TEMPORAL_` | Temporal retries, batch size, and episode pending time. |
-| `MEMORY_JUDGE_` | Conflict judge threshold, model tier, and token budget. |
+| `MEMORY_JUDGE_` | Conflict judge threshold and token budget. |
 | `MEMORY_CONSOLIDATION_` | Consolidation leases, feedback, scoring, communities, and retention. |
-| `MEMORY_ONTOLOGY_` | Proposal support, retries, and prompt version. |
+| `MEMORY_ONTOLOGY_` | Proposal support, commit retries, and prompt version. |
 | `MEMORY_ENTITY_EXTRACTION_` | Entity extractor concurrency, context, and thresholds. |
 | `MEMORY_FACT_EXTRACTION_` | Fact extractor concurrency, context, and version. |
-| `MEMORY_LLM_` | Gate settings for the model calls that do not use named model roles, and the named model role settings. See [Gate settings](#gate-settings) and [Named model roles](#named-model-roles). |
+| `MEMORY_LLM_` | Global and per-role model settings. See [Named model roles](#named-model-roles). |
 | `MEMORY_FORGET_` | Forget confirmation secret. |
 | `MEMORY_` | Local stdio principal id, tenant, and grants. |
 
@@ -711,7 +714,7 @@ Nested settings join their names with `__`, for example `MEMORY_FALKORDB_RESILIE
 
 ### Named model roles
 
-Entity extraction and fact extraction call their models through named model roles. Each role resolves its own settings, and a role that leaves a field unset uses the global value for that field. The other model-backed features, resolution verification, ontology drafting, consolidation and the pair judge, still use the gate settings described below. The settings also accept roles for resolution, the judge, consolidation, ontology and answer, but no code path reads those roles yet.
+Each model-backed consumer selects a `ModelRole` from the shared pool. The consumers use `ENTITY_EXTRACTION` for entity extraction and memory entity enrichment, `FACT_EXTRACTION` for fact extraction, `RESOLUTION` for entity-resolution verification, `JUDGE` for temporal pair judgments, `ONTOLOGY` for proposal drafting, and `CONSOLIDATION` for community summaries, entity descriptions, and reflection. The `ANSWER` role has configuration but no current service consumer. A role-specific setting replaces the global value for that field. Unset role fields inherit the global value.
 
 The global fields are:
 
@@ -779,7 +782,6 @@ role_models = build_models()
 try:
     async with open_service(
         models=role_models,
-        llm=llm,
         embedder=embedder,
     ) as runtime:
         ...
@@ -787,7 +789,7 @@ finally:
     await role_models.aclose()
 ```
 
-`open_service` closes a pool that it builds itself when its context exits. A pool passed in with `models=` belongs to the caller. Call `await role_models.aclose()` after all runs that use the pool have finished. The `llm` argument is the gate client for the other model-backed features.
+`build_service` requires a `RoleModels` pool. `open_service` accepts a pool or builds one from settings. It closes only a pool that it builds itself. A pool passed in with `models=` belongs to the caller, who must call `await role_models.aclose()` after all runs that use it have finished.
 
 Entity extraction and fact extraction handle failures in the following way:
 
@@ -816,22 +818,7 @@ Agent.instrument_all(
 )
 ```
 
-Ordinary service setup never runs this code. The `tracer=` argument of `open_service` controls service tracing only, and it does not turn on PydanticAI instrumentation. The settings above keep prompts, instructions, model responses, binary content and request parameters out of spans. The caller still owns the tracer provider and the exporters.
-
-### Gate settings
-
-These settings apply to the gate, which handles the model calls that do not use named model roles.
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `MEMORY_LLM_MAX_CONCURRENCY` | `4` | Calls allowed at once for each model size in the gate. The named model pool reads this variable too. |
-| `MEMORY_LLM_MAX_ATTEMPTS` | `1` | Total provider tries. `1` disables retries. |
-| `MEMORY_LLM_BASE_DELAY_S` | `0.5` | Initial retry delay in seconds. |
-| `MEMORY_LLM_MAX_DELAY_S` | `30.0` | Longest retry delay in seconds. |
-| `MEMORY_LLM_BREAKER_THRESHOLD` | Unset | Consecutive failures that open the circuit breaker. Unset leaves the breaker off. |
-| `MEMORY_LLM_BREAKER_RECOVERY_S` | `30.0` | Seconds before the breaker allows one probe call. |
-| `MEMORY_LLM_REQUESTS_PER_MINUTE` | Unset | Optional request limit for the provider. |
-| `MEMORY_LLM_STRUCTURED_ATTEMPTS` | `3` | Maximum attempts to get a valid structured output. |
+The service tracer records service and embedding spans. Typed PydanticAI model spans require caller-owned PydanticAI instrumentation. Ordinary service setup does not enable this instrumentation. Configure it with the OpenTelemetry provider shown above. These settings keep prompts, instructions, model responses, binary content, and request parameters out of spans. The caller still owns the tracer provider and the exporters.
 
 ## Development
 

@@ -5,7 +5,7 @@ from dataclasses import replace
 
 import pytest
 
-from ontogr_mem.llm import estimate_tokens
+from ontogr_mem.llm.tokens import estimate_tokens
 from ontogr_mem.retrieval import (
     ContextBlock,
     FactResult,

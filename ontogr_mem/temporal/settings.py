@@ -3,8 +3,6 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from ontogr_mem.llm import ModelSize
-
 
 class TemporalSettings(BaseSettings):
     """Retry and batch limits for the temporal engine.
@@ -42,13 +40,9 @@ class JudgeSettings(BaseSettings):
             the pair is stored as uncertain. Env: ``MEMORY_JUDGE_FLOOR``.
         prompt_version: Version recorded with each verdict. A new version makes
             stored verdicts stale. Env: ``MEMORY_JUDGE_PROMPT_VERSION``.
-        model_size: Model tier the judge calls. Env:
-            ``MEMORY_JUDGE_MODEL_SIZE``.
         max_pairs: Pairs per model call. Env: ``MEMORY_JUDGE_MAX_PAIRS``.
         token_budget: Estimated input tokens per model call. Env:
             ``MEMORY_JUDGE_TOKEN_BUDGET``.
-        reask: Extra calls for pairs the model left unanswered. Env:
-            ``MEMORY_JUDGE_REASK``.
     """
 
     model_config = SettingsConfigDict(
@@ -60,7 +54,5 @@ class JudgeSettings(BaseSettings):
 
     floor: float = Field(default=0.8, ge=0.0, le=1.0)
     prompt_version: str = "judge-1"
-    model_size: ModelSize = ModelSize.SMALL
     max_pairs: int = Field(default=4, ge=1)
     token_budget: int = Field(default=3000, ge=1)
-    reask: int = Field(default=1, ge=0)

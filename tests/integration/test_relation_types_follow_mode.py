@@ -34,8 +34,8 @@ from ontogr_mem.ontology.ontology_store import OntologyStore
 from ontogr_mem.ontology.settings import OntologySettings
 from tests.support.clock import FixedClock
 from tests.support.graph_backend import GraphBackend
-from tests.support.llm import ScriptedLLM
 from tests.support.ontology import base, cs
+from tests.support.scripted_model import scripted_role_models
 
 
 def fact(
@@ -80,7 +80,7 @@ class World:
         """Build a manager over this store."""
         return OntologyManager(
             self.store,
-            ScriptedLLM([]),
+            scripted_role_models(),
             OntologySettings(min_support=3),
             FixedClock(),
         )

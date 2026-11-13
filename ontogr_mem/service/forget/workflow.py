@@ -11,7 +11,6 @@ from uuid import uuid4
 
 from ontogr_mem.data_models.clock import Clock
 from ontogr_mem.data_models.fact_versions import Fact, FactStatus
-from ontogr_mem.llm.cache.port import ResponseCache
 from ontogr_mem.relational_store.jobs.erase_journal import (
     EraseJournal,
     ErasureRecord,
@@ -75,7 +74,6 @@ class EraseWorkflow:
         runtime_factory: RuntimeFactory,
         clock: Clock,
         *,
-        cache: ResponseCache | None = None,
         drop_graph: TenantOperation | None = None,
         delete_tenant_jobs: Callable[[str], Awaitable[int]] | None = None,
         after_step: Callable[[str], None] | None = None,
@@ -84,7 +82,6 @@ class EraseWorkflow:
         self._journal = journal
         self._runtime_factory = runtime_factory
         self._clock = clock
-        self._cache = cache
         self._drop_graph = drop_graph
         self._delete_tenant_jobs = delete_tenant_jobs
         self._after_step = after_step or (lambda _: None)
@@ -267,7 +264,7 @@ class EraseWorkflow:
         )
 
     async def _derived_step(self, state: ForgetState) -> ForgetState:
-        """Clean vectors, entity text, cache entries and source episodes in order."""
+        """Clean vectors, entity text and source episodes in order."""
         runtime, plan = state.runtime, state.plan
         vector_count = await self._step(
             state,
@@ -287,17 +284,6 @@ class EraseWorkflow:
             ),
         )
         vector_count += node_vector_count
-        cache_count = await self._step(
-            state,
-            "cache",
-            lambda: self._evict(
-                plan.episode_ids,
-                state.needles,
-                ForgetMode.ERASE
-                if state.scans_text
-                else (state.mode or ForgetMode.DELETE),
-            ),
-        )
         episode_count = 0
         if state.mode is not ForgetMode.MEMORY_ONLY:
             episode_count = await self._step(
@@ -314,7 +300,6 @@ class EraseWorkflow:
                 episodes=episode_count,
                 entities=len(deleted_entities),
                 vector_documents=vector_count,
-                cache_entries=cache_count,
                 entity_text_updates=len(blanked_entity_ids),
             ),
         )
@@ -330,7 +315,6 @@ class EraseWorkflow:
                     state.runtime,
                     state.plan,
                     needles=() if state.recovered else state.needles,
-                    cache=self._cache,
                     deleted_entity_ids=state.deleted_entities,
                     candidate_entity_ids=tuple(sorted(state.target_entity_ids)),
                 ),
@@ -360,7 +344,6 @@ class EraseWorkflow:
                     ("observations", counts.observations),
                     ("entities", counts.entities),
                     ("vector_documents", counts.vector_documents),
-                    ("cache_entries", counts.cache_entries),
                     ("entity_text_updates", counts.entity_text_updates),
                 )
             )
@@ -378,8 +361,6 @@ class EraseWorkflow:
             "audit and operation rows",
             "copies outside this system",
         ]
-        if self._cache is None:
-            not_cleaned.append("model cache")
         return ForgetResult(
             erasure_id=state.record.erasure_id,
             status=status.value,
@@ -485,23 +466,6 @@ class EraseWorkflow:
             result = await runtime.stores.vectors.upsert(VectorKind.NODE, items)
             vector_count += result.written
         return deleted, blanked, vector_count
-
-    async def _evict(
-        self,
-        episode_ids: Sequence[str],
-        needles: Sequence[str],
-        mode: ForgetMode,
-    ) -> int:
-        """Evict episode-tagged cache entries and optional text matches."""
-        if self._cache is None:
-            return 0
-        removed = 0
-        for episode_id in episode_ids:
-            removed += await self._cache.evict_tag(f"episode:{episode_id}")
-        if mode is ForgetMode.ERASE:
-            for needle in needles:
-                removed += await self._cache.evict_text(needle)
-        return removed
 
     async def _remove_episodes(
         self, runtime: TenantRuntime, episode_ids: Sequence[str]

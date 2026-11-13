@@ -11,6 +11,7 @@ from ontogr_mem.graphstore.neo4j import Neo4jGraphStore
 from ontogr_mem.graphstore.schemas import CONSOLIDATION
 from tests.contracts.cons_store import ConsStoreContract
 from tests.support.consolidation import ManualClock
+from tests.support.scripted_model import scripted_role_models
 from tests.support.tenants import new_tenant
 
 
@@ -37,7 +38,11 @@ class TestNeo4jConsStore(ConsStoreContract):
         clock = ManualClock()
         assert await store.acquire("other-worker", clock(), 600)
         runner = ConsolidationRunner(
-            default_stages(), store, clock, ConsolidationSettings()
+            default_stages(),
+            store,
+            clock,
+            ConsolidationSettings(),
+            models=scripted_role_models(),
         )
 
         result = await runner.run()

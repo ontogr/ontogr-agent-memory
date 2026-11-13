@@ -27,7 +27,7 @@ from ontogr_mem.data_models import (
 from ontogr_mem.fact_extraction.extractor import FactExtractor
 from ontogr_mem.fact_extraction.models import FactReport, FactResult
 from ontogr_mem.fact_extraction.settings import FactExtractionSettings
-from ontogr_mem.llm import LLMError, ModelFailure, ModelOutputError
+from ontogr_mem.llm import ModelFailure, ModelOutputError
 
 
 log = logging.getLogger(__name__)
@@ -171,7 +171,7 @@ class FactExtraction:
                 result = await self._extractor.extract(
                     episode, list(entities), self._types, previous
                 )
-            except (LLMError, ModelFailure, TimeoutError) as exc:
+            except (ModelFailure, TimeoutError) as exc:
                 log.warning("fact extraction failed for %s: %r", episode.id, exc)
                 status = (
                     Status.PARSE_FAILED

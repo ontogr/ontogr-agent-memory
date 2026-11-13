@@ -8,8 +8,7 @@ from ontogr_mem.consolidation import (
 )
 from ontogr_mem.consolidation.config import ConsolidationSettings
 from ontogr_mem.data_models.clock import Clock
-from ontogr_mem.llm import LLMClient, LLMConfig, LLMGate, RoleModels, build_models
-from ontogr_mem.observability import Tracer
+from ontogr_mem.llm import RoleModels
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import Ontology
 from ontogr_mem.ontology.settings import OntologySettings
@@ -26,16 +25,12 @@ from ontogr_mem.tenant_stores import TenantStores
 from ontogr_mem.vectorstore import Embedder, FactVectorObserver, VectorWriter
 
 
-_MAX_LLM_INPUT_TOKENS = 8192
-
-
 @dataclass(slots=True)
 class TenantRuntime:
     """Components shared by operations for one tenant."""
 
     stores: TenantStores
     reader: FactReader
-    llm: LLMGate | None
     embedder: Embedder
     resolver: EntityResolver
     writer: VectorWriter
@@ -43,15 +38,12 @@ class TenantRuntime:
     ontology: OntologyManager
     clock: Clock
     _labels: dict[int, str] = field(default_factory=dict)
-    models: RoleModels = field(
-        default_factory=lambda: build_models(LLMConfig.model_construct()),
-        kw_only=True,
-    )
+    models: RoleModels = field(kw_only=True)
 
     @property
     def llm_available(self) -> bool:
-        """Whether an injected LLM client or any configured model is available."""
-        return self.llm is not None or self.models.any_configured()
+        """Whether any model role is configured."""
+        return self.models.any_configured()
 
     def engine(self, ontology: Ontology, refs: EntityRefResolver) -> TemporalEngine:
         """Build an engine with cardinality rules from the supplied ontology."""
@@ -84,32 +76,22 @@ class TenantRuntime:
             ConsolidationSettings(),
             resolution=self.resolver,
             temporal=self.engine(ontology, self.resolver.store),
-            llm=self.llm,
+            models=self.models,
         )
 
 
 def build_tenant_runtime(
     stores: TenantStores,
     *,
-    llm: LLMClient | None,
-    models: RoleModels | None = None,
+    models: RoleModels,
     embedder: Embedder,
     clock: Clock,
     policy: ResolutionPolicy,
     resolver_settings: ResolverSettings,
     retrieval_settings: RetrievalSettings,
     ontology_settings: OntologySettings | None = None,
-    tracer: Tracer | None = None,
 ) -> TenantRuntime:
     """Wire the memory components around one tenant's stores."""
-    selected_models = (
-        models if models is not None else build_models(LLMConfig.model_construct())
-    )
-    gate = (
-        LLMGate(llm, max_input_tokens=_MAX_LLM_INPUT_TOKENS, tracer=tracer)
-        if llm
-        else None
-    )
     writer = VectorWriter(stores.vectors)
     reader = FactReader(stores.temporal_store)
     resolver = EntityResolver(
@@ -118,11 +100,11 @@ def build_tenant_runtime(
         policy,
         resolver_settings,
         clock,
-        llm=gate,
+        models=models,
     )
     ontology = OntologyManager(
         stores.ontology_store,
-        gate,
+        models,
         ontology_settings or OntologySettings(),
         clock,
     )
@@ -139,7 +121,6 @@ def build_tenant_runtime(
     return TenantRuntime(
         stores,
         reader,
-        gate,
         embedder,
         resolver,
         writer,
@@ -147,5 +128,5 @@ def build_tenant_runtime(
         ontology,
         clock,
         labels,
-        models=selected_models,
+        models=models,
     )

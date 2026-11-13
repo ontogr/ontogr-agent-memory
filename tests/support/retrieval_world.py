@@ -20,6 +20,7 @@ from ontogr_mem.fact_extraction import (
 )
 from ontogr_mem.ingestion import content_hash
 from ontogr_mem.ingestion.store import EpisodeStore
+from ontogr_mem.llm import LLMConfig, build_models
 from ontogr_mem.ontology.apply import apply_changeset
 from ontogr_mem.ontology.extraction_items import stabilize_facts
 from ontogr_mem.ontology.manager import OntologyManager
@@ -61,8 +62,8 @@ from tests.support.clock import FixedClock
 from tests.support.embedder import RecordingEmbedder
 from tests.support.episodes import make_episode as episode_at
 from tests.support.facts import fact, fact_models, reply
-from tests.support.llm import ScriptedLLM
 from tests.support.ontology import base, cs
+from tests.support.scripted_model import scripted_role_models
 
 
 NOW = datetime(2026, 10, 23, 12, 0, tzinfo=UTC)
@@ -124,10 +125,11 @@ async def build_world(backend: RetrievalBackend) -> RetrievalWorld:
         ResolutionPolicy(types={"Person": TypePolicy(mode=ResolutionMode.AUTO_KEY)}),
         ResolverSettings(inline_verification=False),
         FixedClock(),
+        models=build_models(LLMConfig.model_construct()),
     )
     manager = OntologyManager(
         backend.ontology_store,
-        ScriptedLLM(),
+        scripted_role_models(),
         OntologySettings(min_support=3),
         FixedClock(),
     )

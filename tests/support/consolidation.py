@@ -9,6 +9,7 @@ from ontogr_mem.data_models.entities import Entity
 from ontogr_mem.graphstore import QuerySpec, ScopedRunner
 from ontogr_mem.graphstore.cypher import TenantScope
 from ontogr_mem.ingestion.store import EpisodeStore
+from ontogr_mem.llm import LLMConfig, build_models
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionPolicy
 from ontogr_mem.resolution.resolver import EntityResolver
@@ -127,6 +128,7 @@ async def new_world(
         ResolutionPolicy(),
         ResolverSettings(),
         clock,
+        models=build_models(LLMConfig.model_construct()),
     )
     temporal = TemporalEngine(
         stores.temporal_store,

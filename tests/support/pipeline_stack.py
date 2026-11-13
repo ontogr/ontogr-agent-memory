@@ -15,6 +15,7 @@ from ontogr_mem.graphstore.ontology_store import GraphOntologyStore
 from ontogr_mem.graphstore.resolver_store import GraphResolverStore
 from ontogr_mem.graphstore.temporal.store import GraphTemporalStore
 from ontogr_mem.ingestion.store import EpisodeStore
+from ontogr_mem.llm import LLMConfig, build_models
 from ontogr_mem.ontology.extraction_items import stabilize_facts
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import AddRelation, PatternSpec
@@ -29,9 +30,8 @@ from tests.support.clock import FixedClock
 from tests.support.embedder import MockEmbedder
 from tests.support.episodes import graph_harness
 from tests.support.facts import fact, fact_models, reply
-from tests.support.llm import ScriptedLLM
 from tests.support.ontology import base, cs
-from tests.support.scripted_model import ScriptedCall
+from tests.support.scripted_model import ScriptedCall, scripted_role_models
 
 
 TEMPORAL_TEXTS = {
@@ -177,10 +177,11 @@ async def temporal_stack(store, handle, keyed: bool) -> TemporalStack:
         ResolutionPolicy(types={"Person": TypePolicy(mode=ResolutionMode.AUTO_KEY)}),
         ResolverSettings(inline_verification=False),
         FixedClock(),
+        models=build_models(LLMConfig.model_construct()),
     )
     manager = OntologyManager(
         GraphOntologyStore(store, handle, tenant_keyed=keyed),
-        ScriptedLLM(),
+        scripted_role_models(),
         OntologySettings(min_support=3),
         FixedClock(),
     )

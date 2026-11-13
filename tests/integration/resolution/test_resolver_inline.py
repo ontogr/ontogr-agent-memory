@@ -14,6 +14,7 @@ from ontogr_mem.data_models.entities import (
     Outcome,
     ResolutionState,
 )
+from ontogr_mem.llm import LLMConfig, RoleModels, build_models
 from ontogr_mem.resolution.candidates import candidate_pass
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.errors import EpisodeAlreadyResolvedError
@@ -35,7 +36,7 @@ from tests.integration.resolution.resolver_helpers import count_active, ex
 from tests.support.clock import FixedClock
 from tests.support.embedder import MockEmbedder
 from tests.support.graph_backend import GraphBackend
-from tests.unit.resolution.helpers import OracleLLM
+from tests.unit.resolution.helpers import oracle_models
 
 
 NAMES = (
@@ -59,7 +60,7 @@ async def make(
     graph_backend: GraphBackend,
     store: ResolverStore | None = None,
     *,
-    llm: object | None = None,
+    models: RoleModels | None = None,
     inline: bool = False,
     clock: object | None = None,
     policy: ResolutionPolicy | None = None,
@@ -77,7 +78,7 @@ async def make(
         policy or ResolutionPolicy(),
         ResolverSettings(inline_verification=inline, **settings),  # type: ignore[arg-type]
         clock or SystemClock(),  # type: ignore[arg-type]
-        llm=llm,  # type: ignore[arg-type]
+        models=models or build_models(LLMConfig.model_construct()),
     )
 
 
@@ -494,8 +495,9 @@ async def test_candidate_cap_and_verifier_order_follow_rank_key(
         seen.append(name_b)
         return False
 
+    models, _ = oracle_models(record)
     resolver = await make(
-        graph_backend, store, vectors=vector_store, inline=True, llm=OracleLLM(record)
+        graph_backend, store, vectors=vector_store, inline=True, models=models
     )
     groups = build_groups(
         [ex("1", QUERY, "Company")], resolver.policy, resolver.relations

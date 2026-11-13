@@ -16,6 +16,7 @@ from ontogr_mem.data_models.entities import EntityStatus
 from tests.integration.resolution.resolver_helpers import ex
 from tests.support.consolidation import ConsWorld, new_world
 from tests.support.graph_backend import GraphBackend
+from tests.support.scripted_model import scripted_role_models
 from tests.unit.temporal.helpers import at, obs
 
 
@@ -46,6 +47,7 @@ def ctx_for(world: ConsWorld) -> StageContext:
         clock=world.clock,
         store=world.store,
         settings=world.settings,
+        models=scripted_role_models(),
         resolution=world.resolution,
         temporal=world.temporal,
     )

@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class OntologySettings(BaseSettings):
-    """Thresholds for proposals and retries of the ontology manager.
+    """Thresholds for ontology proposal grouping and commit retries.
 
     Environment variables use the prefix `MEMORY_ONTOLOGY_`. The default numbers are
     judgment calls, not measurements.
@@ -20,6 +20,5 @@ class OntologySettings(BaseSettings):
 
     min_support: int = Field(default=3, ge=1)
     regrow_factor: int = Field(default=2, ge=1)
-    max_draft_retries: int = Field(default=2, ge=0)
     commit_retries: int = Field(default=3, ge=1)
     prompt_version: str = "1"

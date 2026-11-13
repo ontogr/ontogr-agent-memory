@@ -16,7 +16,6 @@ class RemovedCounts:
         observations: Observation records removed.
         entities: Entity records removed.
         vector_documents: Vector documents removed or rewritten.
-        cache_entries: Cache entries evicted.
         entity_text_updates: Surviving entity text records blanked.
     """
 
@@ -25,7 +24,6 @@ class RemovedCounts:
     observations: int = 0
     entities: int = 0
     vector_documents: int = 0
-    cache_entries: int = 0
     entity_text_updates: int = 0
 
 

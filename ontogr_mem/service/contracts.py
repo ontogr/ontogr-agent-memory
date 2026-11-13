@@ -73,8 +73,8 @@ class ForgetMode(StrEnum):
 
     INVALIDATE closes the fact now and keeps its history. DELETE removes the
     observations and the stored episode. MEMORY_ONLY removes the derived facts
-    and keeps the episode record. ERASE deletes and then scans the graph, the
-    indexes and the model cache for residue, failing when it finds any.
+    and keeps the episode record. ERASE deletes and then scans the graph and
+    indexes for residue, failing when it finds any.
     """
 
     INVALIDATE = "invalidate"

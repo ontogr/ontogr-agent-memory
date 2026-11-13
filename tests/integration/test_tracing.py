@@ -8,10 +8,7 @@ from types import TracebackType
 import pytest
 
 from ontogr_mem.data_models.jobs import JobProgress
-from ontogr_mem.llm import LLMGate, LLMRequest, ModelSize
-from ontogr_mem.llm.cache import MemoryResponseCache
 from ontogr_mem.observability import InMemoryTracer, Span, SpanName
-from ontogr_mem.request_context import RequestContext, bind_context
 from ontogr_mem.service.contracts import (
     AddMemory,
     MemoryContext,
@@ -21,7 +18,6 @@ from ontogr_mem.service.contracts import (
 from ontogr_mem.service.errors import ObjectNotFoundError
 from ontogr_mem.service.principal import Grant
 from tests.support.graph_backend import GraphBackend
-from tests.support.llm import ScriptedLLM
 from tests.support.memory_service import memory_service_harness
 
 
@@ -309,40 +305,3 @@ class TestOperationSpans:
                 and span.attributes.get("tenant") == tenant
             )
             assert check.parent_id == root.span_id
-
-
-class TestGatewaySpans:
-    """The model-call span reports only safe model and usage metadata."""
-
-    async def test_completion_cache_hit_reports_zero_input_tokens(self):
-        """A completion span records cache outcome and never stores its prompt."""
-        tracer = InMemoryTracer()
-        gate = LLMGate(
-            ScriptedLLM(["answer"]),
-            max_input_tokens=100,
-            model_name="test-model",
-            cache=MemoryResponseCache(),
-            tracer=tracer,
-        )
-        context = RequestContext(principal_id="caller", tenant="tenant_a")
-        request = LLMRequest(
-            system="system",
-            prompt="PRIVATE-EPISODE-TEXT",
-            model_size=ModelSize.SMALL,
-        )
-
-        with bind_context(context):
-            await gate.complete(request)
-            await gate.complete(request)
-
-        spans = [
-            span for span in tracer.finished() if span.name == SpanName.LLM_COMPLETE
-        ]
-        assert len(spans) == 2
-        assert spans[0].attributes["model"] == "test-model"
-        assert spans[0].attributes["size"] == "small"
-        assert spans[1].attributes["cache.hit"] is True
-        assert spans[1].attributes["tokens.in"] == 0
-        assert all(
-            "PRIVATE-EPISODE-TEXT" not in repr(span.attributes) for span in spans
-        )

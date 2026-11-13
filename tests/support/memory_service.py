@@ -3,7 +3,7 @@
 from dataclasses import dataclass, replace
 
 from ontogr_mem.data_models.clock import Clock
-from ontogr_mem.llm import LLMClient, RoleModels
+from ontogr_mem.llm import LLMConfig, RoleModels, build_models
 from ontogr_mem.observability import Tracer
 from ontogr_mem.relational_store import MemoryOperationStore
 from ontogr_mem.relational_store.memory import MemoryJobStore
@@ -38,7 +38,6 @@ class MemoryServiceHarness:
 async def memory_service_harness(
     backend: GraphBackend,
     *,
-    llm: LLMClient | None = None,
     models: RoleModels | None = None,
     tracer: Tracer | None = None,
     keywords: KeywordSearch | None = None,
@@ -47,7 +46,6 @@ async def memory_service_harness(
 
     Args:
         backend: The live graph backend that tenant stores are opened on.
-        llm: Optional language model client.
         models: Optional caller-owned model pool passed to the service. When
             omitted, the service gets an unconfigured pool with no clients.
         tracer: Optional tracer for service and tenant spans.
@@ -81,8 +79,9 @@ async def memory_service_harness(
         authorizer=authorizer,
         operations=operations,
         clock=clock,
-        llm=llm,
-        models=models,
+        models=(
+            models if models is not None else build_models(LLMConfig.model_construct())
+        ),
         embedder=embedder,
         policy=ResolutionPolicy(
             types={

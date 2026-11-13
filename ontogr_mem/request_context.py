@@ -56,7 +56,6 @@ class RequestContext:
     latency_budget_s: float | None = None
     started_monotonic: float = field(default_factory=time.monotonic)
     usage: Usage = field(default_factory=Usage)
-    cache_tags: set[str] = field(default_factory=set)
 
     def __post_init__(self) -> None:
         """Validate the caller and any Tenant before binding the context."""

@@ -2,7 +2,7 @@
 
 import pytest
 
-from ontogr_mem.llm.json_reply import SchemaError, load_json
+from ontogr_mem.json_reply import SchemaError, load_json
 
 
 class TestLoadJson:

@@ -15,20 +15,22 @@ from ontogr_mem.data_models.entities import (
 )
 from ontogr_mem.data_models.extraction import Usage
 from ontogr_mem.llm import (
-    LLMClient,
-    LLMError,
-    LLMRequest,
-    ModelSize,
-    estimate_tokens,
+    ModelFailure,
+    ModelOutputError,
+    ModelRole,
+    RoleModels,
+    TokenUsage,
+    run_agent,
 )
+from ontogr_mem.llm.tokens import estimate_tokens
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.pairs import PairInput, PairOutcome, VerifyStats
+from ontogr_mem.resolution.verifier_agent import verifier_agent
 from ontogr_mem.resolution.verifier_prompt import (
     SYSTEM,
     flatten,  # noqa: F401
     pair_block,
 )
-from ontogr_mem.resolution.verifier_reply import parse_reply
 
 
 class PassResult(StrEnum):
@@ -42,13 +44,13 @@ class PassResult(StrEnum):
 
 
 class Verifier:
-    """Batched, vote-checked pair verification over an injected ``LLMClient``."""
+    """Batched, vote-checked pair verification over role-based models."""
 
     def __init__(
-        self, client: LLMClient, settings: ResolverSettings | None = None
+        self, models: RoleModels, settings: ResolverSettings | None = None
     ) -> None:
-        """Create a verifier. Wrap ``client`` in an ``LLMGate`` to cap calls."""
-        self._client = client
+        """Create a verifier with the configured resolution model."""
+        self._models = models
         self._settings = settings or ResolverSettings()
 
     def _windows(self, pairs: Sequence[PairInput], *, swap: bool) -> list[list[int]]:
@@ -69,6 +71,20 @@ class Verifier:
             windows.append(cur)
         return windows
 
+    @staticmethod
+    def _record_usage(
+        tokens: TokenUsage | None,
+        usage: Usage,
+        stats: VerifyStats,
+    ) -> None:
+        """Record all requests and tokens from one verifier run."""
+        if tokens is None or not tokens.requests:
+            return
+        role = ModelRole.RESOLUTION.value
+        usage.add("resolve_verify", role, tokens.input_tokens, tokens.output_tokens)
+        usage.buckets[f"resolve_verify/{role}"].calls += tokens.requests - 1
+        stats.calls += tokens.requests
+
     async def _ask(
         self,
         pairs: Sequence[PairInput],
@@ -81,26 +97,32 @@ class Verifier:
         body = "\n".join(
             pair_block(i + 1, pairs[j], swap) for i, j in enumerate(indices)
         )
-        req = LLMRequest(
-            system=SYSTEM,
-            prompt=body,
-            model_size=ModelSize.MEDIUM,
-            max_output_tokens=120 * len(indices) + 64,
-        )
-        stats.calls += 1
         try:
-            resp = await self._client.complete(req)
-        except (LLMError, TimeoutError):
+            result = await run_agent(
+                verifier_agent,
+                ModelRole.RESOLUTION,
+                body,
+                models=self._models,
+                deps=None,
+                max_output_tokens=120 * len(indices) + 64,
+            )
+        except ModelOutputError as exc:
+            self._record_usage(exc.usage, usage, stats)
+            return dict.fromkeys(indices, PassResult.NO_ANSWER)
+        except ModelFailure as exc:
+            self._record_usage(exc.usage, usage, stats)
             return None
-        usage.add(
-            "resolve_verify",
-            ModelSize.MEDIUM.value,
-            resp.input_tokens,
-            resp.output_tokens,
-        )
-        parsed, invalid = parse_reply(resp.text, len(indices))
-        stats.invalid_ids += invalid
-        return {indices[k]: _result(v) for k, v in parsed.items()}
+        self._record_usage(result.usage, usage, stats)
+        found: dict[int, PassResult] = {}
+        for item in result.output.pairs:
+            if not 1 <= item.id <= len(indices):
+                stats.invalid_ids += 1
+                continue
+            found.setdefault(
+                indices[item.id - 1],
+                PassResult.YES if item.vote == "YES" else PassResult.NO,
+            )
+        return found
 
     async def _pass(
         self,
@@ -115,23 +137,11 @@ class Verifier:
             *(self._ask(pairs, w, swap, usage, stats) for w in windows)
         )
         out: dict[int, PassResult] = {}
-        missing: list[int] = []
         for w, res in zip(windows, results, strict=True):
             if res is None:
                 out.update(dict.fromkeys(w, PassResult.ERROR))
                 continue
-            for j in w:
-                if j in res:
-                    out[j] = res[j]
-                else:
-                    missing.append(j)
-        for j in missing:
-            stats.reasked += 1
-            res = await self._ask(pairs, [j], swap, usage, stats)
-            if res is None:
-                out[j] = PassResult.ERROR
-            else:
-                out[j] = res.get(j, PassResult.NO_VERDICT)
+            out.update({j: res.get(j, PassResult.NO_VERDICT) for j in w})
         return out
 
     async def verify(
@@ -216,10 +226,3 @@ class Verifier:
                 o.status, o.passes = VerifyStatus.ERROR, []
             else:
                 o.status, o.passes = VerifyStatus.NO_VERDICT, []
-
-
-def _result(vote: bool | None) -> PassResult:
-    """Return the pass result of one parsed answer."""
-    if vote is None:
-        return PassResult.NO_ANSWER
-    return PassResult.YES if vote else PassResult.NO

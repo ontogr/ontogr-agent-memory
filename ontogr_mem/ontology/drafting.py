@@ -1,11 +1,16 @@
-"""Draft proposals with the shared language model client."""
+"""Draft proposals with a typed model agent."""
 
 from dataclasses import dataclass, field
 
-from pydantic import ValidationError
-
-from ontogr_mem.llm import LLMClient, LLMError, LLMRequest, ModelSize
+from ontogr_mem.llm import (
+    ModelFailure,
+    ModelOutputError,
+    ModelRole,
+    RoleModels,
+    run_agent,
+)
 from ontogr_mem.ontology.apply import apply_changeset
+from ontogr_mem.ontology.drafting_agent import drafting_agent
 from ontogr_mem.ontology.errors import InvalidChange, OntologyError
 from ontogr_mem.ontology.models import (
     ChangeSet,
@@ -15,10 +20,7 @@ from ontogr_mem.ontology.models import (
     ProposalSource,
     ProposalStatus,
 )
-from ontogr_mem.ontology.proposals import Draft, Group, build_prompt, proposal_id
-
-
-SYSTEM_PROMPT = "You extend an ontology. Answer with one JSON object and nothing else."
+from ontogr_mem.ontology.proposals import Group, build_prompt, proposal_id
 
 
 @dataclass(slots=True)
@@ -32,26 +34,18 @@ class DraftRun:
 async def run_drafting(
     cat: Ontology,
     groups: list[Group],
-    llm: LLMClient,
+    models: RoleModels,
     *,
     prompt_version: str,
-    max_retries: int = 2,
     attempt: int = 0,
 ) -> DraftRun:
-    """Draft one batch, check it by applying it to a copy, and retry on errors.
-
-    The answer must parse as a `Draft` and apply cleanly to the catalog as a
-    proposal-channel change set. On a parse or rule error the error text goes
-    back in the next prompt, up to `max_retries` more times. An empty draft is
-    recorded in `failures`. A draft that never validates is returned as a
-    rejected proposal with the last error.
+    """Draft additions, then check their domain rules without a repair call.
 
     Args:
         cat: The current catalog.
         groups: The label groups to draft for.
-        llm: The model client.
+        models: Configured models for each kind of work.
         prompt_version: Identifies the prompt and model setup in the actor name.
-        max_retries: Extra attempts after the first.
         attempt: Earlier proposals for these labels, used in the proposal id.
 
     Returns:
@@ -64,26 +58,28 @@ async def run_drafting(
     if not groups:
         return run
     labels = sorted(g.label for g in groups)
-    proposal_identifier = proposal_id(labels, cat.version, attempt)
-    schema = Draft.model_json_schema()
-    feedback = ""
-    for _ in range(max_retries + 1):
-        request = LLMRequest(
-            system=SYSTEM_PROMPT,
-            prompt=build_prompt(cat, groups, feedback),
-            model_size=ModelSize.MEDIUM,
-            schema=schema,
+    identifier = proposal_id(labels, cat.version, attempt)
+    support = sum(group.support for group in groups)
+    failure = ""
+    try:
+        result = await run_agent(
+            drafting_agent,
+            ModelRole.ONTOLOGY,
+            build_prompt(cat, groups),
+            models=models,
+            deps=None,
         )
+    except ModelOutputError as exc:
+        failure = str(exc)[:500]
+    except ModelFailure as exc:
+        msg = f"draft failed: {exc}"
+        raise OntologyError(msg) from exc
+    else:
+        draft = result.output
+        if not draft.ops:
+            run.failures.append("empty draft")
+            return run
         try:
-            response = await llm.complete(request)
-        except LLMError as exc:
-            msg = f"draft failed: {exc}"
-            raise OntologyError(msg) from exc
-        try:
-            draft = Draft.model_validate_json(response.text)
-            if not draft.ops:
-                run.failures.append("empty draft")
-                return run
             apply_changeset(
                 cat,
                 ChangeSet(
@@ -93,31 +89,33 @@ async def run_drafting(
                     channel=Channel.PROPOSAL,
                 ),
             )
-        except (ValidationError, InvalidChange) as exc:
-            feedback = str(exc)[:500]
-            continue
-        run.proposals.append(
-            Proposal(
-                proposal_id=proposal_identifier,
-                ops=list(draft.ops),
-                labels=labels,
-                support=sum(g.support for g in groups),
-                examples=[e for g in groups for e in g.examples][:5],
-                source=ProposalSource.OBSERVED,
-                base_version=cat.version,
+        except InvalidChange as exc:
+            failure = str(exc)[:500]
+        else:
+            run.proposals.append(
+                Proposal(
+                    proposal_id=identifier,
+                    labels=labels,
+                    support=support,
+                    base_version=cat.version,
+                    ops=list(draft.ops),
+                    examples=[
+                        example for group in groups for example in group.examples
+                    ][:5],
+                    source=ProposalSource.OBSERVED,
+                )
             )
-        )
-        return run
+            return run
     run.proposals.append(
         Proposal(
-            proposal_id=proposal_identifier,
-            ops=[],
+            proposal_id=identifier,
             labels=labels,
-            support=sum(g.support for g in groups),
+            support=support,
+            base_version=cat.version,
+            ops=[],
             status=ProposalStatus.REJECTED,
             decided_by="validator",
-            reason=feedback or "no valid draft",
-            base_version=cat.version,
+            reason=failure or "no valid draft",
         )
     )
     return run

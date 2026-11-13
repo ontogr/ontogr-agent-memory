@@ -1,10 +1,9 @@
-"""Retry classification and bounded delay behavior for model calls."""
+"""Retry classification and bounded delay behavior."""
 
 import random
 
 import pytest
 
-from ontogr_mem.llm import LLMCallError
 from ontogr_mem.resilience import Kind, backoff_delay, classify
 
 
@@ -40,23 +39,23 @@ class TestClassify:
     @pytest.mark.parametrize("message", TERMINAL_MESSAGES)
     def test_terminal_messages_are_not_retryable(self, message: str) -> None:
         """Every documented status or terminal phrase is recognized."""
-        assert classify(LLMCallError(message)) is Kind.TERMINAL
+        assert classify(RuntimeError(message)) is Kind.TERMINAL
 
     def test_message_without_terminal_pattern_is_transient(self) -> None:
         """An unrecognized client failure is eligible for retry."""
-        assert classify(LLMCallError("connection reset")) is Kind.TRANSIENT
+        assert classify(RuntimeError("connection reset")) is Kind.TRANSIENT
 
     def test_terminal_cause_is_found(self) -> None:
         """A wrapped provider error keeps its terminal classification."""
         cause = ValueError("credit balance depleted")
-        error = LLMCallError("provider failed")
+        error = RuntimeError("provider failed")
         error.__cause__ = cause
 
         assert classify(error) is Kind.TERMINAL
 
     def test_cause_cycle_terminates(self) -> None:
         """Repeated causes do not make classification loop forever."""
-        first = LLMCallError("connection reset")
+        first = RuntimeError("connection reset")
         second = ValueError("still transient")
         first.__cause__ = second
         second.__cause__ = first

@@ -21,7 +21,7 @@ from ontogr_mem.entity_extraction.extractors.triggers import (
     evaluate_triggers,
 )
 from ontogr_mem.entity_extraction.text import language_of, text_of
-from ontogr_mem.llm import LLMError, ModelFailure
+from ontogr_mem.llm import ModelFailure
 
 
 log = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ class CompositeExtractor(EntityExtractor):
     overlaps another one is kept as well. Entities with no spans are always kept.
 
     Configuration faults (`ImportError`, `OSError`) and counted failures
-    (`ExtractionError`, `LLMError`, `ModelFailure`) propagate so the episode gets
+    (`ExtractionError`, `ModelFailure`) propagate so the episode gets
     an error status. Any other member exception is logged and that member is
     skipped. If every member fails, the first error is raised.
 
@@ -95,7 +95,7 @@ class CompositeExtractor(EntityExtractor):
             if isinstance(result, BaseException):
                 if not isinstance(result, Exception) or isinstance(
                     result,
-                    ImportError | OSError | ExtractionError | LLMError | ModelFailure,
+                    ImportError | OSError | ExtractionError | ModelFailure,
                 ):
                     raise result
                 failures.append(result)

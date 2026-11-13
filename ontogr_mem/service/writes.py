@@ -35,7 +35,7 @@ from ontogr_mem.fact_extraction import FactExtraction, InMemoryFactStore
 from ontogr_mem.fact_extraction.extractor import LLMFactExtractor
 from ontogr_mem.fact_extraction.ids import assign_ids
 from ontogr_mem.ingestion import IngestionPipeline, seal
-from ontogr_mem.llm import LLMError, ModelFailure, ModelRole
+from ontogr_mem.llm import ModelFailure, ModelRole
 from ontogr_mem.ontology.extraction_items import stabilize_facts
 from ontogr_mem.ontology.models import Ontology, Relation
 from ontogr_mem.request_context import current_context
@@ -95,7 +95,7 @@ async def add_memory(
             episode, facts = await _prepare_fact(tenant, job, request, principal_id)
         else:
             episode, facts = await _prepare_text(tenant, job, request, principal_id)
-    except (LLMError, ModelFailure) as exc:
+    except ModelFailure as exc:
         raise LLMUnavailableError(str(exc), hint=_LLM_HINT) from exc
 
     typed = await stabilize_facts(

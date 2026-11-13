@@ -695,7 +695,10 @@ class TestMemoryService:
         )
         stores = await graph_backend.stores_for("t1")
         manager = OntologyManager(
-            stores.ontology_store, None, OntologySettings(), harness.clock
+            stores.ontology_store,
+            scripted_role_models(),
+            OntologySettings(),
+            harness.clock,
         )
         catalog = await manager.catalog()
         await manager.apply(
@@ -818,7 +821,10 @@ class TestMemoryService:
         )
         stores = await graph_backend.stores_for("t1")
         manager = OntologyManager(
-            stores.ontology_store, None, OntologySettings(), harness.clock
+            stores.ontology_store,
+            scripted_role_models(),
+            OntologySettings(),
+            harness.clock,
         )
         catalog = await manager.catalog()
         await manager.apply(

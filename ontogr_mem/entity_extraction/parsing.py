@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 
-from ontogr_mem.llm.json_reply import SchemaError, load_json
+from ontogr_mem.json_reply import SchemaError, load_json
 
 
 @dataclass(frozen=True, slots=True)

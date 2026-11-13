@@ -1,13 +1,17 @@
 """Behavior checks for Erase cleanup, residue detection and recovery."""
 
+from collections.abc import Sequence
+
 import pytest
 
-from ontogr_mem.llm.cache import CacheEntry, MemoryResponseCache
 from ontogr_mem.relational_store.jobs.erase_journal import ErasureStatus
 from ontogr_mem.service.contracts import ForgetMode
 from ontogr_mem.service.forget.workflow import EraseWorkflow
 from ontogr_mem.service.runtime import TenantRuntime
+from ontogr_mem.vectorstore import EmbeddingGateway, VectorStore
+from ontogr_mem.vectorstore.memory import InMemoryBackend
 from ontogr_mem.vectorstore.models import VectorKind
+from tests.support.embedder import MockEmbedder
 from tests.support.erase_workflow import EraseWorld, make_erase_world
 from tests.support.graph_backend import GraphBackend
 
@@ -28,30 +32,10 @@ class TestEraseWorkflow:
         assert await world.runtime.stores.vectors.exists(
             VectorKind.NODE, ["organization"]
         ) == {"organization"}
-        await world.cache.put(
-            "tagged-entry",
-            CacheEntry(
-                prompt="unrelated prompt",
-                text="unrelated completion",
-                input_tokens=1,
-                output_tokens=1,
-                tags=frozenset({"episode:e1"}),
-            ),
-        )
-        await world.cache.put(
-            "text-entry",
-            CacheEntry(
-                prompt=world.needle,
-                text="completion without a tag",
-                input_tokens=1,
-                output_tokens=1,
-            ),
-        )
         workflow = EraseWorkflow(
             world.journal,
             lambda _: _runtime(world),
             world.runtime.clock,
-            cache=world.cache,
         )
 
         result = await workflow.run(
@@ -70,7 +54,6 @@ class TestEraseWorkflow:
         assert result.removed.observations == 1
         assert result.removed.entities == 1
         assert result.removed.vector_documents == 4
-        assert result.removed.cache_entries == 2
         assert result.removed.entity_text_updates == 1
 
         stores = world.runtime.stores
@@ -78,6 +61,7 @@ class TestEraseWorkflow:
         assert await stores.temporal_store.observations_of_episode("e1") == []
         facts = await stores.temporal_store.facts_by_ids(world.plan.fact_ids)
         assert facts == []
+        assert await stores.vectors.exists(VectorKind.EPISODE, ["e1"]) == set()
         assert await stores.resolver_store.has_entity("organization") is False
         assert await stores.vectors.exists(VectorKind.NODE, ["organization"]) == set()
         person_rows = await stores.resolver_store.get_entities(["person"])
@@ -92,38 +76,30 @@ class TestEraseWorkflow:
         assert {alias.text for alias in aliases} == {"Bob"}
         after_vector = await stores.vectors.fetch_vectors(VectorKind.NODE, ["person"])
         assert before_vector["person"] != after_vector["person"]
-        assert await world.cache.count_tag("episode:e1") == 0
-        assert await world.cache.scan(world.needle) == 0
         journal_row = await world.journal.get(result.erasure_id)
         assert journal_row is not None
         assert journal_row.status is ErasureStatus.COMPLETED
 
-    async def test_text_residue_fails_erase_after_cleanup(
-        self, graph_backend: GraphBackend
+    async def test_episode_vector_residue_fails_erase_after_cleanup(
+        self, graph_backend: GraphBackend, monkeypatch
     ):
-        """A cache entry that retains erased text is reported as residue."""
+        """Retained episode vectors fail residue checks after graph cleanup."""
+        vector_store = VectorStore(InMemoryBackend(), EmbeddingGateway(MockEmbedder()))
+        world = await make_erase_world(graph_backend, vector_store=vector_store)
+        vectors = world.runtime.stores.vectors
+        delete_vectors = vectors.delete
 
-        class RetainingCache(MemoryResponseCache):
-            async def evict_text(self, needle: str) -> int:
-                """Leave matching entries in place and report no removals."""
+        async def retain_episode_vector(kind: VectorKind, ids: Sequence[str]) -> int:
+            """Leave only the selected episode vector in the real backend."""
+            if kind is VectorKind.EPISODE and "e1" in ids:
                 return 0
+            return await delete_vectors(kind, ids)
 
-        cache = RetainingCache()
-        world = await make_erase_world(graph_backend, cache=cache)
-        await cache.put(
-            "untagged-entry",
-            CacheEntry(
-                prompt=world.needle,
-                text="retained completion",
-                input_tokens=1,
-                output_tokens=1,
-            ),
-        )
+        monkeypatch.setattr(vectors, "delete", retain_episode_vector)
         workflow = EraseWorkflow(
             world.journal,
             lambda _: _runtime(world),
             world.runtime.clock,
-            cache=cache,
         )
 
         result = await workflow.run(
@@ -134,13 +110,19 @@ class TestEraseWorkflow:
         )
 
         assert result.status == ErasureStatus.FAILED.value
-        assert result.residue == ("model_cache",)
-        assert result.removed.cache_entries == 0
-        assert await world.runtime.stores.episodes.get_episode("e1") is None
+        assert result.residue == ("vector:episode",)
+        assert result.removed.episodes == 1
+        stores = world.runtime.stores
+        assert await stores.episodes.get_episode("e1") is None
+        assert await stores.temporal_store.observations_of_episode("e1") == []
+        assert await stores.temporal_store.facts_by_ids(world.plan.fact_ids) == []
+        assert await stores.resolver_store.has_entity("organization") is False
+        assert await stores.vectors.exists(VectorKind.EPISODE, ["e1"]) == {"e1"}
+        assert await stores.vectors.exists(VectorKind.NODE, ["organization"]) == set()
         record = await world.journal.get(result.erasure_id)
         assert record is not None
         assert record.status is ErasureStatus.FAILED
-        assert record.residue == ("model_cache",)
+        assert record.residue == ("vector:episode",)
 
     async def test_recovery_finishes_cleanup_once_and_skips_closed_rows(
         self, graph_backend: GraphBackend
@@ -158,7 +140,6 @@ class TestEraseWorkflow:
             world.journal,
             lambda _: _runtime(world),
             world.runtime.clock,
-            cache=world.cache,
             after_step=crash_after_entities,
         )
         with pytest.raises(RuntimeError, match="simulated interruption"):
@@ -176,7 +157,6 @@ class TestEraseWorkflow:
             world.journal,
             lambda _: _runtime(world),
             world.runtime.clock,
-            cache=world.cache,
         )
 
         results = await resumed.recover("erase-test")

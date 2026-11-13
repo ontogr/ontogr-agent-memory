@@ -9,8 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ontogr_mem.data_models.clock import Clock, SystemClock
 from ontogr_mem.graphstore.protocol import GraphStore
-from ontogr_mem.llm import LLMClient, LLMConfig, RoleModels, build_models
-from ontogr_mem.llm.cache.port import ResponseCache
+from ontogr_mem.llm import RoleModels, build_models
 from ontogr_mem.observability import NoOpTracer, Tracer
 from ontogr_mem.relational_store import (
     MemoryOperationStore,
@@ -85,19 +84,17 @@ async def build_service(
     authorizer: Authorizer,
     operations: OperationStore,
     clock: Clock,
-    llm: LLMClient | None,
+    models: RoleModels,
     embedder: Embedder,
     policy: ResolutionPolicy,
     resolver_settings: ResolverSettings,
     retrieval_settings: RetrievalSettings,
     limiter: CallerRateLimiter,
-    models: RoleModels | None = None,
     max_attempts: int = 3,
     tracer: Tracer | None = None,
     audit_log: AuditLog | None = None,
     confirm_tokens: ConfirmTokens | None = None,
     drop_graph: Callable[[str], Awaitable[None]] | None = None,
-    erase_cache: ResponseCache | None = None,
 ) -> MemoryService:
     """Build the service from settings and caller-owned dependencies.
 
@@ -112,23 +109,18 @@ async def build_service(
         authorizer: Checks grants and records access decisions.
         operations: Persists service operation rows.
         clock: Time source shared by service components.
-        llm: Optional client for resolution verification, ontology drafting,
-            consolidation and the pair judge. Text extraction uses ``models``
-            and needs both entity extraction and fact extraction configured.
         embedder: Client used by Tenant vector stores.
         policy: Entity resolution policy.
         resolver_settings: Entity resolver configuration.
         retrieval_settings: Retrieval configuration.
         limiter: Per-principal read and write limiter.
         models: Caller-owned process-wide model pool. The caller closes it.
-            When omitted, an unconfigured pool without HTTP clients is used,
-            which disables text extraction.
         max_attempts: Maximum attempts for each queued job.
-        tracer: Optional tracer for service and Tenant spans.
+        tracer: Optional tracer for service and embedding spans. PydanticAI model
+            spans use caller-owned instrumentation.
         audit_log: Optional audit chain for service operations.
         confirm_tokens: Optional signer for forget confirmation tokens.
         drop_graph: Graph cleanup callback that erases one Tenant's graph.
-        erase_cache: Optional cache to clean during erase operations.
 
     Returns:
         The configured memory service.
@@ -140,22 +132,17 @@ async def build_service(
         raise ValueError("a graph cleanup callback is required")
 
     selected_tracer = tracer or NoOpTracer()
-    selected_models = (
-        models if models is not None else build_models(LLMConfig.model_construct())
-    )
 
     async def runtime_factory(tenant_id: str) -> TenantRuntime:
         stores = await stores_factory(tenant_id, embedder, tracer=selected_tracer)
         return build_tenant_runtime(
             stores,
-            llm=llm,
-            models=selected_models,
+            models=models,
             embedder=embedder,
             clock=clock,
             policy=policy,
             resolver_settings=resolver_settings,
             retrieval_settings=retrieval_settings,
-            tracer=selected_tracer,
         )
 
     tenants = TenantRuntimeCache(runtime_factory, state, authorizer)
@@ -163,7 +150,6 @@ async def build_service(
         state,
         tenants.get_or_create,
         clock,
-        cache=erase_cache,
         drop_graph=drop_graph,
         delete_tenant_jobs=state.delete_tenant,
     )
@@ -173,8 +159,7 @@ async def build_service(
             state=state,
             operations=operations,
             clock=clock,
-            llm=llm,
-            models=selected_models,
+            models=models,
             backend=settings.backend,
             limiter=limiter,
             max_attempts=max_attempts,
@@ -194,7 +179,6 @@ async def open_service(
     stores_factory: StoresFactory | None = None,
     drop_graph: Callable[[str], Awaitable[None]] | None = None,
     clock: Clock | None = None,
-    llm: LLMClient | None = None,
     models: RoleModels | None = None,
     embedder: Embedder,
     policy: ResolutionPolicy | None = None,
@@ -203,7 +187,6 @@ async def open_service(
     limiter: CallerRateLimiter | None = None,
     max_attempts: int = 3,
     tracer: Tracer | None = None,
-    erase_cache: ResponseCache | None = None,
 ) -> AsyncGenerator[ServiceRuntime, None]:
     """Open, start, and own the service resources for one process lifetime.
 
@@ -215,9 +198,6 @@ async def open_service(
         drop_graph: Graph cleanup callback for ``stores_factory``. Ignored
             when the configured backend opens the stores.
         clock: Shared time source; defaults to the system clock.
-        llm: Optional client for resolution verification, ontology drafting,
-            consolidation and the pair judge. Text extraction uses ``models``
-            and needs both entity extraction and fact extraction configured.
         models: Process-wide model pool. When omitted, the pool is built from
             the environment and its HTTP clients are closed when the context
             exits. A pool passed in stays owned by the caller.
@@ -227,8 +207,8 @@ async def open_service(
         retrieval_settings: Retrieval settings.
         limiter: Request limiter; defaults to the standard service limits.
         max_attempts: Maximum attempts for queued jobs.
-        tracer: Optional tracer shared by service components.
-        erase_cache: Optional cache to clean during erase operations.
+        tracer: Optional tracer for service and embedding spans. PydanticAI model
+            spans use caller-owned instrumentation.
 
     Yields:
         A service runtime. The runtime and its stores are closed
@@ -267,7 +247,6 @@ async def open_service(
             authorizer=authorizer,
             operations=operations,
             clock=selected_clock,
-            llm=llm,
             models=selected_models,
             embedder=embedder,
             policy=policy or ResolutionPolicy(),
@@ -279,7 +258,6 @@ async def open_service(
             audit_log=audit_log,
             confirm_tokens=ConfirmTokens(None, selected_clock),
             drop_graph=drop_graph,
-            erase_cache=erase_cache,
         )
         # Registered after the model clients so jobs stop before they close.
         resources.push_async_callback(service.stop)

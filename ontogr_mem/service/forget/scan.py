@@ -3,7 +3,6 @@
 from collections.abc import Sequence
 
 from ontogr_mem.data_models.fact_versions import FactStatus
-from ontogr_mem.llm.cache.port import ResponseCache
 from ontogr_mem.resolution.keys import strict_key
 from ontogr_mem.retrieval.keyword import KeywordKind
 from ontogr_mem.service.forget.plan import ForgetPlan
@@ -18,7 +17,6 @@ async def scan_residue(  # noqa: C901, PLR0912
     plan: ForgetPlan,
     *,
     needles: Sequence[str] = (),
-    cache: ResponseCache | None = None,
     deleted_entity_ids: Sequence[str] = (),
     candidate_entity_ids: Sequence[str] = (),
 ) -> tuple[str, ...]:
@@ -28,7 +26,6 @@ async def scan_residue(  # noqa: C901, PLR0912
         runtime: Tenant stores and readers used by the checks.
         plan: Ids selected for the erase operation.
         needles: Source text snippets to search for. Empty skips text checks.
-        cache: Optional response cache for text and tag checks.
         deleted_entity_ids: Entity ids deleted during the current run.
         candidate_entity_ids: Entities whose text may contain selected content.
 
@@ -113,14 +110,4 @@ async def scan_residue(  # noqa: C901, PLR0912
             )
             if any(needle in text for needle in needles):
                 residue.add(f"entity_text:{entity.entity_id}")
-        if cache is not None:
-            for needle in needles:
-                if await cache.scan(needle):
-                    residue.add("model_cache")
-                    break
-
-    if cache is not None:
-        for episode_id in plan.episode_ids:
-            if await cache.count_tag(f"episode:{episode_id}"):
-                residue.add("model_cache:tag")
     return tuple(sorted(residue))

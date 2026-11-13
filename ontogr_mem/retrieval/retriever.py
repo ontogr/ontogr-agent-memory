@@ -8,7 +8,7 @@ from functools import partial
 from ontogr_mem.data_models import Entity, EntityStatus
 from ontogr_mem.errors import StoreError
 from ontogr_mem.ingestion.store import EpisodeStore
-from ontogr_mem.llm import estimate_tokens
+from ontogr_mem.llm.tokens import estimate_tokens
 from ontogr_mem.resolution.errors import ResolutionError
 from ontogr_mem.resolution.resolver_store import ResolverStore
 from ontogr_mem.retrieval.context import assemble

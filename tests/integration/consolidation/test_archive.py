@@ -19,6 +19,7 @@ from ontogr_mem.data_models.facts import Precision, TimeBasis
 from ontogr_mem.data_models.observation import Observation, ObservationKind
 from tests.support.consolidation import ConsWorld, new_world
 from tests.support.graph_backend import GraphBackend
+from tests.support.scripted_model import scripted_role_models
 
 
 def ctx_for(world: ConsWorld, *, resolution: bool = True) -> StageContext:
@@ -28,6 +29,7 @@ def ctx_for(world: ConsWorld, *, resolution: bool = True) -> StageContext:
         clock=world.clock,
         store=world.store,
         settings=world.settings,
+        models=scripted_role_models(),
         resolution=world.resolution if resolution else None,
         temporal=world.temporal,
     )

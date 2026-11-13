@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from ontogr_mem.data_models import Episode, JobState, require_utc
-from ontogr_mem.llm import estimate_tokens
+from ontogr_mem.llm.tokens import estimate_tokens
 from ontogr_mem.resolution.keys import strict_key
 from ontogr_mem.retrieval.errors import RetrievalError
 from ontogr_mem.retrieval.models import FactResult, RetrievalRequest, RetrievalResult
