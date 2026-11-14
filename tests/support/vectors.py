@@ -3,7 +3,7 @@
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 
-from ontogr_mem.vectorstore import VectorKind, VectorStore
+from ontogr_mem.vectorstore import EmbeddingPurpose, VectorKind, VectorStore
 from tests.support.embedder import MockEmbedder
 
 
@@ -27,7 +27,9 @@ def fixed_embedder(**kwargs: object) -> MockEmbedder:
 class ProbeMismatchEmbedder(MockEmbedder):
     """An embedder whose probe returns fewer values than its declared dimension."""
 
-    async def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
+    async def embed_batch(
+        self, texts: Sequence[str], *, purpose: EmbeddingPurpose
+    ) -> list[list[float]]:
         """Return a two-value vector for every text."""
         return [[1.0, 0.0] for _ in texts]
 

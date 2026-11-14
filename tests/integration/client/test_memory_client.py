@@ -834,7 +834,7 @@ class TestMemoryClient:
             assert not _judge_model(models).client._client.is_closed
             assert embedder.close_count == 0
             assert models.model_for(ModelRole.ANSWER) is not None
-            vectors = await embedder.embed_batch(["x"])
+            vectors = await embedder.embed_batch(["x"], purpose="document")
             assert len(vectors) == 1
             assert len(vectors[0]) == embedder.dim
         finally:

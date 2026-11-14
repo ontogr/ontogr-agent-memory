@@ -377,6 +377,8 @@ You need Python 3.11 or newer, Docker with Compose, and a model endpoint with an
 
 1. Start the graph from a clone of this repository, or from any folder that holds a copy of its `compose.yaml`:
 
+   Before recreating a deployment that used the old `/data` graph mount, stop client writes, then cleanly stop FalkorDB without removing its container so the final RDB save includes in-memory data. Back up both the `falkordb-data` volume and `/var/lib/falkordb/data` from the existing container, and keep that container until both backups are verified. The current image writes graph data under `/var/lib/falkordb/data`. Mounting the same volume at that path does not copy files from the old container layer. Verify that the active graph is present in the backups before removing the old container.
+
    ```bash
    docker compose up -d --wait falkordb
    ```
@@ -524,15 +526,20 @@ uv add "ontogr-mem[otel]"
 
 Optional extraction extras are `gliner` and `spacy`. The full set is in [pyproject.toml](https://github.com/ontogr/ontogr-agent-memory/blob/main/pyproject.toml).
 
-The example needs the `falkordb` extra. Add the `fastembed` extra to use the local CPU embedding model. People who use an embedding endpoint skip `fastembed` and set `MEMORY_EMBEDDING_MODEL` and `MEMORY_EMBEDDING_BASE_URL`.
+The example needs the `falkordb` extra. Choose one FastEmbed extra: `fastembed` for CPU or `fastembed-gpu` for NVIDIA CUDA. Do not install both extras in one environment. People who use an embedding endpoint skip both extras and set `MEMORY_EMBEDDING_MODEL` and `MEMORY_EMBEDDING_BASE_URL`.
 
 ```bash
 # Install with the local CPU embedding model
 uv add "ontogr-mem[falkordb,fastembed]"
 
+# Install with NVIDIA CUDA support instead
+uv add "ontogr-mem[falkordb,fastembed-gpu]"
+
 # Install for an embedding endpoint
 uv add "ontogr-mem[falkordb]"
 ```
+
+The repository's `make sync` selects the CPU extra by default. To sync the GPU extra instead, run `make sync UV_SYNC_ARGS='--no-extra fastembed'`. The CPU and GPU extras install alternative FastEmbed and ONNX Runtime packages. Users must validate CUDA execution on their hardware.
 
 Run a FalkorDB server before opening `Memory`. The repository's `compose.yaml` starts the graph on `127.0.0.1:6379`, which is the package default. SQLite state is stored in `agent_memory_state.sqlite3` in the current directory. The local embedding model may download files on first use. Set `MEMORY_EMBEDDING_API_KEY` if the embedding endpoint requires authentication.
 
@@ -833,23 +840,80 @@ The `ANSWER` role supplies the model of the default chat agent and of agents tha
 
 The embedding gateway batches texts, splits long inputs, retries transient failures, and enforces a request deadline. A failed embedding is returned with a typed reason, and the vector writer keeps failed writes for an explicit retry. A committed fact or episode is not rolled back when its vector write fails.
 
+### Embedding providers
+
+`MEMORY_EMBEDDING_PROVIDER` selects `auto` (the default), `fastembed`, or `endpoint`. In `auto` mode, setting both endpoint fields (`MEMORY_EMBEDDING_MODEL` and `MEMORY_EMBEDDING_BASE_URL`) selects the endpoint. Setting neither selects FastEmbed, which uses CPU by default. Setting only one endpoint field is an error. The `endpoint` provider requires both fields. A provider failure is reported without switching providers.
+
+`MEMORY_EMBEDDING_MODEL` names an endpoint model. It does not select the local FastEmbed model. Set the local model through FastEmbed's native `model_name` option in `fastembed_kwargs`. The library passes those options to FastEmbed's `TextEmbedding` constructor. You can set them as a Python dictionary or as a JSON object in `MEMORY_EMBEDDING_FASTEMBED_KWARGS`. FastEmbed options can vary by model and backend.
+
+When `model_name` is omitted, FastEmbed uses `ibm-granite/granite-embedding-small-english-r2`, which currently exposes 384 dimensions and an 8,192-token limit; other selected models use their initialized dimensions and tokenizer limits.
+
+`batch_size` is a separate positive integer that defaults to 32. FastEmbed uses it for its `query_embed` and `passage_embed` calls. It is not a constructor option or the embedding gateway's request batch size.
+
+```python
+from ontogr_mem.client import Memory
+from ontogr_mem.vectorstore.builtin import EmbeddingSettings, select_embedder
+
+
+async def search_with_local_embeddings() -> None:
+    settings = EmbeddingSettings(
+        provider="fastembed",
+        fastembed_kwargs={
+            "model_name": "ibm-granite/granite-embedding-small-english-r2",
+            "threads": 2,
+        },
+        batch_size=32,
+    )
+    embedder = await select_embedder(settings)
+    try:
+        async with Memory.open(tenant="new-local-space", embedder=embedder) as memory:
+            result = await memory.search("Where does Ana work?")
+            print(result.state)
+    finally:
+        await embedder.aclose()
+```
+
+The injected embedder belongs to the caller. Close it after `Memory` exits. Set the same local options in the environment like this:
+
+```bash
+export MEMORY_EMBEDDING_PROVIDER=fastembed
+export MEMORY_EMBEDDING_FASTEMBED_KWARGS='{"model_name":"ibm-granite/granite-embedding-small-english-r2","threads":2}'
+export MEMORY_EMBEDDING_BATCH_SIZE=32
+```
+
+To request CUDA, install only `fastembed-gpu` and add `"cuda": true` to the native options. Startup requires an available CUDA provider and a CUDA-first provider order. Startup fails when CUDA is unavailable or is not first. Inference does not fall back to CPU after an error. Ordinary CPU-assigned operations remain allowed. This project has not verified GPU execution. Users must validate query and document embedding on their NVIDIA hardware.
+
+Query and document encoding rules are reviewed only for these FastEmbed profiles:
+
+- `ibm-granite/granite-embedding-small-english-r2`
+- `sentence-transformers/all-MiniLM-L6-v2`
+- `jinaai/jina-embeddings-v3`
+- `nomic-ai/nomic-embed-text-v1.5` and `nomic-ai/nomic-embed-text-v1.5-Q`
+- `intfloat/multilingual-e5-large`
+- `Qwen/Qwen3-Embedding-0.6B` and `Qwen/Qwen3-Embedding-0.6B-Q`
+- `google/embeddinggemma-300m`
+- `minishlab/potion-base-8M` and `minishlab/potion-retrieval-32M`
+
+The FastEmbed registry contains other models, but their query and document behavior is not reviewed. This list is not a CUDA model allowlist. Use a custom embedder when you need to control an unreviewed model's behavior.
+
+The gateway estimates input length in characters before splitting raw content. Token counts vary, and query or document instructions add text. FastEmbed can still truncate a segment at its tokenizer limit.
+
+Local vector spaces record the model and its query and document encoding identity. This identity is incompatible with spaces created before this embedding identity was introduced, even when the model is unchanged. Create a new Tenant and re-ingest Episodes from the original sources. Do not relabel existing vectors. A dimension change requires a new Tenant with compatible vector indexes. Neo4j shares vector indexes across Tenants, so a separate database or instance may be needed. Memory startup recovers every known Tenant, so an incompatible old Tenant in the same state database can prevent the new Tenant from opening. Use a separate state database for the new configuration when needed, and keep the old database with its original embedding configuration.
+
 | Variable | Meaning | Default |
 | --- | --- | --- |
-| `MEMORY_EMBEDDING_MODEL` | Endpoint model name | unset |
-| `MEMORY_EMBEDDING_BASE_URL` | Explicit compatible endpoint URL | unset |
+| `MEMORY_EMBEDDING_PROVIDER` | `auto`, `fastembed`, or `endpoint` | `auto` |
+| `MEMORY_EMBEDDING_FASTEMBED_KWARGS` | Native FastEmbed constructor options as a JSON object | `{}` |
+| `MEMORY_EMBEDDING_BATCH_SIZE` | Positive batch size for FastEmbed query and passage calls | `32` |
+| `MEMORY_EMBEDDING_MODEL` | Endpoint model name; also selects endpoint in `auto` mode | unset |
+| `MEMORY_EMBEDDING_BASE_URL` | Compatible endpoint URL; also selects endpoint in `auto` mode | unset |
 | `MEMORY_EMBEDDING_API_KEY` | Independent endpoint key | unset, never the LLM key |
-| `MEMORY_EMBEDDING_DIMENSIONS` | Expected output width, 1 through 4000 | discover once on embedder open |
+| `MEMORY_EMBEDDING_DIMENSIONS` | Expected endpoint output width, 1 through 4000 | discover once on embedder open |
 | `MEMORY_EMBEDDING_MAX_INPUT_TOKENS` | Positive declared endpoint input limit | 8192 |
-
-When model and base URL are both set, `Memory` uses the endpoint. Otherwise it uses the local CPU model if `fastembed` can load. A selected endpoint failure is reported without switching models. Set both endpoint fields or clear both to avoid accidentally selecting the local model.
 
 The endpoint never uses `OPENAI_*` settings or the language-model key. Without an embedding key it sends a fixed placeholder for unauthenticated servers. Configured dimensions declare the output width; they do not request dimension reduction. Tenant readiness also performs the vector store's existing probe.
 
-The local model is `ibm-granite/granite-embedding-small-english-r2`, with 384 dimensions and an 8192-token tokenizer limit. It runs only on CPU and truncates long inputs on the right. `fastembed` stores model files at `FASTEMBED_CACHE_PATH`, or `fastembed_cache` in the system temporary directory. A persistent cache avoids downloading those files again after temporary files are removed.
-
-The local extra is not installable on macOS Intel with the checked dependency versions, including Python 3.14, because `onnxruntime` has no compatible wheel. Use an embedding endpoint on that platform. macOS arm64 needs a compatible macOS 14-or-newer wheel. GPU embedding is not supported.
-
-The embedding gateway controls batches and approximates input length in characters before splitting text. An endpoint can still reject an input that exceeds its actual tokenizer limit. Embedding providers and model dimensions are fixed for an existing Tenant's stored embedding spaces.
+FastEmbed stores model files at `FASTEMBED_CACHE_PATH`, or `fastembed_cache` in the system temporary directory. A persistent cache avoids downloading those files again after temporary files are removed. Check FastEmbed and ONNX Runtime wheel availability before installing a local extra. Use an embedding endpoint when your platform has no compatible wheel.
 
 ## Observability
 
@@ -886,7 +950,7 @@ Settings classes use `pydantic-settings`. They read the `.env` file in the curre
 | `MEMORY_ENTITY_EXTRACTION_` | Entity extractor concurrency, context, and thresholds. |
 | `MEMORY_FACT_EXTRACTION_` | Fact extractor concurrency, context, and version. |
 | `MEMORY_LLM_` | Global and per-role model settings. See [Named model roles](#named-model-roles). |
-| `MEMORY_EMBEDDING_` | Embedding endpoint, output width and input limit. See [Language model and embedding layer](#language-model-and-embedding-layer). |
+| `MEMORY_EMBEDDING_` | Provider selection, native FastEmbed options, endpoint settings and batch size. See [Language model and embedding layer](#language-model-and-embedding-layer). |
 | `MEMORY_FORGET_` | Forget confirmation secret. |
 | `MEMORY_` | Local stdio principal id, tenant, and grants. |
 

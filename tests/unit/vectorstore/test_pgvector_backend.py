@@ -11,6 +11,7 @@ from typing import Any, cast
 
 import pytest
 
+from ontogr_mem.vectorstore import SpaceMismatchError, VectorStore
 from ontogr_mem.vectorstore.errors import IndexDriftError
 from ontogr_mem.vectorstore.models import (
     FailReason,
@@ -27,6 +28,7 @@ from ontogr_mem.vectorstore.pgvector.schema import (
     build_manifest,
 )
 from ontogr_mem.vectorstore.pgvector.store import PgBackend
+from tests.support.embedder import MockEmbedder, gateway
 
 
 NODE = VectorKind.NODE
@@ -234,6 +236,25 @@ class TestPgBackendManifest:
 
         with pytest.raises(IndexDriftError):
             await backend.search(NODE, A, 5, SearchFilters(), None)
+
+    async def test_vector_store_reports_a_stored_model_mismatch_actionably(
+        self,
+    ) -> None:
+        """The pgvector readiness check gives re-ingestion guidance."""
+        stored_specs = _specs()
+        tenant = FakeTenant("m_t1", stored_specs, HnswParams())
+        backend = PgBackend(cast(Pool, FakePool(tenant)), "t1", stored_specs)
+        configured_model = "configured-model-sentinel"
+        store = VectorStore(backend, gateway(MockEmbedder(model_id=configured_model)))
+
+        with pytest.raises(SpaceMismatchError) as error:
+            await store.ensure_ready()
+
+        assert str(error.value) == (
+            "node: Existing memory uses a different embedding model or encoding "
+            "behavior. Changing the model or encoding requires re-embedding the "
+            "source data into a new Tenant. Automatic re-embedding is not supported."
+        )
 
 
 class TestPgBackendWrite:

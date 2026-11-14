@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from ontogr_mem.vectorstore import (
+    EmbeddingPurpose,
     EmbedItem,
     PermanentEmbeddingError,
     SearchFilters,
@@ -49,13 +50,15 @@ class OnceFailingEmbedder(MockEmbedder):
         super().__init__()
         self.failed = False
 
-    async def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
+    async def embed_batch(
+        self, texts: Sequence[str], *, purpose: EmbeddingPurpose
+    ) -> list[list[float]]:
         """Raise a permanent error once, then embed."""
         if not self.failed:
             self.failed = True
             msg = "401"
             raise PermanentEmbeddingError(msg)
-        return await super().embed_batch(texts)
+        return await super().embed_batch(texts, purpose=purpose)
 
 
 class BrokenBackend(PgBackend):

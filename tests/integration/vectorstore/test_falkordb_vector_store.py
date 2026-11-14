@@ -12,6 +12,7 @@ from ontogr_mem.graphstore.schemas import VECTOR
 from ontogr_mem.vectorstore import (
     IndexDriftError,
     SearchFilters,
+    SpaceMismatchError,
     Validity,
     VectorKind,
     VectorStore,
@@ -129,6 +130,38 @@ class TestFalkorDBVectorStore(GraphVectorStoreContract):
         hits = await h.store.search(VectorKind.NODE, A, k=5)
 
         assert [hit.id for hit in hits] == ["n1"]
+
+    async def test_changed_dimension_requires_reingestion_without_mutation(
+        self, make_harness
+    ):
+        """A width change is refused while the stored vectors remain intact."""
+        h = await ready(make_harness)
+        await h.seed(VectorKind.NODE, ["existing-node"])
+        await h.store.upsert(VectorKind.NODE, [node_item("existing-node", "a")])
+        original_vectors = await h.store.backend.fetch_vectors(
+            VectorKind.NODE, ["existing-node"]
+        )
+
+        other = h.reopen(MockEmbedder(dim=4))
+
+        with pytest.raises(SpaceMismatchError) as error:
+            await other.ensure_ready()
+
+        assert "has dimension 3, expected 4" in str(error.value)
+        assert (
+            "Changing the embedding dimension requires re-embedding the source data "
+            "into a new Tenant. Automatic re-embedding is not supported."
+        ) in str(error.value)
+        stored_space = await h.store.backend.read_space(VectorKind.NODE)
+        assert stored_space is not None
+        assert stored_space.dim == 3
+        assert (
+            await h.store.backend.fetch_vectors(VectorKind.NODE, ["existing-node"])
+            == original_vectors
+        )
+        assert [hit.id for hit in await h.store.search(VectorKind.NODE, A, k=5)] == [
+            "existing-node"
+        ]
 
     async def test_status_filter_over_fetches_and_never_returns_fewer_than_k(
         self, make_harness

@@ -2,17 +2,41 @@ version = 1
 revision = 5
 requires-python = ">=3.11"
 resolution-markers = [
-    "(python_full_version >= '3.15' and sys_platform == 'linux') or (python_full_version >= '3.15' and sys_platform == 'win32')",
-    "python_full_version >= '3.15' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "(python_full_version == '3.14.*' and sys_platform == 'linux') or (python_full_version == '3.14.*' and sys_platform == 'win32')",
-    "python_full_version == '3.14.*' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "(python_full_version == '3.13.*' and sys_platform == 'linux') or (python_full_version == '3.13.*' and sys_platform == 'win32')",
-    "python_full_version == '3.13.*' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "(python_full_version == '3.12.*' and sys_platform == 'linux') or (python_full_version == '3.12.*' and sys_platform == 'win32')",
-    "python_full_version == '3.12.*' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "(python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform == 'win32')",
-    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "(python_full_version >= '3.15' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version >= '3.15' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.14.*' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.14.*' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.12.*' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.12.*' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version < '3.12' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version < '3.12' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "python_full_version >= '3.15' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.14.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.13.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.12.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "(python_full_version >= '3.15' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version >= '3.15' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.14.*' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.14.*' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.13.*' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.13.*' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.12.*' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.12.*' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version < '3.12' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version < '3.12' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "python_full_version >= '3.15' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.14.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.13.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.12.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "(python_full_version >= '3.15' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version >= '3.15' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.14.*' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.14.*' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version < '3.12' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version < '3.12' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "python_full_version >= '3.15' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.14.*' and sys_platform == 'emscripten' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.14.*' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
 ]
+conflicts = [[
+    { package = "ontogr-mem", extra = "fastembed" },
+    { package = "ontogr-mem", extra = "fastembed-gpu" },
+]]
 
 [[package]]
 name = "aiofile"
@@ -69,7 +93,7 @@ version = "4.15.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "idna" },
-    { name = "typing-extensions", marker = "python_full_version < '3.15'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.15' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a9/d2/f4d173e22df740bc37b1db102b386ba719b66e95b0f0d751f556b387e6d2/anyio-4.15.1.tar.gz", hash = "sha256:9f28306018cbd6d329e64a36d58256edff76dd996fe423bc957326e578b82a94", size = 276966, upload-time = "2026-09-05T10:42:39.44Z" }
 wheels = [
@@ -183,7 +207,7 @@ name = "bandit"
 version = "1.9.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
     { name = "pyyaml" },
     { name = "rich" },
     { name = "stevedore" },
@@ -207,8 +231,8 @@ name = "blis"
 version = "1.3.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d0/d0/d8cc8c9a4488a787e7fa430f6055e5bd1ddb22c340a751d9e901b82e2efe/blis-1.3.3.tar.gz", hash = "sha256:034d4560ff3cc43e8aa37e188451b0440e3261d989bb8a42ceee865607715ecd", size = 2644873, upload-time = "2025-11-17T12:28:30.511Z" }
 wheels = [
@@ -319,7 +343,7 @@ name = "cffi"
 version = "2.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "pycparser", marker = "implementation_name != 'PyPy'" },
+    { name = "pycparser", marker = "implementation_name != 'PyPy' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/9e/ef/008a1939e372c06329a3fce4279c02f328488f3526744906eeec3da7ad5f/cffi-2.1.1.tar.gz", hash = "sha256:dd31f52ea1086513bb9df30f8fcee9b8918323ae067a3d5b78bc826a000712be", size = 530807, upload-time = "2026-08-03T21:21:18.939Z" }
 wheels = [
@@ -720,7 +744,7 @@ wheels = [
 
 [package.optional-dependencies]
 toml = [
-    { name = "tomli", marker = "python_full_version <= '3.11'" },
+    { name = "tomli", marker = "python_full_version <= '3.11' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
 ]
 
 [[package]]
@@ -728,7 +752,7 @@ name = "cryptography"
 version = "50.0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cffi", marker = "platform_python_implementation != 'PyPy'" },
+    { name = "cffi", marker = "platform_python_implementation != 'PyPy' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/9d/af/182eb91b0df3fe75c4d9f26fe70684569566745f6ba7e5c9c73a862c5252/cryptography-50.0.2.tar.gz", hash = "sha256:7b46165bb56eb4704e2eaaf86f3c940d19154535d9b0ca7d6d590b04060e00d5", size = 880623, upload-time = "2026-09-30T15:30:04.884Z" }
 wheels = [
@@ -908,7 +932,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -945,8 +969,8 @@ dependencies = [
     { name = "huggingface-hub" },
     { name = "loguru" },
     { name = "mmh3" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.12' and extra == 'extra-10-ontogr-mem-fastembed') or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.12' and extra == 'extra-10-ontogr-mem-fastembed') or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
     { name = "onnxruntime" },
     { name = "pillow" },
     { name = "py-rust-stemmers" },
@@ -957,6 +981,28 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/75/36/e5faec3c37878a22216241f32e375a754fb519db4564fefd1ba0e9135547/fastembed-0.9.1.tar.gz", hash = "sha256:8b4b2881ea85a4d36e8f284466671437b3fed869c33cdc71d6f6c48ddff115c7", size = 106290, upload-time = "2026-10-24T18:23:46.233Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/25/9f/04650110be2c2554655e8b2c216567e6028cc767a2a0ad26f84972829c60/fastembed-0.9.1-py3-none-any.whl", hash = "sha256:95042ac7f685bda6697861066d49f8b119fbde8b75ed5162bbb7e84e2dad0e1d", size = 150228, upload-time = "2026-10-24T18:23:45.012Z" },
+]
+
+[[package]]
+name = "fastembed-gpu"
+version = "0.9.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "huggingface-hub" },
+    { name = "loguru" },
+    { name = "mmh3" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.12' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.12' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "onnxruntime-gpu" },
+    { name = "pillow" },
+    { name = "py-rust-stemmers" },
+    { name = "requests" },
+    { name = "tokenizers" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c5/fa/06daa45c0036fd43772029ed1a37e77d3876962b240c950f7e4de656d5ac/fastembed_gpu-0.9.1.tar.gz", hash = "sha256:196e5ab31a8e3fca15045425977a72c656cc6bf229c628f387a39343ee197ec3", size = 106316, upload-time = "2026-10-24T18:30:49.037Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c2/74/372cfb402eb7c8fae3c0e4610c1ea5f06f516503cbc26b0043e3234223be/fastembed_gpu-0.9.1-py3-none-any.whl", hash = "sha256:120fd1f0b6fee2898f13683654a2882119ec8a1533b9c0ee17bab64e57886305", size = 150290, upload-time = "2026-10-24T18:30:47.504Z" },
 ]
 
 [[package]]
@@ -992,7 +1038,7 @@ wheels = [
 [package.optional-dependencies]
 client = [
     { name = "authlib" },
-    { name = "beartype", marker = "python_full_version >= '3.15'" },
+    { name = "beartype", marker = "python_full_version >= '3.15' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
     { name = "exceptiongroup" },
     { name = "httpx2" },
     { name = "mcp" },
@@ -1002,7 +1048,7 @@ client = [
 ]
 server = [
     { name = "authlib" },
-    { name = "beartype", marker = "python_full_version >= '3.15'" },
+    { name = "beartype", marker = "python_full_version >= '3.15' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
     { name = "certifi" },
     { name = "cyclopts" },
     { name = "exceptiongroup" },
@@ -1072,13 +1118,13 @@ version = "0.2.29"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
     { name = "packaging" },
     { name = "safetensors" },
     { name = "sentencepiece" },
-    { name = "torch", version = "2.14.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
-    { name = "torch", version = "2.14.1+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "torch", version = "2.14.1", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform != 'linux' and sys_platform != 'win32') or (sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "torch", version = "2.14.1+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'linux' or sys_platform == 'win32' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
     { name = "tqdm" },
     { name = "transformers" },
 ]
@@ -1147,8 +1193,8 @@ name = "httpcore2"
 version = "2.16.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "h11" },
-    { name = "truststore" },
+    { name = "h11", marker = "python_full_version < '3.12' or python_full_version >= '3.15' or sys_platform != 'emscripten' or extra == 'extra-10-ontogr-mem-fastembed' or extra == 'extra-10-ontogr-mem-fastembed-gpu'" },
+    { name = "truststore", marker = "python_full_version < '3.12' or python_full_version >= '3.15' or sys_platform != 'emscripten' or extra == 'extra-10-ontogr-mem-fastembed' or extra == 'extra-10-ontogr-mem-fastembed-gpu'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/c0/61/afa9d6b7452f9eca73f73d45324eb0bb52f098fd5e6049bf6b8263be9b4e/httpcore2-2.16.0.tar.gz", hash = "sha256:c72cd0413563b17e1cd8354677dff887466f8ec2551679759e93126534428643", size = 69886, upload-time = "2026-10-21T07:09:45.31Z" }
 wheels = [
@@ -1175,12 +1221,12 @@ name = "httpx2"
 version = "2.16.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "anyio", marker = "sys_platform != 'emscripten'" },
-    { name = "httpcore2", marker = "sys_platform != 'emscripten'" },
-    { name = "httpx2-jsfetch", marker = "python_full_version >= '3.12' and sys_platform == 'emscripten'" },
+    { name = "anyio", marker = "sys_platform != 'emscripten' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "httpcore2", marker = "sys_platform != 'emscripten' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "httpx2-jsfetch", marker = "(python_full_version >= '3.12' and sys_platform == 'emscripten') or (python_full_version < '3.12' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (sys_platform != 'emscripten' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
     { name = "idna" },
-    { name = "truststore", marker = "sys_platform != 'emscripten'" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "truststore", marker = "sys_platform != 'emscripten' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/43/73/5ca2cedf5e4e50423d1c258877865a6b62793633b561c58499f8aeb33b7e/httpx2-2.16.0.tar.gz", hash = "sha256:0d54c98128e8f2ff7fbbde0fca8c359e5f032edeaaaac443cdb7f31f685bcd7f", size = 103116, upload-time = "2026-10-21T07:09:46.348Z" }
 wheels = [
@@ -1204,7 +1250,7 @@ dependencies = [
     { name = "click" },
     { name = "filelock" },
     { name = "fsspec" },
-    { name = "hf-xet", marker = "platform_machine == 'AMD64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'" },
+    { name = "hf-xet", marker = "platform_machine == 'AMD64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
     { name = "httpx" },
     { name = "packaging" },
     { name = "pyyaml" },
@@ -1605,12 +1651,12 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyjwt", extra = ["crypto"] },
     { name = "python-multipart" },
-    { name = "pywin32", marker = "sys_platform == 'win32'" },
+    { name = "pywin32", marker = "sys_platform == 'win32' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
     { name = "sse-starlette" },
     { name = "starlette" },
     { name = "typing-extensions" },
     { name = "typing-inspection" },
-    { name = "uvicorn", marker = "sys_platform != 'emscripten'" },
+    { name = "uvicorn", marker = "sys_platform != 'emscripten' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/9d/8d/e0d339616f4810e9051d4aba6887afab289ab1f81875fe908b606cdfd0e3/mcp-2.3.0.tar.gz", hash = "sha256:8b147a50441cf059dc88c684e0aeed3687f0aa0f39c6cde7b90330effd2b34d8", size = 4171955, upload-time = "2026-10-02T22:06:56.091Z" }
 wheels = [
@@ -1870,8 +1916,12 @@ name = "networkx"
 version = "3.6.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "(python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform == 'win32')",
-    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "(python_full_version < '3.12' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version < '3.12' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "(python_full_version < '3.12' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version < '3.12' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "(python_full_version < '3.12' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version < '3.12' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/6a/51/63fe664f3908c97be9d2e4f1158eb633317598cfa6e1fc14af5383f17512/networkx-3.6.1.tar.gz", hash = "sha256:26b7c357accc0c8cde558ad486283728b65b6a95d85ee1cd66bafab4c8168509", size = 2517025, upload-time = "2025-12-08T17:02:39.908Z" }
 wheels = [
@@ -1883,14 +1933,30 @@ name = "networkx"
 version = "3.7"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "(python_full_version >= '3.15' and sys_platform == 'linux') or (python_full_version >= '3.15' and sys_platform == 'win32')",
-    "python_full_version >= '3.15' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "(python_full_version == '3.14.*' and sys_platform == 'linux') or (python_full_version == '3.14.*' and sys_platform == 'win32')",
-    "python_full_version == '3.14.*' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "(python_full_version == '3.13.*' and sys_platform == 'linux') or (python_full_version == '3.13.*' and sys_platform == 'win32')",
-    "python_full_version == '3.13.*' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "(python_full_version == '3.12.*' and sys_platform == 'linux') or (python_full_version == '3.12.*' and sys_platform == 'win32')",
-    "python_full_version == '3.12.*' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "(python_full_version >= '3.15' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version >= '3.15' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.14.*' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.14.*' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.12.*' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.12.*' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "python_full_version >= '3.15' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.14.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.13.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.12.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "(python_full_version >= '3.15' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version >= '3.15' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.14.*' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.14.*' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.13.*' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.13.*' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.12.*' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.12.*' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "python_full_version >= '3.15' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.14.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.13.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.12.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "(python_full_version >= '3.15' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version >= '3.15' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.14.*' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.14.*' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "python_full_version >= '3.15' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.14.*' and sys_platform == 'emscripten' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.14.*' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/dc/76/3af777226b63a5e64a6b36b1ec5855c14e2b94a37096d4760e595fc43511/networkx-3.7.tar.gz", hash = "sha256:fd77a511bd90f39f3d016351345b52cf5319b813bdca01de3f755d3cca62e96a", size = 1866482, upload-time = "2026-09-21T16:45:16.974Z" }
 wheels = [
@@ -1911,8 +1977,12 @@ name = "numpy"
 version = "2.4.6"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "(python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform == 'win32')",
-    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "(python_full_version < '3.12' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version < '3.12' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "(python_full_version < '3.12' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version < '3.12' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "(python_full_version < '3.12' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version < '3.12' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d0/ad/fed0499ce6a338d2a03ebae59cd15093910c8875328855781952abf6c2fe/numpy-2.4.6.tar.gz", hash = "sha256:f3a3570c4a2a16746ac2c31a7c7c7b0c186b95ce902e33db6f28094ed7387dda", size = 20735807, upload-time = "2026-05-18T23:37:14.07Z" }
 wheels = [
@@ -1994,14 +2064,30 @@ name = "numpy"
 version = "2.5.4"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "(python_full_version >= '3.15' and sys_platform == 'linux') or (python_full_version >= '3.15' and sys_platform == 'win32')",
-    "python_full_version >= '3.15' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "(python_full_version == '3.14.*' and sys_platform == 'linux') or (python_full_version == '3.14.*' and sys_platform == 'win32')",
-    "python_full_version == '3.14.*' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "(python_full_version == '3.13.*' and sys_platform == 'linux') or (python_full_version == '3.13.*' and sys_platform == 'win32')",
-    "python_full_version == '3.13.*' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "(python_full_version == '3.12.*' and sys_platform == 'linux') or (python_full_version == '3.12.*' and sys_platform == 'win32')",
-    "python_full_version == '3.12.*' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "(python_full_version >= '3.15' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version >= '3.15' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.14.*' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.14.*' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.12.*' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.12.*' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "python_full_version >= '3.15' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.14.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.13.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.12.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "(python_full_version >= '3.15' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version >= '3.15' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.14.*' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.14.*' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.13.*' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.13.*' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.12.*' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.12.*' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "python_full_version >= '3.15' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.14.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.13.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.12.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "(python_full_version >= '3.15' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version >= '3.15' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.14.*' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.14.*' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "python_full_version >= '3.15' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.14.*' and sys_platform == 'emscripten' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.14.*' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/95/b0/c7453d0b6e2073c3264468b106ee1563750cecc910965e67357e3698c83e/numpy-2.5.4.tar.gz", hash = "sha256:9a94cf751c9ad8ebaa835bcd3d40dacf8534ad086b88c38029b65123c7999d2a", size = 20866315, upload-time = "2026-10-10T20:05:31.422Z" }
 wheels = [
@@ -2078,8 +2164,8 @@ version = "1.31.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "flatbuffers" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.12' and extra == 'extra-10-ontogr-mem-fastembed') or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.12' and extra == 'extra-10-ontogr-mem-fastembed') or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
     { name = "packaging" },
     { name = "protobuf" },
 ]
@@ -2111,6 +2197,36 @@ wheels = [
 ]
 
 [[package]]
+name = "onnxruntime-gpu"
+version = "1.32.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "flatbuffers" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.12' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.12' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "packaging" },
+    { name = "protobuf" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/36/c2/0b73c15631ede13dcb3a29767f47793888bb513085dca90e9b4bcda5a846/onnxruntime_gpu-1.32.0-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:04d62a0c3df806ece84aa0021b5a5fa7f0ec4a677e96703fb6d7b64c49f12580", size = 251392134, upload-time = "2026-11-13T10:44:12.032Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/42/0992a15c84e0e344da6b176736c27010131e398bfba993b8077077bb6e43/onnxruntime_gpu-1.32.0-cp311-cp311-manylinux_2_34_aarch64.whl", hash = "sha256:959ad743219892960dda2feb99429472d7e3c9e90ea0a32a4accdc3366ed029a", size = 311909892, upload-time = "2026-11-13T10:22:22.944Z" },
+    { url = "https://files.pythonhosted.org/packages/0d/eb/a133a6be3066f7ab659a4d4aec6a4a362e53379de91e08bb7b6d697600b1/onnxruntime_gpu-1.32.0-cp311-cp311-win_amd64.whl", hash = "sha256:eb141a4b6f49f76af1d0a7bcbc3ef7d55b63a8bcdb6ed0816765e1c20449a5f5", size = 157763810, upload-time = "2026-11-13T10:08:45.177Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/8b/c48e90baf9b9389c4c709dae202938e03a01c7ffc792888bafcf60e9a6b6/onnxruntime_gpu-1.32.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:09637f3e38a1addc308dec5ef825a36eeb786e9615f45ec76aa29909df5cdd36", size = 251396935, upload-time = "2026-11-13T10:44:22.067Z" },
+    { url = "https://files.pythonhosted.org/packages/23/ae/49cf240c83e71385e482b37bfdf592d3c5da5d4736d8d27b4b551f3ca9d9/onnxruntime_gpu-1.32.0-cp312-cp312-manylinux_2_34_aarch64.whl", hash = "sha256:44c135429a1a24a5b7fa417dc0164164c34aadc1c6c03273a5b918a1339530f2", size = 311905052, upload-time = "2026-11-13T10:22:38.69Z" },
+    { url = "https://files.pythonhosted.org/packages/ee/3b/6ce3c2548db5f8f3e639373640fa7f7fcdbcbce7b754971c0b293ab105b5/onnxruntime_gpu-1.32.0-cp312-cp312-win_amd64.whl", hash = "sha256:d8bc5d7668872889d605c1e7253581e021db7dea41a142ad2ab78d6d96f3f289", size = 157765830, upload-time = "2026-11-13T10:08:52.526Z" },
+    { url = "https://files.pythonhosted.org/packages/a9/b6/759cc7838e5640d30e365e3b8466987172526faabf1779f0bf776f566b1e/onnxruntime_gpu-1.32.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:d3cec70e7a7dcfb085e0e6458210211541a33ffbf89c6a6e4e3d6adf7262cd6d", size = 251389345, upload-time = "2026-11-13T10:44:31.448Z" },
+    { url = "https://files.pythonhosted.org/packages/70/ba/004b5a8d8400fdfb4b01fe23d25bb746240bceb9f44c2db7fbce2107cfaa/onnxruntime_gpu-1.32.0-cp313-cp313-manylinux_2_34_aarch64.whl", hash = "sha256:6bfbb108c82889298cb1fa64a680ac773a52cb5426b16bf2e4a3cff846607a47", size = 311906099, upload-time = "2026-11-13T10:22:54.232Z" },
+    { url = "https://files.pythonhosted.org/packages/36/6e/1e44789fd69794182cf522455ad39b430794e048e97dd72f423406b1e633/onnxruntime_gpu-1.32.0-cp313-cp313-win_amd64.whl", hash = "sha256:9e7b6b5772c5cd99be9c47dace5f0b2faf4608f6ab638cdc0bccc096405baaee", size = 157777759, upload-time = "2026-11-13T10:08:59.686Z" },
+    { url = "https://files.pythonhosted.org/packages/52/49/85757d6bfe0ba4e5e44fbf8b03151d5260a8367197f549fb5976a3367001/onnxruntime_gpu-1.32.0-cp313-cp313t-manylinux_2_28_x86_64.whl", hash = "sha256:bc57d0d375b5b6059fa231ba4df1d7167b6ce6a314cfc27fe80533dc7d45d3cb", size = 251406455, upload-time = "2026-11-13T10:44:41.968Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/ad/647e4ca5aaf0f07a519020f4b348c8c7a28bf63e672e0c4ce2ffc06f5787/onnxruntime_gpu-1.32.0-cp313-cp313t-manylinux_2_34_aarch64.whl", hash = "sha256:ad48126f1203455260a4db750accec90aae601256b232d98948976eacc3b1c2b", size = 311912636, upload-time = "2026-11-13T10:23:08.232Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/dd/96aa2326c63667e65282733ce6fa1206389f9f62a62d19187ffb4523b311/onnxruntime_gpu-1.32.0-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:98a4ec16dd3c39cff09f1fcbc11fe7cd8074d9953ee6ca3827d5c2847c2a92db", size = 251385394, upload-time = "2026-11-13T10:44:55.825Z" },
+    { url = "https://files.pythonhosted.org/packages/c9/45/91f27e255116938a0b3d53a8987f3758897a4d6dd8780f8cc9adee18e58c/onnxruntime_gpu-1.32.0-cp314-cp314-manylinux_2_34_aarch64.whl", hash = "sha256:0f1cf2ec565062f8b9713f0ef4ff5516cc32fc719c48d7fa7819235bf4996cd5", size = 311909481, upload-time = "2026-11-13T10:23:22.103Z" },
+    { url = "https://files.pythonhosted.org/packages/b9/58/d5c8662e1ca5a5ce06ae202dc9c92959f2cd1f4491c2c1fd80297edd7cf3/onnxruntime_gpu-1.32.0-cp314-cp314-win_amd64.whl", hash = "sha256:03905e264ed72ac091b8b77acbfa7cc191cedf912c27c6fd26ee25e7b877b53b", size = 158530311, upload-time = "2026-11-13T10:09:05.906Z" },
+    { url = "https://files.pythonhosted.org/packages/f0/3a/bf98cd10a3a07f3e6e6e54385fb39bd73dd319a2572d0b0fe255c41263a2/onnxruntime_gpu-1.32.0-cp314-cp314t-manylinux_2_28_x86_64.whl", hash = "sha256:b7496b5846acaaad657aae988cdcffc43d77ecff21ac45c3e65415c8182a582f", size = 251406895, upload-time = "2026-11-13T10:45:10.036Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/bb/633535c1701b4fb3f6c806250174f93d1963e966af06eca0f87ceddb258c/onnxruntime_gpu-1.32.0-cp314-cp314t-manylinux_2_34_aarch64.whl", hash = "sha256:e35ca7a748eadfdd4796cbacadc400cfeea777c9eec4a14f2b9c7226fe9ad160", size = 311910602, upload-time = "2026-11-13T10:23:37.592Z" },
+]
+
+[[package]]
 name = "ontogr-mem"
 version = "0.0.1"
 source = { editable = "." }
@@ -2129,10 +2245,13 @@ falkordb = [
 fastembed = [
     { name = "fastembed" },
 ]
+fastembed-gpu = [
+    { name = "fastembed-gpu" },
+]
 gliner = [
     { name = "gliner" },
-    { name = "torch", version = "2.14.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
-    { name = "torch", version = "2.14.1+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+    { name = "torch", version = "2.14.1", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform != 'linux' and sys_platform != 'win32') or (sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "torch", version = "2.14.1+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'linux' or sys_platform == 'win32' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
 ]
 mcp = [
     { name = "fastmcp" },
@@ -2182,7 +2301,8 @@ requires-dist = [
     { name = "asyncpg", marker = "extra == 'pgvector'", specifier = ">=0.30" },
     { name = "asyncpg", marker = "extra == 'postgres'", specifier = ">=0.30" },
     { name = "falkordb", marker = "extra == 'falkordb'", specifier = ">=1.2" },
-    { name = "fastembed", marker = "extra == 'fastembed'", specifier = ">=0.9.0" },
+    { name = "fastembed", marker = "extra == 'fastembed'", specifier = ">=0.9.1" },
+    { name = "fastembed-gpu", marker = "extra == 'fastembed-gpu'", specifier = ">=0.9.1" },
     { name = "fastmcp", marker = "extra == 'mcp'", specifier = ">=4.1.8" },
     { name = "gliner", marker = "extra == 'gliner'", specifier = ">=0.2" },
     { name = "neo4j", marker = "extra == 'neo4j'", specifier = ">=6" },
@@ -2198,7 +2318,7 @@ requires-dist = [
     { name = "torch", marker = "(sys_platform == 'linux' and extra == 'gliner') or (sys_platform == 'win32' and extra == 'gliner')", index = "https://download.pytorch.org/whl/cpu" },
     { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32' and extra == 'gliner'" },
 ]
-provides-extras = ["falkordb", "neo4j", "pgvector", "postgres", "rdf", "gliner", "spacy", "yaml", "otel", "fastembed", "mcp"]
+provides-extras = ["falkordb", "neo4j", "pgvector", "postgres", "rdf", "gliner", "spacy", "yaml", "otel", "fastembed", "fastembed-gpu", "mcp"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2835,7 +2955,7 @@ name = "pytest"
 version = "9.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
     { name = "iniconfig" },
     { name = "packaging" },
     { name = "pluggy" },
@@ -2852,7 +2972,7 @@ version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pytest" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/43/7c/d36d04db312ecf4298932ef77e6e4a9e8ad017906e24e34f0b0c361a2473/pytest_asyncio-1.4.0.tar.gz", hash = "sha256:c6c0d2259945122819f171a32ecea2c349ead889ee28176caaf492143424be42", size = 58514, upload-time = "2026-05-26T09:56:04.083Z" }
 wheels = [
@@ -3068,7 +3188,7 @@ name = "redis"
 version = "8.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "async-timeout", marker = "python_full_version < '3.11.3'" },
+    { name = "async-timeout", marker = "python_full_version < '3.11.3' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a8/99/604f0b666d4c616d891cf77ebb9db6bb21601344c051aebf1b72b9ff915f/redis-8.1.0.tar.gz", hash = "sha256:6e1a19beef9225c83efd689c7e6b7da2d5215b1f42cd13b7fc3714d0a09c7b25", size = 5254356, upload-time = "2026-07-30T08:51:00.269Z" }
 wheels = [
@@ -3082,7 +3202,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "attrs" },
     { name = "rpds-py" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/22/f5/df4e9027acead3ecc63e50fe1e36aca1523e1719559c499951bb4b53188f/referencing-0.37.0.tar.gz", hash = "sha256:44aefc3142c5b842538163acb373e24cce6632bd54bdb01b21ad5863489f50d8", size = 78036, upload-time = "2025-10-13T15:30:48.871Z" }
 wheels = [
@@ -3543,8 +3663,8 @@ dependencies = [
     { name = "cymem" },
     { name = "jinja2" },
     { name = "murmurhash" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
     { name = "packaging" },
     { name = "preshed" },
     { name = "pydantic" },
@@ -3683,7 +3803,7 @@ version = "1.10.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/48/bb/3d8757f21e9a53d9035c9eb039a777047139a16bfdbedfc7a58241c3d914/starlette-1.10.0.tar.gz", hash = "sha256:b8399098d4c1e3522734f7235dc79b1fc967f96cf139c81e0fa30479e0685f9b", size = 2734356, upload-time = "2026-10-24T15:04:12.342Z" }
 wheels = [
@@ -3721,8 +3841,8 @@ dependencies = [
     { name = "confection" },
     { name = "cymem" },
     { name = "murmurhash" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
     { name = "packaging" },
     { name = "preshed" },
     { name = "pydantic" },
@@ -3938,28 +4058,54 @@ name = "torch"
 version = "2.14.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "python_full_version >= '3.15' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "python_full_version == '3.14.*' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "python_full_version == '3.13.*' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "python_full_version == '3.12.*' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "python_full_version >= '3.15' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.14.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.13.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.12.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version >= '3.15' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.14.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.13.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.12.*' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version >= '3.15' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.14.*' and sys_platform == 'emscripten' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version == '3.14.*' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
+    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu'",
 ]
 dependencies = [
-    { name = "filelock" },
-    { name = "fsspec" },
-    { name = "jinja2" },
-    { name = "networkx", version = "3.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "networkx", version = "3.7", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "setuptools" },
-    { name = "sympy" },
-    { name = "typing-extensions" },
+    { name = "filelock", marker = "(sys_platform != 'linux' and sys_platform != 'win32') or (sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "fsspec", marker = "(sys_platform != 'linux' and sys_platform != 'win32') or (sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "jinja2", marker = "(sys_platform != 'linux' and sys_platform != 'win32') or (sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "networkx", version = "3.6.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32') or (python_full_version >= '3.12' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "networkx", version = "3.7", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.12' and sys_platform != 'linux' and sys_platform != 'win32') or (python_full_version < '3.12' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "setuptools", marker = "(sys_platform != 'linux' and sys_platform != 'win32') or (sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "sympy", marker = "(sys_platform != 'linux' and sys_platform != 'win32') or (sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "typing-extensions", marker = "(sys_platform != 'linux' and sys_platform != 'win32') or (sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5d/9b/fd1cd143a7bda5abc1fc352ed7b431f6f52aa3c454293211a33656db2cb5/torch-2.14.1-cp311-cp311-macosx_14_0_arm64.whl", hash = "sha256:b6074b130fd26bc50f5d171f07dfed70db22dd0c354ab34767729249f9e0f042", size = 127281154, upload-time = "2026-09-30T17:43:58.328Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/0e/21281ff4015779255229f487f4481c5bfba53b8c83e01eaa4a8a8f1180c9/torch-2.14.1-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:ef1276fd07adb8d463ac402a24ea7482e45c9a42df8ebdac211aa757779200ba", size = 453982557, upload-time = "2026-09-30T17:44:52.656Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/4f/7af6fbada912b3023cc79b6ab30f89234b258a9a373880ea52ed914a2ae9/torch-2.14.1-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:305a61f61f35f128579f299c5bd33d475f6a01c6307336139632e30856c4854d", size = 554581699, upload-time = "2026-09-30T17:49:10.777Z" },
+    { url = "https://files.pythonhosted.org/packages/fe/54/4e0a71376b2fb15aaf65ed9e6a4c8043d36f554338c6daabc63059a5e157/torch-2.14.1-cp311-cp311-win_amd64.whl", hash = "sha256:0bd2fb0c4098856bc5af59fe5988bf38bdbcdb6550b44273c12ae425cb8ec17e", size = 124096268, upload-time = "2026-09-30T17:44:04.362Z" },
     { url = "https://files.pythonhosted.org/packages/4b/3c/379349820e9a6e713826de3d0b88f07728541bdcabe2a3afd128871cdc4b/torch-2.14.1-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:420dbf314c180ee4b86e9bc00aee5746a7d6e5bacdd7df925af671ed393f0b2e", size = 127307099, upload-time = "2026-09-30T17:44:10.421Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/3e/474930ab971e306957ec763b7df695d659179e15ccab9e7073d47ae14ce8/torch-2.14.1-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:0b13acde294b401509830d85a8906cbf2fc97425a12a66cce1d9fa13c5106a2a", size = 453998918, upload-time = "2026-09-30T17:52:45.134Z" },
+    { url = "https://files.pythonhosted.org/packages/ba/fd/c470857d0dfc5d4c94430658b3eed60fd5292b0bf596a8aae7b9fd66d674/torch-2.14.1-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:23011fe29a99b591eabb3a31a25080c62e2c2f0690a3c798744e5489dae50451", size = 554618695, upload-time = "2026-09-30T17:53:06.8Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/1a/b9648b0d228e513f69f8453ec3f90a8d436d78ff6d85a2773e539f0c07cf/torch-2.14.1-cp312-cp312-win_amd64.whl", hash = "sha256:38bee9f2a2ccfc6898172a5075e4ba52522fbe143eeb099674fc67ab390e858d", size = 124113906, upload-time = "2026-09-30T17:52:21.377Z" },
     { url = "https://files.pythonhosted.org/packages/7d/11/faaca4f8541c45127b7e0d6bb141221fe944c8466d89986b8466c6c195f9/torch-2.14.1-cp313-cp313-macosx_14_0_arm64.whl", hash = "sha256:dbe359d705f4d67236743794c296c6dee93a922fd8117eff8c3e880d7d0fb2b9", size = 127315286, upload-time = "2026-09-30T17:52:27.43Z" },
+    { url = "https://files.pythonhosted.org/packages/60/1f/0330275c705b846882531c64e80d32b13fb572eeb9b995e87e84154b0712/torch-2.14.1-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:6d530bd11479fb574567af3a1f384af9a77bf5bb9550cde8080b356ca7220d5a", size = 453999200, upload-time = "2026-09-30T17:53:21.716Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/cc/bb579ac0c80e077c58204e43b37a254b74dea5873635100bea25789a55d4/torch-2.14.1-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:c8f71aabc67bcbfc9373dc131537a5968d04edce73e88add21354a7cd0a76985", size = 554618164, upload-time = "2026-09-30T17:53:42.73Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/4b/32c00cacbe682a4c08d9c6c3e7a7116c912184cc7155f06c64f545db97d1/torch-2.14.1-cp313-cp313-win_amd64.whl", hash = "sha256:711713391d26a1ce5e9fbc6c996d954a8c12e8825374cc77b809a6af29539b8c", size = 124113754, upload-time = "2026-09-30T17:52:33.474Z" },
     { url = "https://files.pythonhosted.org/packages/43/19/23a1aed488423a5055727256b25406e4b93bd2bcf1352bef582b9951c10c/torch-2.14.1-cp314-cp314-macosx_14_0_arm64.whl", hash = "sha256:cee091caf2a6229e248daf41d18ceebf590ba02d9179205610062c64ee5fef03", size = 127325330, upload-time = "2026-09-30T17:52:54.752Z" },
+    { url = "https://files.pythonhosted.org/packages/93/f4/94219ada13edd62fda1f976163292b7b8595f1fd2f4ef74af24b3baad375/torch-2.14.1-cp314-cp314-manylinux_2_28_aarch64.whl", hash = "sha256:f68f5476e2bc0e8f60b74f7ca21acda885c4477af6392f8977e4f0d1ea1aa162", size = 454016297, upload-time = "2026-09-30T17:54:03.078Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/df/23c69e9b9fd19fe6563422f1bc59f89601bda47234a89a1cf432cfde3aee/torch-2.14.1-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:1d4df07be7338bbcc4d54085adee21363c91314702b9bd4d78ef72ffac9465ba", size = 554621744, upload-time = "2026-09-30T17:54:22.951Z" },
+    { url = "https://files.pythonhosted.org/packages/d9/dc/a36a4431ab5e3ad168a75f341e24677a4bbbf0c5dda59c97a7079262bb94/torch-2.14.1-cp314-cp314-win_amd64.whl", hash = "sha256:d02a4c48a2ca5fb7654e36e71f710f74494d83f1f10aaff8e059dd554adca956", size = 124110781, upload-time = "2026-09-30T17:53:31.141Z" },
     { url = "https://files.pythonhosted.org/packages/2d/bc/1afbd1a22f6023eafcdb9295ac1d97137a7816f54091d693701072da2218/torch-2.14.1-cp314-cp314t-macosx_14_0_arm64.whl", hash = "sha256:06c3ec25f3b497f9a73dc0c36f293f295cfe8d5584fd446238d9a501b30a66d5", size = 127657364, upload-time = "2026-09-30T17:53:53.837Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/94/b97e863c9ceef2bc6e082e967cbfb9065b5e232f2a60c5af0f5115a1bc31/torch-2.14.1-cp314-cp314t-manylinux_2_28_aarch64.whl", hash = "sha256:9113f94f70429f9f302bf55b090b5411269083e8a72a5d015ffcc5a7f83f2c69", size = 453998592, upload-time = "2026-09-30T17:54:38.268Z" },
+    { url = "https://files.pythonhosted.org/packages/03/d8/8272157c438cc26a199a8fa0caf87985477b8a1ed8a09084eb2ae40609d8/torch-2.14.1-cp314-cp314t-manylinux_2_28_x86_64.whl", hash = "sha256:e65d5fe136e533b23c2d134377f7f126721c7c78dd75b3dbb735af082a8aeb85", size = 554578730, upload-time = "2026-09-30T17:54:54.838Z" },
+    { url = "https://files.pythonhosted.org/packages/45/05/451a69a4287033d8f106f5c65f92c2c0c37229d81ea101d4b047caf758cc/torch-2.14.1-cp314-cp314t-win_amd64.whl", hash = "sha256:e07306caa1de2a4ac1467e11ecfc92fc44f523dd6a521145039aef46d913963c", size = 124400129, upload-time = "2026-09-30T17:54:12.306Z" },
 ]
 
 [[package]]
@@ -3967,21 +4113,30 @@ name = "torch"
 version = "2.14.1+cpu"
 source = { registry = "https://download.pytorch.org/whl/cpu" }
 resolution-markers = [
-    "(python_full_version >= '3.15' and sys_platform == 'linux') or (python_full_version >= '3.15' and sys_platform == 'win32')",
-    "(python_full_version == '3.14.*' and sys_platform == 'linux') or (python_full_version == '3.14.*' and sys_platform == 'win32')",
-    "(python_full_version == '3.13.*' and sys_platform == 'linux') or (python_full_version == '3.13.*' and sys_platform == 'win32')",
-    "(python_full_version == '3.12.*' and sys_platform == 'linux') or (python_full_version == '3.12.*' and sys_platform == 'win32')",
-    "(python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform == 'win32')",
+    "(python_full_version >= '3.15' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version >= '3.15' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.14.*' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.14.*' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.13.*' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.13.*' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.12.*' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.12.*' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version < '3.12' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version < '3.12' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version >= '3.15' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version >= '3.15' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.14.*' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.14.*' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.13.*' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.13.*' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.12.*' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.12.*' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version < '3.12' and sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version < '3.12' and sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version >= '3.15' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version >= '3.15' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version == '3.14.*' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version == '3.14.*' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
+    "(python_full_version < '3.12' and sys_platform == 'linux' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu') or (python_full_version < '3.12' and sys_platform == 'win32' and extra != 'extra-10-ontogr-mem-fastembed' and extra != 'extra-10-ontogr-mem-fastembed-gpu')",
 ]
 dependencies = [
-    { name = "filelock" },
-    { name = "fsspec" },
-    { name = "jinja2" },
-    { name = "networkx", version = "3.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "networkx", version = "3.7", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "setuptools" },
-    { name = "sympy" },
-    { name = "typing-extensions" },
+    { name = "filelock", marker = "sys_platform == 'linux' or sys_platform == 'win32' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "fsspec", marker = "sys_platform == 'linux' or sys_platform == 'win32' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "jinja2", marker = "sys_platform == 'linux' or sys_platform == 'win32' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "networkx", version = "3.6.1", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform == 'win32') or (sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "networkx", version = "3.7", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.12' and sys_platform == 'linux') or (python_full_version >= '3.12' and sys_platform == 'win32') or (sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (sys_platform == 'linux' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu') or (sys_platform == 'win32' and extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "setuptools", marker = "sys_platform == 'linux' or sys_platform == 'win32' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "sympy", marker = "sys_platform == 'linux' or sys_platform == 'win32' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "typing-extensions", marker = "sys_platform == 'linux' or sys_platform == 'win32' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cpu/torch-2.14.1%2Bcpu-cp311-cp311-linux_s390x.whl", hash = "sha256:cccd0a609fe3f83ab2ff651b627d5bd68c7fb33ee77a994b31c18b7c9a6f9a52", upload-time = "2026-09-30T19:47:01Z" },
@@ -4020,7 +4175,7 @@ name = "tqdm"
 version = "4.70.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0d/ea/b2a5bd54b28a324dae8211928b2d730b6547500342c7e6c6dea08bd0a485/tqdm-4.70.1.tar.gz", hash = "sha256:cefd0eca11b2a37a3aee776544d4f4ae913f02688135b5556b8788dfa474afc4", size = 171846, upload-time = "2026-09-11T07:25:16.601Z" }
 wheels = [
@@ -4033,8 +4188,8 @@ version = "5.16.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
     { name = "packaging" },
     { name = "pyyaml" },
     { name = "regex" },
@@ -4088,7 +4243,7 @@ version = "0.27.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
-    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
     { name = "rich" },
     { name = "shellingham" },
 ]
@@ -4187,7 +4342,7 @@ name = "wasabi"
 version = "1.1.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-10-ontogr-mem-fastembed' and extra == 'extra-10-ontogr-mem-fastembed-gpu')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ac/f9/054e6e2f1071e963b5e746b48d1e3727470b2a490834d18ad92364929db3/wasabi-1.1.3.tar.gz", hash = "sha256:4bb3008f003809db0c3e28b4daf20906ea871a2bb43f9914197d540f4f2e0878", size = 30391, upload-time = "2024-05-31T16:56:18.99Z" }
 wheels = [

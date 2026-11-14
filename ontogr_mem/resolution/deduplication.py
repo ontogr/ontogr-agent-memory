@@ -274,7 +274,7 @@ async def _pair_signals(
     signals: dict[Pair, PairSignals] = {}
     ordered = sorted(selected, key=lambda entity: entity.entity_id)
     embeddings = await resolver.vectors.gateway.embed(
-        [entity_text(entity) for entity in ordered]
+        [entity_text(entity) for entity in ordered], purpose="query"
     )
     for entity, embedding in zip(ordered, embeddings, strict=True):
         found = await _candidates(resolver, entity, entities, index, embedding.vector)

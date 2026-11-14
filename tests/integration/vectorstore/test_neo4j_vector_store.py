@@ -9,6 +9,7 @@ from ontogr_mem.graphstore.ident import quote
 from ontogr_mem.graphstore.neo4j import Neo4jGraphStore
 from ontogr_mem.graphstore.schemas import VECTOR
 from ontogr_mem.vectorstore import (
+    SpaceMismatchError,
     Validity,
     VectorKind,
     VectorStore,
@@ -109,6 +110,40 @@ class TestNeo4jVectorStore(GraphVectorStoreContract):
             assert [hit.id for hit in hits] == ["n1"]
         finally:
             await neo4j_store.erase_tenant(handle.tenant)
+
+    async def test_changed_dimension_requires_reingestion_without_mutation(
+        self, make_harness
+    ):
+        """A width change is refused while the stored vectors remain intact."""
+        h = await ready(make_harness)
+        await h.seed(VectorKind.NODE, ["existing-node"])
+        await h.store.upsert(VectorKind.NODE, [node_item("existing-node", "a")])
+        original_vectors = await h.store.backend.fetch_vectors(
+            VectorKind.NODE, ["existing-node"]
+        )
+
+        other = h.reopen(MockEmbedder(dim=4))
+
+        with pytest.raises(SpaceMismatchError) as error:
+            await other.ensure_ready()
+
+        assert "has dimension 3, expected 4" in str(error.value)
+        assert (
+            "This index is shared by all Tenants in the Neo4j database; a new "
+            "Tenant alone will not fix the mismatch. Use a separate Neo4j "
+            "database or instance for the new dimension and re-ingest the source "
+            "data there. Automatic re-embedding is not supported."
+        ) in str(error.value)
+        stored_space = await h.store.backend.read_space(VectorKind.NODE)
+        assert stored_space is not None
+        assert stored_space.dim == 3
+        assert (
+            await h.store.backend.fetch_vectors(VectorKind.NODE, ["existing-node"])
+            == original_vectors
+        )
+        assert [hit.id for hit in await h.store.search(VectorKind.NODE, A, k=5)] == [
+            "existing-node"
+        ]
 
     async def test_quantization_none_gives_exact_scores(self, make_harness):
         """Scores match the exact live graph tenant to a tight tolerance."""

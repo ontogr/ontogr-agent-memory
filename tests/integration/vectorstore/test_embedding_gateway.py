@@ -15,6 +15,7 @@ from ontogr_mem.vectorstore import (
     EmbeddingError,
     EmbeddingFailedError,
     EmbeddingGateway,
+    EmbeddingPurpose,
     EmbeddingTimeoutError,
     FailReason,
     PermanentEmbeddingError,
@@ -49,7 +50,7 @@ class TestEmbeddingGateway:
         embedder = FlakyEmbedder(failures=2)
         gateway = make_gateway(embedder)
 
-        outcomes = await gateway.embed(["a", "b"])
+        outcomes = await gateway.embed(["a", "b"], purpose="query")
 
         assert len(outcomes) == 2
         assert all(outcome.vector is not None for outcome in outcomes)
@@ -61,7 +62,7 @@ class TestEmbeddingGateway:
         embedder = FlakyEmbedder(failures=10)
         gateway = make_gateway(embedder, batch_size=1)
 
-        outcomes = await gateway.embed(["a"])
+        outcomes = await gateway.embed(["a"], purpose="query")
 
         assert outcomes[0].reason is FailReason.EMBED_FAILED
         assert "rate limited" in outcomes[0].detail
@@ -74,7 +75,9 @@ class TestEmbeddingGateway:
         embedder = RecordingEmbedder()
         gateway = make_gateway(embedder)
 
-        outcomes = await gateway.embed([f"text-{i}" for i in range(130)])
+        outcomes = await gateway.embed(
+            [f"text-{i}" for i in range(130)], purpose="query"
+        )
 
         assert len(outcomes) == 130
         assert all(outcome.vector is not None for outcome in outcomes)
@@ -89,10 +92,10 @@ class TestEmbeddingGateway:
             breaker_threshold=2,
         )
 
-        first = await gateway.embed(["a"])
-        second = await gateway.embed(["b"])
+        first = await gateway.embed(["a"], purpose="query")
+        second = await gateway.embed(["b"], purpose="query")
         calls_before_refusal = embedder.calls
-        third = await gateway.embed(["c"])
+        third = await gateway.embed(["c"], purpose="query")
 
         assert first[0].reason is FailReason.EMBED_FAILED
         assert second[0].reason is FailReason.EMBED_FAILED
@@ -105,8 +108,10 @@ class TestEmbeddingGateway:
         embedder = FailingEmbedder(transient_over=1)
         gateway = make_gateway(embedder, breaker_threshold=2)
 
-        outcomes = await gateway.embed([f"text-{i}" for i in range(36)])
-        after_split = await gateway.embed(["another"])
+        outcomes = await gateway.embed(
+            [f"text-{i}" for i in range(36)], purpose="query"
+        )
+        after_split = await gateway.embed(["another"], purpose="query")
 
         assert all(outcome.vector is not None for outcome in outcomes)
         assert after_split[0].vector is not None
@@ -121,18 +126,20 @@ class TestEmbeddingGateway:
                 super().__init__()
                 self.calls = 0
 
-            async def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
+            async def embed_batch(
+                self, texts: Sequence[str], *, purpose: EmbeddingPurpose
+            ) -> list[list[float]]:
                 self.calls += 1
                 if self.calls <= 2:
                     raise PermanentEmbeddingError("bad credentials")
-                return await super().embed_batch(texts)
+                return await super().embed_batch(texts, purpose=purpose)
 
         embedder = PermanentThenGood()
         gateway = make_gateway(embedder, breaker_threshold=2)
 
-        first = await gateway.embed(["a"])
-        second = await gateway.embed(["b"])
-        third = await gateway.embed(["c"])
+        first = await gateway.embed(["a"], purpose="query")
+        second = await gateway.embed(["b"], purpose="query")
+        third = await gateway.embed(["c"], purpose="query")
 
         assert first[0].reason is FailReason.EMBED_FAILED
         assert second[0].reason is FailReason.EMBED_FAILED
@@ -148,7 +155,7 @@ class TestEmbeddingGateway:
         context = RequestContext("owner", "tenant-a", latency_budget_s=0.0)
 
         with bind_context(context):
-            outcomes = await gateway.embed(["a"])
+            outcomes = await gateway.embed(["a"], purpose="query")
 
         assert outcomes[0].reason is FailReason.EMBED_TIMEOUT
         assert embedder.batches == []
@@ -159,15 +166,17 @@ class TestEmbeddingGateway:
         class SlowEmbedder(MockEmbedder):
             """Wait longer than the request deadline before embedding."""
 
-            async def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
+            async def embed_batch(
+                self, texts: Sequence[str], *, purpose: EmbeddingPurpose
+            ) -> list[list[float]]:
                 await asyncio.sleep(1.0)
-                return await super().embed_batch(texts)
+                return await super().embed_batch(texts, purpose=purpose)
 
         gateway = make_gateway(SlowEmbedder(), attempt_timeout_s=5.0)
         context = RequestContext("owner", "tenant-a", latency_budget_s=0.05)
 
         with bind_context(context):
-            outcomes = await gateway.embed(["a"])
+            outcomes = await gateway.embed(["a"], purpose="query")
 
         assert outcomes[0].reason is FailReason.EMBED_TIMEOUT
         assert "deadline" in outcomes[0].detail
@@ -181,7 +190,7 @@ class TestEmbeddingGateway:
             bind_context(RequestContext("owner", "tenant-a", latency_budget_s=0.0)),
             pytest.raises(EmbeddingTimeoutError, match="deadline"),
         ):
-            await gateway.probe()
+            await gateway.probe(purpose="query")
 
         assert embedder.batches == []
 
@@ -194,12 +203,12 @@ class TestEmbeddingGateway:
             breaker_threshold=1,
         )
 
-        outcome = await gateway.embed(["a"])
+        outcome = await gateway.embed(["a"], purpose="query")
         calls_before_probe = embedder.calls
 
         assert outcome[0].reason is FailReason.EMBED_FAILED
         with pytest.raises(EmbeddingError, match="circuit open"):
-            await gateway.probe()
+            await gateway.probe(purpose="query")
 
         assert embedder.calls == calls_before_probe
 
@@ -208,7 +217,7 @@ class TestEmbeddingGateway:
         gateway = make_gateway(MockEmbedder())
 
         with pytest.raises(EmbeddingFailedError) as error:
-            await gateway.embed_all(["a", "", "b"])
+            await gateway.embed_all(["a", "", "b"], purpose="document")
 
         assert error.value.index == 1
         assert "empty text" in str(error.value)
@@ -217,9 +226,9 @@ class TestEmbeddingGateway:
         """The strict helper returns unit-scaled vectors in input order."""
         gateway = make_gateway(MockEmbedder())
 
-        vectors = await gateway.embed_all(["a", "b"])
+        vectors = await gateway.embed_all(["a", "b"], purpose="document")
 
-        direct = await MockEmbedder().embed_batch(["a", "b"])
+        direct = await MockEmbedder().embed_batch(["a", "b"], purpose="document")
         assert vectors == [pytest.approx(tuple(vector)) for vector in direct]
 
     async def test_embeddings_do_not_make_operation_cost_unknown(self) -> None:
@@ -234,7 +243,7 @@ class TestEmbeddingGateway:
         gateway = make_gateway(MockEmbedder())
 
         with bind_context(context):
-            await gateway.embed(["a"])
+            await gateway.embed(["a"], purpose="query")
         await store.finish(
             operation_id,
             outcome=OperationOutcome.OK,

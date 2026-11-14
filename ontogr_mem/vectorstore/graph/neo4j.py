@@ -81,7 +81,13 @@ class Neo4jVectorBackend(GraphVectorBackend):
             index = await self._await_online(name)
             dim = self._dimension(index)
             if dim != spec.dim:
-                msg = f"vector index {name} has dimension {dim}, expected {spec.dim}"
+                msg = (
+                    f"vector index {name} has dimension {dim}, expected {spec.dim}. "
+                    "This index is shared by all Tenants in the Neo4j database; "
+                    "a new Tenant alone will not fix the mismatch. Use a separate "
+                    "Neo4j database or instance for the new dimension and re-ingest "
+                    "the source data there. Automatic re-embedding is not supported."
+                )
                 raise SpaceMismatchError(msg)
 
     async def _indexes(self) -> dict[str, dict[str, Any]]:

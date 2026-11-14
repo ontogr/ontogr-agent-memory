@@ -45,7 +45,7 @@ async def candidate_pass(
     if not rows:
         return [[] for _ in groups], False
     texts = [normalise_text(group_text(group)) for group in groups]
-    outcomes = await vectors.gateway.embed(texts)
+    outcomes = await vectors.gateway.embed(texts, purpose="query")
     incomplete = any(outcome.vector is None for outcome in outcomes)
     out: list[list[Candidate]] = []
     for group, outcome in zip(groups, outcomes, strict=True):

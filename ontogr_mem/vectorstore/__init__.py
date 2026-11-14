@@ -1,7 +1,7 @@
 """Vector storage: embed each text once and search by cosine similarity."""
 
 from ontogr_mem.observability.metrics import Metrics
-from ontogr_mem.vectorstore.embedder import Embedder, EmbeddingGateway
+from ontogr_mem.vectorstore.embedder import Embedder, EmbeddingGateway, EmbeddingPurpose
 from ontogr_mem.vectorstore.episode_vectors import write_episode_vectors
 from ontogr_mem.vectorstore.errors import (
     CapabilityError,
@@ -50,6 +50,7 @@ __all__ = [
     "EmbeddingError",
     "EmbeddingFailedError",
     "EmbeddingGateway",
+    "EmbeddingPurpose",
     "EmbeddingTimeoutError",
     "FactVectorObserver",
     "FailReason",

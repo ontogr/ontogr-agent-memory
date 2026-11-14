@@ -13,6 +13,7 @@ from ontogr_mem.vectorstore.pgvector.errors import TenantNotProvisionedError
 from ontogr_mem.vectorstore.pgvector.pool import Conn, Pool
 from ontogr_mem.vectorstore.pgvector.provision import check_manifest
 from ontogr_mem.vectorstore.pgvector.schema import TABLES, IndexSpec, table_name
+from ontogr_mem.vectorstore.spaces import _space_mismatch_message
 
 
 _SCHEMA_INDEXES = """
@@ -102,10 +103,7 @@ async def check_stored_spaces(
             ("template_version", spec.template_version),
         ):
             if row[field] != want:
-                msg = (
-                    f"{kind.value}: stored {field} {row[field]!r}, configured {want!r}"
-                )
-                raise SpaceMismatchError(msg)
+                raise SpaceMismatchError(_space_mismatch_message(kind, field))
 
 
 async def read_space(pool: Pool, schema: str, kind: VectorKind) -> SpaceSpec | None:
