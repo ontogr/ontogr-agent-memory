@@ -98,6 +98,48 @@ class TestEmbeddingSettings:
 
         assert value not in str(error.value)
 
+    def test_rejects_nonempty_invalid_provider_from_environment(self, monkeypatch):
+        """A nonblank unsupported provider still fails validation."""
+        monkeypatch.setenv("MEMORY_EMBEDDING_PROVIDER", "unsupported")
+
+        with pytest.raises(ValidationError):
+            EmbeddingSettings(_env_file=None)
+
+    @pytest.mark.parametrize("blank", ["", "   "])
+    def test_blank_native_settings_use_defaults_from_environment(
+        self, monkeypatch, blank
+    ):
+        """Blank embedding settings keep their defaults."""
+        monkeypatch.setenv("MEMORY_EMBEDDING_PROVIDER", blank)
+        monkeypatch.setenv("MEMORY_EMBEDDING_FASTEMBED_KWARGS", blank)
+        monkeypatch.setenv("MEMORY_EMBEDDING_BATCH_SIZE", blank)
+        monkeypatch.setenv("MEMORY_EMBEDDING_MAX_INPUT_TOKENS", blank)
+
+        settings = EmbeddingSettings(_env_file=None)
+
+        assert settings.provider == "auto"
+        assert settings.fastembed_kwargs == {}
+        assert settings.batch_size == 32
+        assert settings.max_input_tokens == 8192
+
+    @pytest.mark.parametrize("blank", ["", "   "])
+    def test_blank_native_settings_use_defaults_from_env_file(self, tmp_path, blank):
+        """Blank values in a dotenv file keep the settings defaults."""
+        env_file = tmp_path / ".env"
+        env_file.write_text(
+            "MEMORY_EMBEDDING_PROVIDER=\n"
+            "MEMORY_EMBEDDING_FASTEMBED_KWARGS=\n"
+            "MEMORY_EMBEDDING_BATCH_SIZE=\n"
+            f"MEMORY_EMBEDDING_MAX_INPUT_TOKENS={blank}\n"
+        )
+
+        settings = EmbeddingSettings(_env_file=env_file)
+
+        assert settings.provider == "auto"
+        assert settings.fastembed_kwargs == {}
+        assert settings.batch_size == 32
+        assert settings.max_input_tokens == 8192
+
     @pytest.mark.parametrize("value", ["0", "-1"])
     def test_rejects_nonpositive_batch_sizes(self, monkeypatch, value):
         """Batch sizes must be positive integers."""
@@ -106,7 +148,10 @@ class TestEmbeddingSettings:
         with pytest.raises(ValidationError):
             EmbeddingSettings(_env_file=None)
 
-    @pytest.mark.parametrize("value", ['"kwargs-sentinel"', '["kwargs-sentinel"]'])
+    @pytest.mark.parametrize(
+        "value",
+        ['"kwargs-sentinel"', '["kwargs-sentinel"]', "not-json-kwargs-sentinel"],
+    )
     def test_rejects_non_object_fastembed_kwargs_without_echoing_values(
         self, monkeypatch, value
     ):
@@ -197,12 +242,21 @@ class TestEmbeddingSettings:
         with pytest.raises(ValidationError):
             EmbeddingSettings(_env_file=None)
 
-    def test_rejects_zero_max_input_tokens(self, monkeypatch):
-        """At least one input token is required."""
-        monkeypatch.setenv("MEMORY_EMBEDDING_MAX_INPUT_TOKENS", "0")
+    @pytest.mark.parametrize("value", ["0", "-1", "not-an-integer"])
+    @pytest.mark.parametrize("source", ["environment", "env_file"])
+    def test_rejects_invalid_max_input_tokens(
+        self, monkeypatch, tmp_path, value, source
+    ):
+        """Nonblank invalid token limits fail from either settings source."""
+        if source == "environment":
+            monkeypatch.setenv("MEMORY_EMBEDDING_MAX_INPUT_TOKENS", value)
+            env_file = None
+        else:
+            env_file = tmp_path / ".env"
+            env_file.write_text(f"MEMORY_EMBEDDING_MAX_INPUT_TOKENS={value}\n")
 
         with pytest.raises(ValidationError):
-            EmbeddingSettings(_env_file=None)
+            EmbeddingSettings(_env_file=env_file)
 
     def test_accepts_one_max_input_token(self, monkeypatch):
         """A limit of one token is the smallest accepted value."""

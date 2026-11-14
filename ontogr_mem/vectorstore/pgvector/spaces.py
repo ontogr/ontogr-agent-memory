@@ -13,6 +13,7 @@ from ontogr_mem.vectorstore.pgvector.errors import TenantNotProvisionedError
 from ontogr_mem.vectorstore.pgvector.pool import Conn, Pool
 from ontogr_mem.vectorstore.pgvector.provision import check_manifest
 from ontogr_mem.vectorstore.pgvector.schema import TABLES, IndexSpec, table_name
+from ontogr_mem.vectorstore.spaces import _space_mismatch_message
 
 
 _SCHEMA_INDEXES = """
@@ -102,29 +103,7 @@ async def check_stored_spaces(
             ("template_version", spec.template_version),
         ):
             if row[field] != want:
-                if field == "model":
-                    msg = (
-                        f"{kind.value}: Existing memory uses a different embedding "
-                        "model or encoding behavior. Changing the model or encoding "
-                        "requires re-embedding the source data into a new Tenant. "
-                        "Automatic re-embedding is not supported."
-                    )
-                else:
-                    mismatch = {
-                        "dim": ("embedding dimension", "embedding dimension"),
-                        "text_template": ("text template", "text template"),
-                        "template_version": (
-                            "text template version",
-                            "text template",
-                        ),
-                    }[field]
-                    msg = (
-                        f"{kind.value}: Existing memory uses a different "
-                        f"{mismatch[0]}. Changing the {mismatch[1]} requires "
-                        "re-embedding the source data into a new Tenant. "
-                        "Automatic re-embedding is not supported."
-                    )
-                raise SpaceMismatchError(msg)
+                raise SpaceMismatchError(_space_mismatch_message(kind, field))
 
 
 async def read_space(pool: Pool, schema: str, kind: VectorKind) -> SpaceSpec | None:

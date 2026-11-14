@@ -1,9 +1,7 @@
 """End-to-end retrieval over a tenant ingested through the real pipeline."""
 
-import json
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
 
@@ -494,7 +492,7 @@ class _PurposeSensitiveEmbedder:
 
 
 async def test_query_purpose_ranks_target_before_document_encoded_decoy(
-    graph_backend: GraphBackend, tmp_path: Path
+    graph_backend: GraphBackend,
 ):
     """Query encoding ranks the target while document encoding ranks the decoy."""
     backend = await graph_retrieval_backend(graph_backend)
@@ -516,16 +514,5 @@ async def test_query_purpose_ranks_target_before_document_encoded_decoy(
         for rank, episode in enumerate(document_encoded_result.episodes)
     ]
 
-    artifact = {
-        "backend": graph_backend.name,
-        "query_purpose": [list(item) for item in query_ranking],
-        "document_purpose_counterfactual": [list(item) for item in document_ranking],
-    }
-    artifact_path = tmp_path / "retrieval-purpose-ranking.json"
-    artifact_path.write_text(
-        json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-
-    assert json.loads(artifact_path.read_text(encoding="utf-8")) == artifact
     assert query_ranking == [("e7", 0), ("e8", 1)]
     assert document_ranking == [("e8", 0), ("e7", 1)]

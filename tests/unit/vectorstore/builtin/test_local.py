@@ -5,6 +5,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
+from dataclasses import replace
 from types import ModuleType, SimpleNamespace
 from typing import Any
 
@@ -67,6 +68,26 @@ class FakeOnnxSession:
         self.fallback_disabled = True
 
 
+class FakeOnnxSessionWithoutFallback:
+    """Expose provider inspection without fallback control."""
+
+    def __init__(self, providers: Sequence[str]) -> None:
+        """Keep the active provider order."""
+        self.providers = list(providers)
+
+    def get_providers(self) -> list[str]:
+        """Return the active execution provider order."""
+        return list(self.providers)
+
+
+class FailingFakeOnnxSession(FakeOnnxSession):
+    """Raise when asked to disable ONNX Runtime provider fallback."""
+
+    def disable_fallback(self) -> None:
+        """Raise a private native error to check safe translation."""
+        raise RuntimeError("/private/model/cache")
+
+
 class FakeTextEmbedding:
     """Stands in for `fastembed.TextEmbedding` so that no model is loaded.
 
@@ -90,6 +111,7 @@ class FakeTextEmbedding:
     embedding_size_override: int | None = None
     truncation_max_length = 512
     session_providers: list[str] | None = None
+    session_factory: Callable[[Sequence[str]], object] = FakeOnnxSession
 
     @classmethod
     def list_supported_models(cls) -> list[dict[str, object]]:
@@ -134,7 +156,7 @@ class FakeTextEmbedding:
                     if uses_cuda
                     else ["CPUExecutionProvider"]
                 )
-            native_model.model = FakeOnnxSession(providers)
+            native_model.model = type(self).session_factory(providers)
         self.model = native_model
         self.init_thread = threading.get_ident()
         self.embed_threads: list[int] = []
@@ -301,6 +323,7 @@ def install_fake(
     truncation_max_length: int = 512,
     embedding_size: int | None = None,
     session_providers: list[str] | None = None,
+    session_factory: Callable[[Sequence[str]], object] | None = None,
 ) -> type[FakeTextEmbedding]:
     """Install a new subclass of `fake_type` as the `fastembed` module.
 
@@ -318,6 +341,7 @@ def install_fake(
         truncation_max_length: Effective truncation limit exposed by its tokenizer.
         embedding_size: Actual initialized width, when different from metadata.
         session_providers: Actual provider order exposed by the fake ONNX session.
+        session_factory: ONNX session shape exposed by the initialized model.
 
     Returns:
         The installed class. Its `instances` list holds every built object.
@@ -338,6 +362,7 @@ def install_fake(
             "session_providers": (
                 session_providers if session_providers is not None else None
             ),
+            "session_factory": session_factory or fake_type.session_factory,
         },
     )
     stub = ModuleType("fastembed")
@@ -558,7 +583,7 @@ class TestLocalEmbedder:
             "document_task": "changed.document",
         }
         updated_policies = dict(ENCODING_POLICIES)
-        updated_policies[model_name] = policy._replace(**{field: changes[field]})
+        updated_policies[model_name] = replace(policy, **{field: changes[field]})
         monkeypatch.setattr(local_module, "ENCODING_POLICIES", updated_policies)
         second = await LocalEmbedder.open(EmbeddingSettings(_env_file=None))
 
@@ -883,6 +908,56 @@ class TestLocalEmbedder:
         assert fake.instances[0].constructor_options["providers"] is None
         assert fake.instances[0].model.model.fallback_disabled is fallback_disabled
         assert embedder.dim == 384
+
+    async def test_rejects_unsupported_provider_selected_during_native_auto(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Automatic native selection cannot activate an unsupported provider."""
+        install_fake(
+            monkeypatch,
+            session_providers=["OpenVINOExecutionProvider", "CPUExecutionProvider"],
+        )
+        settings = EmbeddingSettings(
+            _env_file=None,
+            fastembed_kwargs={"cuda": None, "providers": None},
+        )
+
+        with pytest.raises(EmbedderUnavailableError) as excinfo:
+            await LocalEmbedder.open(settings)
+
+        assert "unsupported ONNX provider" in str(excinfo.value)
+        assert "CPUExecutionProvider" in excinfo.value.hint
+        assert "CUDAExecutionProvider" in excinfo.value.hint
+        assert "OpenVINOExecutionProvider" not in str(excinfo.value)
+
+    @pytest.mark.parametrize(
+        "session_factory",
+        [
+            pytest.param(FakeOnnxSessionWithoutFallback, id="missing-control"),
+            pytest.param(FailingFakeOnnxSession, id="control-raises"),
+        ],
+    )
+    async def test_rejects_cuda_session_when_fallback_cannot_be_disabled(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        session_factory: Callable[[Sequence[str]], object],
+    ) -> None:
+        """CUDA startup fails closed without working public fallback control."""
+        install_fake(
+            monkeypatch,
+            session_providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            session_factory=session_factory,
+        )
+        settings = EmbeddingSettings(
+            _env_file=None,
+            fastembed_kwargs={"cuda": None, "providers": None},
+        )
+
+        with pytest.raises(EmbedderUnavailableError) as excinfo:
+            await LocalEmbedder.open(settings)
+
+        assert "disable_fallback" in excinfo.value.hint
+        assert "/private/model/cache" not in str(excinfo.value)
 
     async def test_cuda_inference_failure_does_not_retry_on_cpu(
         self, monkeypatch: pytest.MonkeyPatch

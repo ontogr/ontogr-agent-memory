@@ -83,9 +83,10 @@ class Neo4jVectorBackend(GraphVectorBackend):
             if dim != spec.dim:
                 msg = (
                     f"vector index {name} has dimension {dim}, expected {spec.dim}. "
-                    "Changing the embedding dimension requires re-embedding the "
-                    "source data into a new Tenant. Automatic re-embedding is not "
-                    "supported."
+                    "This index is shared by all Tenants in the Neo4j database; "
+                    "a new Tenant alone will not fix the mismatch. Use a separate "
+                    "Neo4j database or instance for the new dimension and re-ingest "
+                    "the source data there. Automatic re-embedding is not supported."
                 )
                 raise SpaceMismatchError(msg)
 

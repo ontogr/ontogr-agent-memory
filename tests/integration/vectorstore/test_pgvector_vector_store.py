@@ -317,7 +317,11 @@ class TestPgVectorProvisioning:
                 await other_store.ensure_ready()
 
             assert "different embedding dimension" in str(error.value)
-            assert "re-embedding the source data into a new Tenant" in str(error.value)
+            assert "new Tenant with compatible vector indexes" in str(error.value)
+            assert (
+                "Shared-index backends may require a separate database or instance."
+                in str(error.value)
+            )
             assert "Automatic re-embedding is not supported." in str(error.value)
             assert (
                 await other_backend.fetch_vectors(NODE, ["existing-node"])

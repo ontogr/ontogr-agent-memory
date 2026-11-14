@@ -377,6 +377,8 @@ You need Python 3.11 or newer, Docker with Compose, and a model endpoint with an
 
 1. Start the graph from a clone of this repository, or from any folder that holds a copy of its `compose.yaml`:
 
+   Before recreating a deployment that used the old `/data` graph mount, stop client writes, then cleanly stop FalkorDB without removing its container so the final RDB save includes in-memory data. Back up both the `falkordb-data` volume and `/var/lib/falkordb/data` from the existing container, and keep that container until both backups are verified. The current image writes graph data under `/var/lib/falkordb/data`. Mounting the same volume at that path does not copy files from the old container layer. Verify that the active graph is present in the backups before removing the old container.
+
    ```bash
    docker compose up -d --wait falkordb
    ```
@@ -896,7 +898,7 @@ The FastEmbed registry contains other models, but their query and document behav
 
 The gateway estimates input length in characters before splitting raw content. Token counts vary, and query or document instructions add text. FastEmbed can still truncate a segment at its tokenizer limit.
 
-Local vector spaces record the model and its query and document encoding identity. This identity is incompatible with spaces created using the earlier PR3 identity, even when the model is unchanged. Create a new Tenant and re-ingest Episodes from the original sources. Do not relabel existing vectors. Memory startup recovers every known Tenant, so an incompatible old Tenant in the same state database can prevent the new Tenant from opening. Use a separate state database for the new configuration when needed, and keep the old database with its original embedding configuration.
+Local vector spaces record the model and its query and document encoding identity. This identity is incompatible with spaces created before this embedding identity was introduced, even when the model is unchanged. Create a new Tenant and re-ingest Episodes from the original sources. Do not relabel existing vectors. A dimension change requires a new Tenant with compatible vector indexes. Neo4j shares vector indexes across Tenants, so a separate database or instance may be needed. Memory startup recovers every known Tenant, so an incompatible old Tenant in the same state database can prevent the new Tenant from opening. Use a separate state database for the new configuration when needed, and keep the old database with its original embedding configuration.
 
 | Variable | Meaning | Default |
 | --- | --- | --- |

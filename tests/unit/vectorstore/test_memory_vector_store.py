@@ -128,3 +128,21 @@ class TestMemoryVectorStore(VectorStoreContract):
 
         with pytest.raises(SpaceMismatchError, match="query"):
             await store.ensure_ready()
+
+    async def test_dimension_mismatch_requires_compatible_vector_indexes(self) -> None:
+        """Dimension changes require re-ingestion and compatible indexes."""
+        backend = InMemoryBackend()
+        stored = VectorStore(backend, gateway(MockEmbedder(dim=3)))
+        await stored.ensure_ready()
+        configured = VectorStore(backend, gateway(MockEmbedder(dim=4)))
+
+        with pytest.raises(SpaceMismatchError) as error:
+            await configured.ensure_ready()
+
+        assert str(error.value) == (
+            "node: Existing memory uses a different embedding dimension. "
+            "Changing the embedding dimension requires re-embedding the source "
+            "data into a new Tenant with compatible vector indexes. Shared-index "
+            "backends may require a separate database or instance. Automatic "
+            "re-embedding is not supported."
+        )

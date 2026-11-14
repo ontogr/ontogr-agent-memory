@@ -1,13 +1,14 @@
 """Reviewed FastEmbed input formats and purpose-specific encoding metadata."""
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from types import MappingProxyType
-from typing import NamedTuple
 
 from ontogr_mem.vectorstore import EmbeddingPurpose
 
 
-class EncodingPolicy(NamedTuple):
+@dataclass(frozen=True, slots=True)
+class EncodingPolicy:
     """Versioned text prefixes and native task labels for one model."""
 
     version: int

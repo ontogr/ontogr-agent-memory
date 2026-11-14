@@ -1,9 +1,11 @@
 """Settings for the built-in embedding providers."""
 
-from typing import Literal
+import json
+from typing import Annotated, Literal
 
 from pydantic import Field, JsonValue, SecretStr, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_core import PydanticUseDefault
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class EmbeddingSettings(BaseSettings):
@@ -32,7 +34,9 @@ class EmbeddingSettings(BaseSettings):
     )
 
     provider: Literal["auto", "fastembed", "endpoint"] = "auto"
-    fastembed_kwargs: dict[str, JsonValue] = Field(default_factory=dict, repr=False)
+    fastembed_kwargs: Annotated[dict[str, JsonValue], NoDecode] = Field(
+        default_factory=dict, repr=False
+    )
     batch_size: int = Field(default=32, ge=1)
     model: str | None = None
     base_url: str | None = None
@@ -46,3 +50,22 @@ class EmbeddingSettings(BaseSettings):
         if isinstance(value, str) and not value.strip():
             return None
         return value
+
+    @field_validator("provider", "batch_size", "max_input_tokens", mode="before")
+    @classmethod
+    def _blank_uses_default(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            raise PydanticUseDefault
+        return value
+
+    @field_validator("fastembed_kwargs", mode="before")
+    @classmethod
+    def _decode_fastembed_kwargs(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        if not value.strip():
+            raise PydanticUseDefault
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            raise ValueError("fastembed_kwargs must be a JSON object") from None

@@ -9,6 +9,35 @@ from ontogr_mem.vectorstore.models import SpaceSpec, VectorKind
 from ontogr_mem.vectorstore.protocol import Backend
 
 
+def _space_mismatch_message(kind: VectorKind, field: str) -> str:
+    """Build the shared guidance for a stored-space mismatch."""
+    if field == "model":
+        return (
+            f"{kind.value}: Existing memory uses a different embedding model or "
+            "encoding behavior. Changing the model or encoding requires "
+            "re-embedding the source data into a new Tenant. Automatic "
+            "re-embedding is not supported."
+        )
+    if field == "dim":
+        return (
+            f"{kind.value}: Existing memory uses a different embedding dimension. "
+            "Changing the embedding dimension requires re-embedding the source "
+            "data into a new Tenant with compatible vector indexes. Shared-index "
+            "backends may require a separate database or instance. Automatic "
+            "re-embedding is not supported."
+        )
+
+    label, changed = {
+        "text_template": ("text template", "text template"),
+        "template_version": ("text template version", "text template"),
+    }[field]
+    return (
+        f"{kind.value}: Existing memory uses a different {label}. Changing the "
+        f"{changed} requires re-embedding the source data into a new Tenant. "
+        "Automatic re-embedding is not supported."
+    )
+
+
 class SpaceRegistry:
     """Creates missing spaces, then verifies every configured one.
 
@@ -70,26 +99,4 @@ class SpaceRegistry:
             ("template_version", have.template_version, want.template_version),
         ):
             if stored != configured:
-                if field == "model":
-                    msg = (
-                        f"{kind.value}: Existing memory uses a different embedding "
-                        "model or encoding behavior. Changing the model or encoding "
-                        "requires re-embedding the source data into a new Tenant. "
-                        "Automatic re-embedding is not supported."
-                    )
-                else:
-                    mismatch = {
-                        "dim": ("embedding dimension", "embedding dimension"),
-                        "text_template": ("text template", "text template"),
-                        "template_version": (
-                            "text template version",
-                            "text template",
-                        ),
-                    }[field]
-                    msg = (
-                        f"{kind.value}: Existing memory uses a different "
-                        f"{mismatch[0]}. Changing the {mismatch[1]} requires "
-                        "re-embedding the source data into a new Tenant. "
-                        "Automatic re-embedding is not supported."
-                    )
-                raise SpaceMismatchError(msg)
+                raise SpaceMismatchError(_space_mismatch_message(kind, field))

@@ -398,11 +398,11 @@ class VectorStoreContract:
         with pytest.raises(SpaceMismatchError) as error:
             await other.ensure_ready()
 
-        assert (
-            "Existing memory uses a different embedding model or encoding behavior. "
-            "Changing the model or encoding requires re-embedding the source data "
-            "into a new Tenant. Automatic re-embedding is not supported."
-        ) in str(error.value)
+        assert str(error.value) == (
+            "node: Existing memory uses a different embedding model or encoding "
+            "behavior. Changing the model or encoding requires re-embedding the "
+            "source data into a new Tenant. Automatic re-embedding is not supported."
+        )
         assert stored_model not in str(error.value)
         assert configured_model not in str(error.value)
         assert (
