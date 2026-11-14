@@ -188,7 +188,9 @@ class Retriever:
         self, request: RetrievalRequest, temporal_query: TemporalQuery
     ) -> tuple[LaneOutput, LaneOutput, LaneOutput]:
         """Embed once and run the independent lanes with their own filters."""
-        outcome = (await self._vectors.gateway.embed([request.query]))[0]
+        outcome = (await self._vectors.gateway.embed([request.query], purpose="query"))[
+            0
+        ]
         embedding = outcome.vector
         embedding_error = outcome.detail or str(outcome.reason or "embedding failed")
 

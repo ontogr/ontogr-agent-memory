@@ -163,7 +163,7 @@ class VectorStore:
 
         stored = await self._stored_hashes(kind, [t[0].id for t in todo])
         pending = [t for t in todo if stored.get(t[0].id) != t[2]]
-        outcomes = await self.gateway.embed([t[1] for t in pending])
+        outcomes = await self.gateway.embed([t[1] for t in pending], purpose="document")
         rows: list[Row] = []
         for (item, _, digest), outcome in zip(pending, outcomes, strict=True):
             if outcome.vector is None:

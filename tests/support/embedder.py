@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 
 from ontogr_mem.vectorstore import (
     EmbeddingGateway,
+    EmbeddingPurpose,
     PermanentEmbeddingError,
     TransientEmbeddingError,
     VectorStoreSettings,
@@ -39,7 +40,9 @@ class MockEmbedder:
         self.max_input_tokens = max_input_tokens
         self._vectors = dict(vectors or {})
 
-    async def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
+    async def embed_batch(
+        self, texts: Sequence[str], *, purpose: EmbeddingPurpose
+    ) -> list[list[float]]:
         """Embed deterministically."""
         return [self._one(t) for t in texts]
 
@@ -69,7 +72,9 @@ class FailingEmbedder(MockEmbedder):
         self._transient_over = transient_over
         self._permanent = permanent
 
-    async def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
+    async def embed_batch(
+        self, texts: Sequence[str], *, purpose: EmbeddingPurpose
+    ) -> list[list[float]]:
         """Embed, or fail as scripted."""
         if self._permanent:
             msg = "bad credentials"
@@ -77,7 +82,7 @@ class FailingEmbedder(MockEmbedder):
         if self._transient_over is not None and len(texts) > self._transient_over:
             msg = "rate limited"
             raise TransientEmbeddingError(msg)
-        return await super().embed_batch(texts)
+        return await super().embed_batch(texts, purpose=purpose)
 
 
 class FlakyEmbedder(MockEmbedder):
@@ -89,12 +94,14 @@ class FlakyEmbedder(MockEmbedder):
         self.failures = failures
         self.calls = 0
 
-    async def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
+    async def embed_batch(
+        self, texts: Sequence[str], *, purpose: EmbeddingPurpose
+    ) -> list[list[float]]:
         """Count the call and raise a transient error while failures remain."""
         self.calls += 1
         if self.calls <= self.failures:
             raise TransientEmbeddingError("rate limited")
-        return await super().embed_batch(texts)
+        return await super().embed_batch(texts, purpose=purpose)
 
 
 class RecordingEmbedder(MockEmbedder):
@@ -117,14 +124,16 @@ class RecordingEmbedder(MockEmbedder):
         self.embedded: list[str] = []
         self.batches: list[tuple[str, ...]] = []
 
-    async def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
+    async def embed_batch(
+        self, texts: Sequence[str], *, purpose: EmbeddingPurpose
+    ) -> list[list[float]]:
         """Embed the texts, or fail while the embedder is failing."""
         if self.failing:
             msg = "provider is unavailable"
             raise PermanentEmbeddingError(msg)
         self.embedded.extend(texts)
         self.batches.append(tuple(texts))
-        return await super().embed_batch(texts)
+        return await super().embed_batch(texts, purpose=purpose)
 
 
 async def no_sleep(seconds: float) -> None:

@@ -102,9 +102,28 @@ async def check_stored_spaces(
             ("template_version", spec.template_version),
         ):
             if row[field] != want:
-                msg = (
-                    f"{kind.value}: stored {field} {row[field]!r}, configured {want!r}"
-                )
+                if field == "model":
+                    msg = (
+                        f"{kind.value}: Existing memory uses a different embedding "
+                        "model or encoding behavior. Changing the model or encoding "
+                        "requires re-embedding the source data into a new Tenant. "
+                        "Automatic re-embedding is not supported."
+                    )
+                else:
+                    mismatch = {
+                        "dim": ("embedding dimension", "embedding dimension"),
+                        "text_template": ("text template", "text template"),
+                        "template_version": (
+                            "text template version",
+                            "text template",
+                        ),
+                    }[field]
+                    msg = (
+                        f"{kind.value}: Existing memory uses a different "
+                        f"{mismatch[0]}. Changing the {mismatch[1]} requires "
+                        "re-embedding the source data into a new Tenant. "
+                        "Automatic re-embedding is not supported."
+                    )
                 raise SpaceMismatchError(msg)
 
 

@@ -205,6 +205,16 @@ _Avoid_: planner, answer model
 The component that writes fact vectors after a slot commit and episode vectors after ingest. It retains failed writes for an explicit retry without undoing the committed data.
 _Avoid_: vector store, automatic retry
 
+**Embedding purpose**:
+Whether text is a query for search or a document stored for later retrieval. A reviewed model profile can encode these purposes differently.
+_Avoid_: source role, actor role
+
+**FastEmbed profile**:
+The reviewed query and document encoding rules for one FastEmbed model. Only listed profiles have reviewed query and document behavior; the native model registry is larger.
+
+**Embedding identity**:
+The local model and encoding configuration recorded with a vector space. A changed identity requires a new [[Tenant]] and re-ingestion from the original source.
+
 **Lane**:
 One way of searching inside a [[Retrieval]]: vector, keyword, entity or graph. A lane returns a ranked list of ids and a status.
 _Avoid_: channel, method, path, retriever

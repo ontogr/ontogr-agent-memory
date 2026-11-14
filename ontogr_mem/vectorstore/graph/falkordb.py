@@ -72,7 +72,9 @@ class FalkorDBVectorBackend(GraphVectorBackend):
             if dimension != spec.dim:
                 msg = (
                     f"vector index on {label} has dimension {dimension}, "
-                    f"expected {spec.dim}"
+                    f"expected {spec.dim}. Changing the embedding dimension "
+                    "requires re-embedding the source data into a new Tenant. "
+                    "Automatic re-embedding is not supported."
                 )
                 raise SpaceMismatchError(msg)
 

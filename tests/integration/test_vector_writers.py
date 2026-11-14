@@ -29,6 +29,7 @@ from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionMode, TypePolicy
 from ontogr_mem.temporal import TemporalEngine, from_type_view
 from ontogr_mem.vectorstore import (
+    EmbeddingPurpose,
     FactVectorObserver,
     FailReason,
     SearchFilters,
@@ -80,11 +81,13 @@ class SelectiveFailureEmbedder(MockEmbedder):
         super().__init__(vectors=VECTORS)
         self.failed_text: str | None = None
 
-    async def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
+    async def embed_batch(
+        self, texts: Sequence[str], *, purpose: EmbeddingPurpose
+    ) -> list[list[float]]:
         """Fail only when a batch contains the selected text."""
         if self.failed_text in texts:
             raise PermanentEmbeddingError("selected text is unavailable")
-        return await super().embed_batch(texts)
+        return await super().embed_batch(texts, purpose=purpose)
 
 
 @dataclass

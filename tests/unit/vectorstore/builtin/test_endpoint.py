@@ -185,7 +185,7 @@ class TestEndpointEmbedder:
         """An empty batch returns an empty list and never calls the endpoint."""
         embedder = _embedder(FakeClient(_no_request))
 
-        assert await embedder.embed_batch([]) == []
+        assert await embedder.embed_batch([], purpose="document") == []
 
     async def test_orders_rows_by_index_and_normalizes_each_vector(self) -> None:
         """Rows are matched to texts by index and each vector has length one."""
@@ -193,7 +193,7 @@ class TestEndpointEmbedder:
             lambda texts: _response((1, [0.0, 0.0, 2.0]), (0, [3.0, 4.0, 0.0]))
         )
 
-        vectors = await _embedder(client).embed_batch(["a", "b"])
+        vectors = await _embedder(client).embed_batch(["a", "b"], purpose="document")
 
         assert len(vectors) == 2
         assert vectors[0] == pytest.approx([0.6, 0.8, 0.0])
@@ -217,7 +217,7 @@ class TestEndpointEmbedder:
         embedder = _embedder(FakeClient(lambda texts: _response(*rows)))
 
         with pytest.raises(PermanentEmbeddingError):
-            await embedder.embed_batch(["a", "b"])
+            await embedder.embed_batch(["a", "b"], purpose="document")
 
     @pytest.mark.parametrize(
         "vector",
@@ -233,7 +233,7 @@ class TestEndpointEmbedder:
         embedder = _embedder(FakeClient(lambda texts: _response((0, vector))), dim=3)
 
         with pytest.raises(PermanentEmbeddingError):
-            await embedder.embed_batch(["a"])
+            await embedder.embed_batch(["a"], purpose="document")
 
     @pytest.mark.parametrize(
         "vector",
@@ -250,7 +250,7 @@ class TestEndpointEmbedder:
         embedder = _embedder(FakeClient(lambda texts: _response((0, vector))))
 
         with pytest.raises(PermanentEmbeddingError):
-            await embedder.embed_batch(["a"])
+            await embedder.embed_batch(["a"], purpose="document")
 
     async def test_embed_batch_rejects_non_numeric_vector_values(self) -> None:
         """A vector whose values are not numbers is a permanent error."""
@@ -258,7 +258,7 @@ class TestEndpointEmbedder:
         client = FakeClient(lambda texts: _response((0, vector)))
 
         with pytest.raises(PermanentEmbeddingError):
-            await _embedder(client).embed_batch(["a"])
+            await _embedder(client).embed_batch(["a"], purpose="document")
 
     async def test_configured_dimensions_are_used_without_a_probe(self) -> None:
         """A configured dimension sets `dim` and sends no request."""
@@ -413,7 +413,7 @@ class TestEndpointEmbedder:
         embedder = _embedder(FakeClient(_raises(make_error())))
 
         with pytest.raises(expected_error) as failure:
-            await embedder.embed_batch(["a"])
+            await embedder.embed_batch(["a"], purpose="document")
 
         message = str(failure.value)
         assert "sentinel-body" not in message
@@ -449,7 +449,7 @@ class TestEndpointEmbedder:
         _wire_client(monkeypatch, handler)
         embedder = await EndpointEmbedder.open(_settings(api_key=api_key, dimensions=3))
 
-        (vector,) = await embedder.embed_batch(["a"])
+        (vector,) = await embedder.embed_batch(["a"], purpose="document")
         await embedder.aclose()
 
         (request,) = seen
@@ -475,7 +475,7 @@ class TestEndpointEmbedder:
         embedder = await EndpointEmbedder.open(_settings(dimensions=3))
 
         with pytest.raises(TransientEmbeddingError):
-            await embedder.embed_batch(["a"])
+            await embedder.embed_batch(["a"], purpose="document")
         await embedder.aclose()
 
         assert len(seen) == 1

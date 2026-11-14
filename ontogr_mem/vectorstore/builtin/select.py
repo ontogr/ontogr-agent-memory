@@ -3,11 +3,13 @@
 from ontogr_mem.vectorstore.builtin.endpoint import EndpointEmbedder
 from ontogr_mem.vectorstore.builtin.local import LocalEmbedder
 from ontogr_mem.vectorstore.builtin.settings import EmbeddingSettings
-from ontogr_mem.vectorstore.embedder import Embedder
+from ontogr_mem.vectorstore.errors import EmbedderUnavailableError
 
 
-async def select_embedder(settings: EmbeddingSettings | None = None) -> Embedder:
-    """Open an endpoint when configured, otherwise open the local CPU model.
+async def select_embedder(
+    settings: EmbeddingSettings | None = None,
+) -> LocalEmbedder | EndpointEmbedder:
+    """Open the configured embedding provider without falling back on failure.
 
     Args:
         settings: Embedding configuration, or load it from the environment.
@@ -16,10 +18,30 @@ async def select_embedder(settings: EmbeddingSettings | None = None) -> Embedder
         An opened built-in embedder owned by the caller.
 
     Raises:
-        EmbedderUnavailableError: If no local provider can load.
-        EmbeddingError: If a selected endpoint fails to open.
+        EmbedderUnavailableError: If endpoint settings are incomplete or the
+            local provider cannot load.
+        EmbeddingError: If the selected provider fails to open.
     """
     selected = settings if settings is not None else EmbeddingSettings()
-    if selected.model and selected.base_url:
+
+    if selected.provider == "fastembed":
+        return await LocalEmbedder.open(selected)
+
+    has_model = bool(selected.model)
+    has_base_url = bool(selected.base_url)
+    endpoint_configured = has_model and has_base_url
+    if (selected.provider == "endpoint" and not endpoint_configured) or (
+        selected.provider == "auto" and has_model != has_base_url
+    ):
+        raise EmbedderUnavailableError(
+            "embedding endpoint configuration is incomplete",
+            hint=(
+                "Set both MEMORY_EMBEDDING_MODEL and "
+                "MEMORY_EMBEDDING_BASE_URL, or choose "
+                "MEMORY_EMBEDDING_PROVIDER=fastembed."
+            ),
+        )
+
+    if endpoint_configured:
         return await EndpointEmbedder.open(selected)
-    return await LocalEmbedder.open()
+    return await LocalEmbedder.open(selected)

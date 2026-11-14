@@ -1,6 +1,7 @@
 .PHONY: sync test test-integration services-up services-down test-all cov-report cov lint-typing lint-style lint-fmt lint-check lint-typos lint-actions lint-all security-bandit security-audit security build wheel-test changelog clean help
 
 export UV_LOCKED = 1
+UV_SYNC_ARGS ?= --no-extra fastembed-gpu
 
 help:
 	@echo "Available make targets:"
@@ -28,7 +29,7 @@ help:
 	@echo "  make clean            - Clean build artifacts and cache"
 
 sync:
-	uv sync --locked --all-groups --all-extras
+	uv sync --locked --all-groups --all-extras $(UV_SYNC_ARGS)
 
 test:
 	uv run pytest tests/unit \

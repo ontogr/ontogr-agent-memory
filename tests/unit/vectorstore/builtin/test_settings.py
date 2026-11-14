@@ -15,6 +15,9 @@ def clean_environment(monkeypatch):
         "MEMORY_EMBEDDING_API_KEY",
         "MEMORY_EMBEDDING_DIMENSIONS",
         "MEMORY_EMBEDDING_MAX_INPUT_TOKENS",
+        "MEMORY_EMBEDDING_PROVIDER",
+        "MEMORY_EMBEDDING_FASTEMBED_KWARGS",
+        "MEMORY_EMBEDDING_BATCH_SIZE",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -31,6 +34,98 @@ class TestEmbeddingSettings:
         assert settings.api_key is None
         assert settings.dimensions is None
         assert settings.max_input_tokens == 8192
+        assert settings.provider == "auto"
+        assert settings.fastembed_kwargs == {}
+        assert settings.batch_size == 32
+
+    def test_python_and_environment_values_are_equivalent(self, monkeypatch):
+        """Python options and their JSON environment form resolve identically."""
+        options = {
+            "model_name": "sample/model",
+            "providers": [["CUDAExecutionProvider", {"device_id": 0}]],
+            "threads": 2,
+        }
+        python_settings = EmbeddingSettings(
+            _env_file=None,
+            provider="fastembed",
+            fastembed_kwargs=options,
+            batch_size=8,
+        )
+        monkeypatch.setenv("MEMORY_EMBEDDING_PROVIDER", "fastembed")
+        monkeypatch.setenv(
+            "MEMORY_EMBEDDING_FASTEMBED_KWARGS",
+            '{"model_name":"sample/model","providers":[["CUDAExecutionProvider",'
+            '{"device_id":0}]],"threads":2}',
+        )
+        monkeypatch.setenv("MEMORY_EMBEDDING_BATCH_SIZE", "8")
+
+        environment_settings = EmbeddingSettings(_env_file=None)
+
+        assert environment_settings.provider == python_settings.provider
+        assert environment_settings.fastembed_kwargs == python_settings.fastembed_kwargs
+        assert environment_settings.batch_size == python_settings.batch_size
+        assert environment_settings.model is None
+
+    def test_fastembed_kwargs_default_is_isolated_between_settings(self):
+        """Each settings instance owns its mutable native-options dictionary."""
+        first = EmbeddingSettings(_env_file=None)
+        second = EmbeddingSettings(_env_file=None)
+
+        first.fastembed_kwargs["threads"] = 2
+
+        assert second.fastembed_kwargs == {}
+
+    def test_hides_fastembed_kwargs_in_repr(self):
+        """Native options do not appear in settings representations."""
+        settings = EmbeddingSettings(
+            _env_file=None,
+            fastembed_kwargs={"cache_dir": "/private/model-cache-sentinel"},
+        )
+
+        assert "/private/model-cache-sentinel" not in repr(settings)
+        assert "/private/model-cache-sentinel" not in str(settings)
+
+    @pytest.mark.parametrize("provider", ["auto", "fastembed", "endpoint"])
+    def test_accepts_supported_providers(self, provider):
+        """The configured provider uses one of the supported names."""
+        assert EmbeddingSettings(_env_file=None, provider=provider).provider == provider
+
+    def test_rejects_unsupported_providers_without_echoing_values(self):
+        """An unsupported provider fails without showing the configured value."""
+        value = "other-provider-sentinel"
+        with pytest.raises(ValidationError) as error:
+            EmbeddingSettings(_env_file=None, provider=value)
+
+        assert value not in str(error.value)
+
+    @pytest.mark.parametrize("value", ["0", "-1"])
+    def test_rejects_nonpositive_batch_sizes(self, monkeypatch, value):
+        """Batch sizes must be positive integers."""
+        monkeypatch.setenv("MEMORY_EMBEDDING_BATCH_SIZE", value)
+
+        with pytest.raises(ValidationError):
+            EmbeddingSettings(_env_file=None)
+
+    @pytest.mark.parametrize("value", ['"kwargs-sentinel"', '["kwargs-sentinel"]'])
+    def test_rejects_non_object_fastembed_kwargs_without_echoing_values(
+        self, monkeypatch, value
+    ):
+        """The environment accepts JSON objects and hides rejected raw values."""
+        monkeypatch.setenv("MEMORY_EMBEDDING_FASTEMBED_KWARGS", value)
+
+        with pytest.raises(ValidationError) as error:
+            EmbeddingSettings(_env_file=None)
+
+        assert "kwargs-sentinel" not in str(error.value)
+
+    def test_rejects_non_object_python_fastembed_kwargs_without_echoing_value(self):
+        """Python callers must pass an object without exposing rejected values."""
+        value = "python-kwargs-sentinel"
+
+        with pytest.raises(ValidationError) as error:
+            EmbeddingSettings(_env_file=None, fastembed_kwargs=value)
+
+        assert value not in str(error.value)
 
     def test_reads_all_embedding_environment_variables(self, monkeypatch):
         """Each MEMORY_EMBEDDING_ variable sets its matching field."""
@@ -39,6 +134,12 @@ class TestEmbeddingSettings:
         monkeypatch.setenv("MEMORY_EMBEDDING_API_KEY", "sentinel-key")
         monkeypatch.setenv("MEMORY_EMBEDDING_DIMENSIONS", "768")
         monkeypatch.setenv("MEMORY_EMBEDDING_MAX_INPUT_TOKENS", "512")
+        monkeypatch.setenv("MEMORY_EMBEDDING_PROVIDER", "fastembed")
+        monkeypatch.setenv(
+            "MEMORY_EMBEDDING_FASTEMBED_KWARGS",
+            '{"model_name":"test-model","threads":2}',
+        )
+        monkeypatch.setenv("MEMORY_EMBEDDING_BATCH_SIZE", "7")
 
         settings = EmbeddingSettings(_env_file=None)
 
@@ -47,6 +148,9 @@ class TestEmbeddingSettings:
         assert settings.api_key.get_secret_value() == "sentinel-key"
         assert settings.dimensions == 768
         assert settings.max_input_tokens == 512
+        assert settings.provider == "fastembed"
+        assert settings.fastembed_kwargs == {"model_name": "test-model", "threads": 2}
+        assert settings.batch_size == 7
 
     @pytest.mark.parametrize(
         ("variable", "attribute"),

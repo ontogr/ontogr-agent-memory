@@ -81,7 +81,12 @@ class Neo4jVectorBackend(GraphVectorBackend):
             index = await self._await_online(name)
             dim = self._dimension(index)
             if dim != spec.dim:
-                msg = f"vector index {name} has dimension {dim}, expected {spec.dim}"
+                msg = (
+                    f"vector index {name} has dimension {dim}, expected {spec.dim}. "
+                    "Changing the embedding dimension requires re-embedding the "
+                    "source data into a new Tenant. Automatic re-embedding is not "
+                    "supported."
+                )
                 raise SpaceMismatchError(msg)
 
     async def _indexes(self) -> dict[str, dict[str, Any]]:

@@ -11,6 +11,7 @@ from openai import (
 )
 
 from ontogr_mem.vectorstore.builtin.settings import EmbeddingSettings
+from ontogr_mem.vectorstore.embedder import EmbeddingPurpose
 from ontogr_mem.vectorstore.errors import (
     EmbedderUnavailableError,
     EmbeddingTimeoutError,
@@ -124,11 +125,16 @@ class EndpointEmbedder:
             raise
         return embedder
 
-    async def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
+    async def embed_batch(
+        self, texts: Sequence[str], *, purpose: EmbeddingPurpose
+    ) -> list[list[float]]:
         """Return one unit vector per text, in input order.
+
+        The endpoint uses the same request for query and document purposes.
 
         Args:
             texts: One gateway batch. The gateway handles long-text splitting.
+            purpose: Whether the text will be searched or stored.
 
         Returns:
             Aligned unit vectors, or an empty list for an empty input.

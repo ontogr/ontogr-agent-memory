@@ -371,24 +371,61 @@ class VectorStoreContract:
         with pytest.raises(StoreNotReadyError):
             await h.store.upsert(VectorKind.NODE, [node_item("n1", "a")])
 
-    async def test_another_model_on_the_same_tenant_is_refused(self, make_harness):
-        """The stored space pins the model; a different one raises on startup."""
-        h = await ready(make_harness)
+    @pytest.mark.parametrize(
+        ("stored_model", "configured_model"),
+        [
+            ("stored-model-sentinel", "configured-model-sentinel"),
+            (
+                "fastembed:sample/model:sha256:original",
+                "fastembed:sample/model:sha256:changed",
+            ),
+        ],
+        ids=["different-model", "different-encoding"],
+    )
+    async def test_another_embedding_identity_is_refused_without_changing_data(
+        self, make_harness, stored_model: str, configured_model: str
+    ) -> None:
+        """A changed model or encoding refuses startup without changing data."""
+        h = await ready(make_harness, fixed_embedder(model_id=stored_model))
+        await h.seed(VectorKind.NODE, ["existing-node"])
+        await h.store.upsert(VectorKind.NODE, [node_item("existing-node", "a")])
+        original_vectors = await h.store.backend.fetch_vectors(
+            VectorKind.NODE, ["existing-node"]
+        )
 
-        other = h.reopen(fixed_embedder(model_id="other-model"))
+        other = h.reopen(fixed_embedder(model_id=configured_model))
 
-        with pytest.raises(SpaceMismatchError):
+        with pytest.raises(SpaceMismatchError) as error:
             await other.ensure_ready()
 
+        assert (
+            "Existing memory uses a different embedding model or encoding behavior. "
+            "Changing the model or encoding requires re-embedding the source data "
+            "into a new Tenant. Automatic re-embedding is not supported."
+        ) in str(error.value)
+        assert stored_model not in str(error.value)
+        assert configured_model not in str(error.value)
+        assert (
+            await h.store.backend.fetch_vectors(VectorKind.NODE, ["existing-node"])
+            == original_vectors
+        )
+        assert [hit.id for hit in await h.store.search(VectorKind.NODE, A, k=5)] == [
+            "existing-node"
+        ]
+
     async def test_template_version_drift_is_refused(self, make_harness):
-        """A stored template version the code no longer renders raises."""
+        """A stored template version is refused with re-ingestion guidance."""
         h = await make_harness(fixed_embedder())
         await h.store.backend.write_space(
             SpaceSpec(VectorKind.NODE, "mock", 3, "node.name", 99)
         )
 
-        with pytest.raises(SpaceMismatchError):
+        with pytest.raises(SpaceMismatchError) as error:
             await h.store.ensure_ready()
+
+        assert "different text template version" in str(error.value)
+        assert "re-embedding the source data into a new Tenant" in str(error.value)
+        assert "Automatic re-embedding is not supported." in str(error.value)
 
     async def test_probe_length_mismatch_is_refused(self, make_harness):
         """An embedder whose probe has another length never serves traffic."""

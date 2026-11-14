@@ -1,6 +1,9 @@
 """End-to-end retrieval over a tenant ingested through the real pipeline."""
 
+import json
+from collections.abc import Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -16,9 +19,11 @@ from ontogr_mem.retrieval.errors import KeywordTimeoutError, RerankerError
 from ontogr_mem.retrieval.rerank import Passage
 from ontogr_mem.temporal import FactStatus, TemporalError
 from ontogr_mem.temporal.render import ANSWER_RULE
-from ontogr_mem.vectorstore import Hit, VectorKind
+from ontogr_mem.vectorstore import EmbeddingPurpose, Hit, VectorKind
 from ontogr_mem.vectorstore.errors import VectorStoreError
-from tests.support.retrieval_world import QUERY
+from tests.support.graph_backend import GraphBackend
+from tests.support.retrieval_backends import graph_retrieval_backend
+from tests.support.retrieval_world import QUERY, build_world
 
 
 class RetrievalContract:
@@ -454,3 +459,73 @@ def _retriever(world, **overrides):
         settings=overrides.get("settings"),
         reranker=overrides.get("reranker"),
     )
+
+
+class _PurposeSensitiveEmbedder:
+    """Give a query-purpose probe and its document-purpose control different ranks."""
+
+    model_id = "mock"
+    dim = 3
+    max_input_tokens = 8192
+
+    def __init__(self) -> None:
+        self.query_as_document = False
+
+    async def embed_batch(
+        self, texts: Sequence[str], *, purpose: EmbeddingPurpose
+    ) -> list[list[float]]:
+        """Return fixed vectors for the retrieval regression scenario."""
+        vectors = []
+        for text in texts:
+            if text == "qzxvquery731":
+                vector = (
+                    (0.0, 1.0, 0.0)
+                    if purpose == "document" or self.query_as_document
+                    else (1.0, 0.0, 0.0)
+                )
+            elif "cobaltsignal" in text:
+                vector = (1.0, 0.0, 0.0)
+            elif "jsonneedle" in text:
+                vector = (0.0, 1.0, 0.0)
+            else:
+                vector = (-1.0, -1.0, 0.0)
+            vectors.append(list(vector))
+        return vectors
+
+
+async def test_query_purpose_ranks_target_before_document_encoded_decoy(
+    graph_backend: GraphBackend, tmp_path: Path
+):
+    """Query encoding ranks the target while document encoding ranks the decoy."""
+    backend = await graph_retrieval_backend(graph_backend)
+    embedder = _PurposeSensitiveEmbedder()
+    backend.vectors.gateway.embedder = embedder
+    world = await build_world(backend)
+    query = "qzxvquery731"
+
+    result = await world.retriever.retrieve(world.request(query, limit=2))
+    query_ranking = [
+        (episode.episode_id, rank) for rank, episode in enumerate(result.episodes)
+    ]
+    embedder.query_as_document = True
+    document_encoded_result = await world.retriever.retrieve(
+        world.request(query, limit=2)
+    )
+    document_ranking = [
+        (episode.episode_id, rank)
+        for rank, episode in enumerate(document_encoded_result.episodes)
+    ]
+
+    artifact = {
+        "backend": graph_backend.name,
+        "query_purpose": [list(item) for item in query_ranking],
+        "document_purpose_counterfactual": [list(item) for item in document_ranking],
+    }
+    artifact_path = tmp_path / "retrieval-purpose-ranking.json"
+    artifact_path.write_text(
+        json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+    assert json.loads(artifact_path.read_text(encoding="utf-8")) == artifact
+    assert query_ranking == [("e7", 0), ("e8", 1)]
+    assert document_ranking == [("e8", 0), ("e7", 1)]

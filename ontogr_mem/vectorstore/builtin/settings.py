@@ -1,6 +1,8 @@
-"""Settings for the built-in endpoint embedder."""
+"""Settings for the built-in embedding providers."""
 
-from pydantic import Field, SecretStr, field_validator
+from typing import Literal
+
+from pydantic import Field, JsonValue, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,6 +17,10 @@ class EmbeddingSettings(BaseSettings):
             Env: MEMORY_EMBEDDING_DIMENSIONS.
         max_input_tokens: Declared endpoint input limit.
             Env: MEMORY_EMBEDDING_MAX_INPUT_TOKENS.
+        provider: Embedding provider. Env: MEMORY_EMBEDDING_PROVIDER.
+        fastembed_kwargs: Native FastEmbed options as a JSON object.
+            Env: MEMORY_EMBEDDING_FASTEMBED_KWARGS.
+        batch_size: Native FastEmbed call size. Env: MEMORY_EMBEDDING_BATCH_SIZE.
     """
 
     model_config = SettingsConfigDict(
@@ -22,8 +28,12 @@ class EmbeddingSettings(BaseSettings):
         env_file=".env",
         extra="ignore",
         frozen=True,
+        hide_input_in_errors=True,
     )
 
+    provider: Literal["auto", "fastembed", "endpoint"] = "auto"
+    fastembed_kwargs: dict[str, JsonValue] = Field(default_factory=dict, repr=False)
+    batch_size: int = Field(default=32, ge=1)
     model: str | None = None
     base_url: str | None = None
     api_key: SecretStr | None = None

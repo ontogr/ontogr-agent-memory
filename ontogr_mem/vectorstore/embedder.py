@@ -5,7 +5,7 @@ import random
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 from ontogr_mem.observability import NoOpTracer, SpanName, Tracer, open_span
 from ontogr_mem.request_context import current_context
@@ -27,6 +27,9 @@ from ontogr_mem.vectorstore.errors import (
 from ontogr_mem.vectorstore.models import FailReason
 from ontogr_mem.vectorstore.settings import VectorStoreSettings
 from ontogr_mem.vectorstore.vecmath import classify_vector, mean_unit, norm
+
+
+EmbeddingPurpose = Literal["query", "document"]
 
 
 def _breaker_error(exc: BaseException) -> Kind | None:
@@ -55,8 +58,10 @@ class Embedder(Protocol):
     dim: int
     max_input_tokens: int
 
-    async def embed_batch(self, texts: Sequence[str]) -> list[list[float]]:
-        """Embed `texts`; one vector per text, in order."""
+    async def embed_batch(
+        self, texts: Sequence[str], *, purpose: EmbeddingPurpose
+    ) -> list[list[float]]:
+        """Embed `texts` for one purpose; return one vector per text, in order."""
         ...
 
 
@@ -109,11 +114,13 @@ class EmbeddingGateway:
         """Vector length of the provider."""
         return self.embedder.dim
 
-    async def embed(self, texts: Sequence[str]) -> list[EmbedOutcome]:
+    async def embed(
+        self, texts: Sequence[str], *, purpose: EmbeddingPurpose
+    ) -> list[EmbedOutcome]:
         """Embed `texts`; the result is aligned with the input.
 
         Texts longer than the model accepts are cut into overlapping pieces and
-        the piece vectors are averaged.
+        the piece vectors are averaged. Every piece uses the requested purpose.
         """
         with open_span(
             self._tracer,
@@ -121,9 +128,11 @@ class EmbeddingGateway:
             model=self.embedder.model_id,
             count=len(texts),
         ):
-            return await self._embed(texts)
+            return await self._embed(texts, purpose)
 
-    async def _embed(self, texts: Sequence[str]) -> list[EmbedOutcome]:
+    async def _embed(
+        self, texts: Sequence[str], purpose: EmbeddingPurpose
+    ) -> list[EmbedOutcome]:
         """Embed a batch using the configured split and retry rules."""
         cfg = self.settings
         now = time.monotonic()
@@ -148,7 +157,7 @@ class EmbeddingGateway:
 
         async def run(batch: list[_Segment]) -> list[EmbedOutcome]:
             async with gate:
-                return await self._embed_batch(batch, deadline)
+                return await self._embed_batch(batch, deadline, purpose=purpose)
 
         batches = [
             segments[s : s + cfg.batch_size]
@@ -168,8 +177,10 @@ class EmbeddingGateway:
             for i in range(len(texts))
         ]
 
-    async def probe(self, text: str = "vectorstore probe") -> tuple[int, float]:
-        """Embed a fixed string; return the length and norm of the raw vector."""
+    async def probe(
+        self, text: str = "vectorstore probe", *, purpose: EmbeddingPurpose
+    ) -> tuple[int, float]:
+        """Embed a fixed string for one purpose and return raw length and norm."""
         now = time.monotonic()
         deadline = now + self.settings.deadline_s
         context = current_context()
@@ -184,18 +195,20 @@ class EmbeddingGateway:
             raise EmbeddingError("circuit open")
 
         async def call() -> list[float]:
-            return (await self._call([text], deadline))[0]
+            return (await self._call([text], deadline, purpose=purpose))[0]
 
         vector = await call_with_breaker(call, breaker, _breaker_error)
         return len(vector), norm(vector)
 
-    async def embed_all(self, texts: Sequence[str]) -> list[tuple[float, ...]]:
+    async def embed_all(
+        self, texts: Sequence[str], *, purpose: EmbeddingPurpose
+    ) -> list[tuple[float, ...]]:
         """Return vectors for every text or raise on the first failed outcome.
 
         Raises:
             EmbeddingFailedError: If any input text has no vector.
         """
-        outcomes = await self.embed(texts)
+        outcomes = await self.embed(texts, purpose=purpose)
         vectors: list[tuple[float, ...]] = []
         for index, outcome in enumerate(outcomes):
             if outcome.vector is None:
@@ -206,7 +219,13 @@ class EmbeddingGateway:
             vectors.append(outcome.vector)
         return vectors
 
-    async def _call(self, texts: Sequence[str], deadline: float) -> list[list[float]]:
+    async def _call(
+        self,
+        texts: Sequence[str],
+        deadline: float,
+        *,
+        purpose: EmbeddingPurpose,
+    ) -> list[list[float]]:
         if self._limiter is not None:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -227,7 +246,7 @@ class EmbeddingGateway:
         timeout_scope = asyncio.timeout(min(self.settings.attempt_timeout_s, remaining))
         try:
             async with timeout_scope:
-                return await self.embedder.embed_batch(texts)
+                return await self.embedder.embed_batch(texts, purpose=purpose)
         except TimeoutError as exc:
             msg = (
                 "deadline exceeded"
@@ -249,6 +268,8 @@ class EmbeddingGateway:
         self,
         batch: list[_Segment],
         deadline: float,
+        *,
+        purpose: EmbeddingPurpose,
         attempt: int = 0,
         breaker_checked: bool = False,
     ) -> list[EmbedOutcome]:
@@ -263,7 +284,9 @@ class EmbeddingGateway:
             owns_probe = True
         try:
             try:
-                raw = await self._call([s.text for s in batch], deadline)
+                raw = await self._call(
+                    [s.text for s in batch], deadline, purpose=purpose
+                )
             except EmbeddingTimeoutError as exc:
                 if self._breaker is not None:
                     if "deadline" in str(exc).lower():
@@ -283,6 +306,7 @@ class EmbeddingGateway:
                     attempt,
                     exc,
                     breaker_checked,
+                    purpose=purpose,
                     owns_probe=owns_probe,
                 )
             if self._breaker is not None:
@@ -305,6 +329,7 @@ class EmbeddingGateway:
         error: TransientEmbeddingError,
         breaker_checked: bool,
         *,
+        purpose: EmbeddingPurpose,
         owns_probe: bool,
     ) -> list[EmbedOutcome]:
         if len(batch) == 1 and attempt + 1 >= self.settings.max_attempts:
@@ -319,15 +344,31 @@ class EmbeddingGateway:
         await self._sleep(delay)
         if len(batch) == 1:
             outcomes = await self._embed_batch(
-                batch, deadline, attempt + 1, breaker_checked
+                batch,
+                deadline,
+                purpose=purpose,
+                attempt=attempt + 1,
+                breaker_checked=breaker_checked,
             )
             if owns_probe and self._breaker is not None and _deadline_only(outcomes):
                 self._breaker.release_probe()
             return outcomes
         mid = len(batch) // 2
         left, right = await asyncio.gather(
-            self._embed_batch(batch[:mid], deadline, attempt + 1, breaker_checked),
-            self._embed_batch(batch[mid:], deadline, attempt + 1, breaker_checked),
+            self._embed_batch(
+                batch[:mid],
+                deadline,
+                purpose=purpose,
+                attempt=attempt + 1,
+                breaker_checked=breaker_checked,
+            ),
+            self._embed_batch(
+                batch[mid:],
+                deadline,
+                purpose=purpose,
+                attempt=attempt + 1,
+                breaker_checked=breaker_checked,
+            ),
         )
         outcomes = left + right
         if owns_probe and self._breaker is not None and _deadline_only(outcomes):

@@ -296,16 +296,41 @@ class TestPgVectorProvisioning:
             await store.search(NODE, A, k=1)
 
     async def test_dimension_drift_against_the_stored_space(self, pg_pool):
-        """A stored space with another dimension is refused."""
+        """Dimension drift is actionable and leaves existing data intact."""
         tenant = new_tenant()
-        specs = specs_for(fixed_embedder())
+        embedder = fixed_embedder()
+        specs = specs_for(embedder)
         try:
             await provision(pg_pool, tenant, specs)
-            other = MockEmbedder(dim=4)
-            backend = PgBackend(pg_pool, tenant, specs_for(other))
-            store = VectorStore(backend, gateway(other), graph=FakeGraph())
-            with pytest.raises(SpaceMismatchError):
-                await store.ensure_ready()
+            graph = FakeGraph()
+            graph.add(NODE, node_item("existing-node", "a"))
+            backend = PgBackend(pg_pool, tenant, specs, PgVectorSettings())
+            original_store = VectorStore(backend, gateway(embedder), graph=graph)
+            await original_store.ensure_ready()
+            await original_store.upsert(NODE, [node_item("existing-node", "a")])
+            original_vectors = await backend.fetch_vectors(NODE, ["existing-node"])
+
+            other = MockEmbedder(dim=4, model_id=embedder.model_id)
+            other_backend = PgBackend(pg_pool, tenant, specs_for(other))
+            other_store = VectorStore(other_backend, gateway(other), graph=FakeGraph())
+            with pytest.raises(SpaceMismatchError) as error:
+                await other_store.ensure_ready()
+
+            assert "different embedding dimension" in str(error.value)
+            assert "re-embedding the source data into a new Tenant" in str(error.value)
+            assert "Automatic re-embedding is not supported." in str(error.value)
+            assert (
+                await other_backend.fetch_vectors(NODE, ["existing-node"])
+                == original_vectors
+            )
+            assert await graph.exists(NODE, ["existing-node"]) == {"existing-node"}
+            assert (
+                await original_store.backend.fetch_vectors(NODE, ["existing-node"])
+                == original_vectors
+            )
+            assert [hit.id for hit in await original_store.search(NODE, A, k=5)] == [
+                "existing-node"
+            ]
         finally:
             await drop_tenant(pg_pool, tenant)
 
@@ -414,7 +439,7 @@ class TestPgVectorWrites:
                 "WHERE attrelid = to_regclass($1) AND attname = 'embedding'",
                 f"{quote_ident(schema_name(tenant))}.vec_node",
             )
-        (query,) = await embedder.embed_batch(["alpha"])
+        (query,) = await embedder.embed_batch(["alpha"], purpose="query")
 
         hits = await store.search(NODE, query, k=2)
 
