@@ -5,8 +5,9 @@ from collections.abc import Sequence
 
 import pytest
 
-from ontogr_mem.data_models.entities import EntityStatus
+from ontogr_mem.data_models.entities import Alias, AliasSource, EntityStatus
 from ontogr_mem.resolution.config import Budget
+from ontogr_mem.resolution.keys import entity_text
 from ontogr_mem.resolution.resolver_store import ResolverStore
 from ontogr_mem.vectorstore import (
     EmbeddingFailedError,
@@ -16,7 +17,7 @@ from ontogr_mem.vectorstore import (
 )
 from tests.contracts.resolver_store import entity
 from tests.integration.resolution.resolver_helpers import make
-from tests.support.embedder import MockEmbedder
+from tests.support.embedder import MockEmbedder, RecordingEmbedder
 from tests.support.graph_backend import GraphBackend
 from tests.unit.resolution.helpers import oracle_models
 
@@ -85,6 +86,89 @@ async def test_selected_entities_are_marked_checked(graph_backend: GraphBackend)
 
     survivor = (await store.get_entities(["e1"]))[0]
     assert survivor.last_checked_version == survivor.revision
+
+
+@pytest.mark.parametrize(
+    "alias_on_selected",
+    [True, False],
+    ids=["selected-alias", "counterpart-alias"],
+)
+async def test_alias_matches_in_either_direction_without_stored_vectors(
+    graph_backend: GraphBackend, alias_on_selected: bool
+):
+    """Blocking and rule classification find aliases whichever side owns one."""
+    store = (await graph_backend.open_stores()).resolver_store
+    selected = entity("e1", name="Amber Maritime Consortium")
+    counterpart = entity("e2", name="Violet Quantum Laboratory")
+    await store.save_entity(counterpart, bump_revision=False)
+    selected = (await store.write_entity_batch([selected], []))[0]
+    alias_entity = selected if alias_on_selected else counterpart
+    alias_text = (
+        counterpart.canonical_name if alias_on_selected else selected.canonical_name
+    )
+    await store.write_entity_batch(
+        [],
+        [
+            Alias(
+                alias_id="alias-either-direction",
+                entity_id=alias_entity.entity_id,
+                text=alias_text,
+                strict_key=alias_text.casefold(),
+                loose_key=alias_text.casefold(),
+                source=AliasSource.USER,
+            )
+        ],
+    )
+    embedder = RecordingEmbedder()
+    resolver = await make(store, embedder=embedder)
+    embedder.embedded.clear()
+
+    report = await resolver.deduplicate()
+
+    assert report.selected == 1
+    assert report.pairs_rule_same == 1
+    assert report.pairs_merged == 1
+    assert embedder.embedded == [entity_text(selected)]
+    assert await resolver.vectors.exists(VectorKind.NODE, ["e1", "e2"]) == set()
+
+
+async def test_alias_query_uses_its_key_for_jaccard_without_stored_vectors(
+    graph_backend: GraphBackend,
+):
+    """A selected alias supplies the Jaccard score for its discovered pair."""
+    store = (await graph_backend.open_stores()).resolver_store
+    selected = entity("e1", name="Amber Maritime Consortium")
+    candidate = entity("e2", name="Violet Quantum Laboratory")
+    await store.save_entity(candidate, bump_revision=False)
+    selected = (await store.write_entity_batch([selected], []))[0]
+    await store.write_entity_batch(
+        [],
+        [
+            Alias(
+                alias_id="alias-jaccard-query",
+                entity_id=selected.entity_id,
+                text="Violet Quantum Laboratory!",
+                strict_key="violet quantum laboratory!",
+                loose_key="violet quantum laboratory",
+                source=AliasSource.USER,
+            )
+        ],
+    )
+    models, scripted = oracle_models(lambda _a, _b: True)
+    embedder = RecordingEmbedder()
+    resolver = await make(store, models=models, embedder=embedder)
+    embedder.embedded.clear()
+
+    report = await resolver.deduplicate()
+
+    assert report.selected == 1
+    assert report.pairs_considered == 1
+    assert report.pairs_asked == 1
+    assert report.pairs_merged == 1
+    assert "jaccard=1.00" in scripted.calls[0].prompt
+    assert "cosine=" not in scripted.calls[0].prompt
+    assert embedder.embedded == [entity_text(selected)]
+    assert await resolver.vectors.exists(VectorKind.NODE, ["e1", "e2"]) == set()
 
 
 async def test_embedding_failure_leaves_ann_candidates_for_retry(
