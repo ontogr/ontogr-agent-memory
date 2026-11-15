@@ -29,9 +29,11 @@ INTENT_KEY = "intent"
 class MergePlan:
     """Everything one merge writes, built by the pure merge planner.
 
-    The store stamps ``record.seq`` from `next_revision` and writes the rows
-    in order. The store keeps a copy of the rows in the merge record, so a
-    merge that was interrupted can be played out again.
+    The store assigns ``record.seq`` with `next_revision`. Before it saves the
+    intent, it stamps every entity row, including redirected rows, with that
+    sequence as its revision. It leaves each row's ``last_checked_version``
+    unchanged. The store keeps the intent in the merge record, so an interrupted
+    merge can be played out again.
 
     Attributes:
         record: The merge record. Its ``seq`` is filled by the store.
@@ -59,6 +61,10 @@ class MergePlan:
 @dataclass(frozen=True, slots=True)
 class UnmergePlan:
     """Everything one unmerge writes, built by the pure merge planner.
+
+    Before saving the intent, the store stamps every entity row, including
+    redirected rows, with the operation's sequence as its revision. It leaves
+    each row's ``last_checked_version`` unchanged.
 
     Attributes:
         record: The merge record, in the ``REVERTED`` state.
@@ -428,7 +434,9 @@ class ResolverStore(Protocol):
 
         The record's ``seq`` is stamped from `next_revision`. The write is
         refused when either entity is no longer active, and when the merge
-        was already applied. The record is created with a compare-and-swap,
+        was already applied. Each entity row in the saved intent, including
+        redirected rows, gets that sequence as its revision. Checkpoint values
+        remain unchanged. The record is created with a compare-and-swap,
         so two processes cannot apply the same merge. Merges of one tenant
         are serialized within one process only; two processes can still merge
         the same pair under two different merge records.
@@ -444,7 +452,9 @@ class ResolverStore(Protocol):
 
         The record is written ``APPLYING`` with the unmerge rows before the
         rows move back. The record is then written ``REVERTED``. The saved rows
-        let `recover_merges` finish an interrupted unmerge.
+        let `recover_merges` finish an interrupted unmerge. Each entity row in
+        the intent, including redirected rows, gets the operation sequence as
+        its revision. Checkpoint values remain unchanged.
 
         Raises:
             MergeRefusedError: If the merge record does not exist.

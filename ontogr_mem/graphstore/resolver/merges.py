@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any
 from uuid import uuid4
 
@@ -47,6 +48,19 @@ MERGE = "MergeRecord"
 log = logging.getLogger(__name__)
 
 
+def _stamp_entity_revisions(rows: MergeRows, revision: int) -> MergeRows:
+    """Copy a merge's entity rows with the operation revision."""
+    return replace(
+        rows,
+        survivor=rows.survivor.model_copy(update={"revision": revision}),
+        absorbed=rows.absorbed.model_copy(update={"revision": revision}),
+        redirected=tuple(
+            entity.model_copy(update={"revision": revision})
+            for entity in rows.redirected
+        ),
+    )
+
+
 class ResolverMerges:
     """Apply and recover merges using the same entity storage and lock."""
 
@@ -74,7 +88,7 @@ class ResolverMerges:
             record = plan.record.model_copy(
                 update={"seq": await self._entities.next_revision()}
             )
-            rows = MergeRows.from_merge_plan(plan)
+            rows = _stamp_entity_revisions(MergeRows.from_merge_plan(plan), record.seq)
             applied = record.model_copy(
                 update={
                     "snapshot": snapshot_with_intent(record.snapshot, rows),
@@ -99,7 +113,9 @@ class ResolverMerges:
             record = plan.record.model_copy(
                 update={"seq": await self._entities.next_revision()}
             )
-            rows = MergeRows.from_unmerge_plan(plan)
+            rows = _stamp_entity_revisions(
+                MergeRows.from_unmerge_plan(plan), record.seq
+            )
             reverted = record.model_copy(
                 update={
                     "snapshot": snapshot_with_intent(record.snapshot, rows),

@@ -2,7 +2,15 @@
 
 import pytest
 
-from ontogr_mem.data_models.entities import EntityStatus, MergeState
+from ontogr_mem.data_models.entities import (
+    EntityStatus,
+    MergeRecord,
+    MergeState,
+    VerdictKind,
+    VerdictSource,
+)
+from ontogr_mem.graphstore import QuerySpec
+from ontogr_mem.graphstore.cypher import TenantScope
 from ontogr_mem.resolution.errors import (
     EntityHasFactsError,
     SnapshotPurgedError,
@@ -10,7 +18,7 @@ from ontogr_mem.resolution.errors import (
 )
 from ontogr_mem.resolution.ids import entity_id
 from ontogr_mem.resolution.merge import pick_survivor, survivor_order
-from ontogr_mem.resolution.resolver_store import ResolverStore
+from ontogr_mem.resolution.resolver_store import ResolverStore, merge_intent
 from ontogr_mem.vectorstore import VectorKind
 from tests.contracts.resolver_store import entity
 from tests.integration.resolution.resolver_helpers import ex, make
@@ -65,10 +73,105 @@ async def test_merge_after_a_user_unmerge_is_refused(graph_backend: GraphBackend
     """The user DISTINCT verdict blocks an automated merge of the same pair."""
     store, resolver, survivor_id, absorbed_id = await _two_entities(graph_backend)
     record = await resolver.merge(survivor_id, absorbed_id, actor="user")
-    await resolver.unmerge(record.merge_id, actor="user")
+    unmerged = await resolver.unmerge(record.merge_id, actor="user")
+
+    restored = await store.get_entities([survivor_id, absorbed_id])
+    assert all(item.revision == unmerged.seq for item in restored)
+    assert all(item.last_checked_version == 0 for item in restored)
+    verdict = await store.live_verdict(survivor_id, absorbed_id)
+    assert verdict is not None
+    assert verdict.verdict is VerdictKind.DISTINCT
+    assert verdict.source is VerdictSource.USER
 
     with pytest.raises(UnmergeBlockedError):
         await resolver.merge(survivor_id, absorbed_id, actor="resolver")
+
+
+async def test_recovery_replays_stamped_merge_and_unmerge_intents(
+    graph_backend: GraphBackend,
+):
+    """Recovery reuses operation revisions and preserves unmerge verdicts."""
+    handle = await graph_backend.open_tenant()
+    stores = await graph_backend.stores_for(handle.tenant)
+    store = stores.resolver_store
+    runner = graph_backend.store.runner(handle)
+    scope = TenantScope.from_mode(graph_backend.tenant_keyed)
+    written = await store.write_entity_batch(
+        [entity("e1", name="Acme"), entity("e2", name="Acme Incorporated")], []
+    )
+    checked = [
+        await store.save_entity(
+            item.model_copy(update={"last_checked_version": item.revision}),
+            bump_revision=False,
+        )
+        for item in written
+    ]
+    resolver = await make(store)
+
+    async def interrupt(record: MergeRecord) -> None:
+        """Leave a saved record for the recovery path to finish."""
+        applying = record.model_copy(update={"state": MergeState.APPLYING})
+        await runner.run(
+            QuerySpec(
+                f"MATCH (m:MergeRecord {scope.pattern('id: $id')}) "
+                "SET m.state = $state, m.json = $json",
+                {
+                    "id": record.merge_id,
+                    "state": MergeState.APPLYING.value,
+                    "json": applying.model_dump_json(),
+                },
+                idempotent=True,
+                tag="test_merge_interruption",
+            )
+        )
+
+    merge = await resolver.merge("e1", "e2", actor="user")
+    merge_rows = merge_intent(merge.snapshot)
+    assert merge_rows is not None
+    assert merge_rows.survivor.revision == merge.seq
+    assert merge_rows.absorbed.revision == merge.seq
+    assert [
+        item.last_checked_version for item in (merge_rows.survivor, merge_rows.absorbed)
+    ] == [item.last_checked_version for item in checked]
+
+    await interrupt(merge)
+    recovered_merge = await store.recover_merges()
+    assert [(item.state, item.seq) for item in recovered_merge] == [
+        (MergeState.APPLIED, merge.seq)
+    ]
+    after_merge_recovery = await store.get_entities(["e1", "e2"])
+    assert [item.revision for item in after_merge_recovery] == [merge.seq, merge.seq]
+    assert [item.last_checked_version for item in after_merge_recovery] == [
+        item.last_checked_version for item in checked
+    ]
+
+    unmerge = await resolver.unmerge(merge.merge_id, actor="user")
+    unmerge_rows = merge_intent(unmerge.snapshot)
+    assert unmerge_rows is not None
+    assert unmerge_rows.survivor.revision == unmerge.seq
+    assert unmerge_rows.absorbed.revision == unmerge.seq
+    assert [
+        item.last_checked_version
+        for item in (unmerge_rows.survivor, unmerge_rows.absorbed)
+    ] == [item.last_checked_version for item in checked]
+
+    await interrupt(unmerge)
+    recovered_unmerge = await store.recover_merges()
+    assert [(item.state, item.seq) for item in recovered_unmerge] == [
+        (MergeState.REVERTED, unmerge.seq)
+    ]
+    after_unmerge_recovery = await store.get_entities(["e1", "e2"])
+    assert [item.revision for item in after_unmerge_recovery] == [
+        unmerge.seq,
+        unmerge.seq,
+    ]
+    assert [item.last_checked_version for item in after_unmerge_recovery] == [
+        item.last_checked_version for item in checked
+    ]
+    verdict = await store.live_verdict("e1", "e2")
+    assert verdict is not None
+    assert verdict.verdict is VerdictKind.DISTINCT
+    assert verdict.source is VerdictSource.USER
 
 
 async def test_purged_snapshot_blocks_unmerge(graph_backend: GraphBackend):

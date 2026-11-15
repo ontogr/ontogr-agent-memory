@@ -116,6 +116,7 @@ def merge_plan(
     *,
     mentions: tuple[Mention, ...] = (),
     aliases: tuple[Alias, ...] = (),
+    redirected: tuple[Entity, ...] = (),
 ) -> MergePlan:
     """Build the rows one merge writes."""
     moved_mentions = tuple(
@@ -142,6 +143,10 @@ def merge_plan(
         ),
         mentions=moved_mentions,
         aliases=moved_aliases,
+        redirected=tuple(
+            item.model_copy(update={"merged_into": survivor.entity_id})
+            for item in redirected
+        ),
     )
 
 
@@ -152,6 +157,7 @@ def unmerge_plan(
     *,
     mentions: tuple[Mention, ...] = (),
     aliases: tuple[Alias, ...] = (),
+    redirected: tuple[Entity, ...] = (),
 ) -> UnmergePlan:
     """Build the rows one unmerge writes."""
     restored_mentions = tuple(
@@ -178,6 +184,10 @@ def unmerge_plan(
         ),
         mentions=restored_mentions,
         aliases=restored_aliases,
+        redirected=tuple(
+            item.model_copy(update={"merged_into": absorbed.entity_id})
+            for item in redirected
+        ),
     )
 
 
@@ -457,13 +467,23 @@ class ResolverStoreContract:
         """The absorbed entity, its aliases and its mentions come back."""
         survivor = entity("e1", name="Acme")
         absorbed = entity("e2", name="Acme Inc")
+        redirected = entity("e3", name="Acme Subsidiary").model_copy(
+            update={"status": EntityStatus.MERGED, "merged_into": "e2"}
+        )
         survivor_alias = alias("e1", "Acme")
         absorbed_alias = alias("e2", "Acme Inc")
         survivor_mention = mention("e1", "m1")
         absorbed_mention = mention("e2", "m2")
-        await store.write_entity_batch(
-            [survivor, absorbed], [survivor_alias, absorbed_alias]
+        written = await store.write_entity_batch(
+            [survivor, absorbed, redirected], [survivor_alias, absorbed_alias]
         )
+        survivor, absorbed, redirected = [
+            await store.save_entity(
+                item.model_copy(update={"last_checked_version": item.revision}),
+                bump_revision=False,
+            )
+            for item in written
+        ]
         await store.write_mentions("ep1", [survivor_mention, absorbed_mention])
 
         plan = merge_plan(
@@ -472,12 +492,35 @@ class ResolverStoreContract:
             absorbed.model_copy(update={"mention_count": 1}),
             mentions=(absorbed_mention,),
             aliases=(absorbed_alias,),
+            redirected=(redirected,),
         )
         record = await store.apply_merge(plan)
+        merge_rows = merge_intent(record.snapshot)
+
+        assert merge_rows is not None
+        assert (
+            merge_rows.survivor.revision,
+            merge_rows.absorbed.revision,
+            merge_rows.redirected[0].revision,
+        ) == (record.seq,) * 3
+        assert (
+            merge_rows.survivor.last_checked_version,
+            merge_rows.absorbed.last_checked_version,
+            merge_rows.redirected[0].last_checked_version,
+        ) == (
+            survivor.last_checked_version,
+            absorbed.last_checked_version,
+            redirected.last_checked_version,
+        )
 
         merged = (await store.get_entities(["e2"]))[0]
         assert merged.status is EntityStatus.MERGED
         assert merged.merged_into == "e1"
+        assert merged.revision == record.seq
+        assert merged.last_checked_version == absorbed.last_checked_version
+        redirected_after_merge = (await store.get_entities(["e3"]))[0]
+        assert redirected_after_merge.merged_into == "e1"
+        assert redirected_after_merge.revision == record.seq
         assert await store.mentions_of("e2") == []
         assert len(await store.mentions_of("e1")) == 2
         assert {a.alias_id for a in await store.aliases_of("e1")} == {
@@ -492,13 +535,33 @@ class ResolverStoreContract:
                 plan.absorbed,
                 mentions=(absorbed_mention,),
                 aliases=(absorbed_alias,),
+                redirected=(redirected,),
             )
         )
 
         absorbed_again = (await store.get_entities(["e2"]))[0]
+        unmerge_rows = merge_intent(restored.snapshot)
         assert restored.state is MergeState.REVERTED
+        assert unmerge_rows is not None
+        assert (unmerge_rows.survivor.revision, unmerge_rows.absorbed.revision) == (
+            restored.seq,
+            restored.seq,
+        )
+        assert (
+            unmerge_rows.survivor.last_checked_version,
+            unmerge_rows.absorbed.last_checked_version,
+        ) == (survivor.last_checked_version, absorbed.last_checked_version)
         assert absorbed_again.status is EntityStatus.ACTIVE
         assert absorbed_again.merged_into is None
+        assert absorbed_again.revision == restored.seq
+        assert absorbed_again.last_checked_version == absorbed.last_checked_version
+        redirected_after_unmerge = (await store.get_entities(["e3"]))[0]
+        assert redirected_after_unmerge.merged_into == "e2"
+        assert redirected_after_unmerge.revision == restored.seq
+        assert (
+            redirected_after_unmerge.last_checked_version
+            == redirected.last_checked_version
+        )
         assert [m.local_id for m in await store.mentions_of("e2")] == ["m2"]
         assert {a.alias_id for a in await store.aliases_of("e2")} == {
             absorbed_alias.alias_id
