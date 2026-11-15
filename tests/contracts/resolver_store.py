@@ -20,6 +20,7 @@ from ontogr_mem.data_models.entities import (
     MergeRecord,
     MergeState,
     Outcome,
+    ResolutionState,
 )
 from ontogr_mem.resolution.errors import (
     EntityHasFactsError,
@@ -806,19 +807,100 @@ class ResolverStoreContract:
 
     # 10. Deduplication order
 
-    async def test_list_for_deduplication_is_ordered_by_revision_then_id(
+    async def test_list_for_deduplication_selects_dirty_and_sweeps_active_entities(
         self, store: ResolverStore
     ):
-        """Two calls over an unchanged store return the same stable order."""
-        await store.write_entity_batch([entity("e3"), entity("e1"), entity("e2")], [])
-
-        first = await store.list_for_deduplication(0, False, 0)
-        second = await store.list_for_deduplication(0, False, 0)
-
-        assert [e.entity_id for e in first] == [e.entity_id for e in second]
-        assert [(e.revision, e.entity_id) for e in first] == sorted(
-            (e.revision, e.entity_id) for e in first
+        """Dirty, provisional and swept rows follow the per-entity rules."""
+        await store.write_entity_batch([entity("changed-low")], [])
+        checked_rows = await store.write_entity_batch(
+            [entity("checked-c"), entity("checked-a")], []
         )
+        provisional = (
+            await store.write_entity_batch(
+                [
+                    entity("provisional").model_copy(
+                        update={"resolution_state": ResolutionState.PROVISIONAL}
+                    )
+                ],
+                [],
+            )
+        )[0]
+        checked_high = (await store.write_entity_batch([entity("checked-high")], []))[0]
+        archived = (
+            await store.write_entity_batch(
+                [entity("archived", status=EntityStatus.ARCHIVED)], []
+            )
+        )[0]
+        merged = (
+            await store.write_entity_batch(
+                [
+                    entity(
+                        "merged",
+                        status=EntityStatus.MERGED,
+                        merged_into="changed-low",
+                    )
+                ],
+                [],
+            )
+        )[0]
+        for checked in (*checked_rows, provisional, checked_high, archived, merged):
+            await store.save_entity(
+                checked.model_copy(update={"last_checked_version": checked.revision}),
+                bump_revision=False,
+            )
+
+        default = await store.list_for_deduplication(provisional=False, sweep_limit=0)
+        include_provisional = await store.list_for_deduplication(
+            provisional=True, sweep_limit=0
+        )
+        sweep_one = await store.list_for_deduplication(provisional=False, sweep_limit=1)
+        sweep_two = await store.list_for_deduplication(provisional=False, sweep_limit=2)
+        provisional_and_sweep = await store.list_for_deduplication(
+            provisional=True, sweep_limit=1
+        )
+        negative_sweep = await store.list_for_deduplication(
+            provisional=False, sweep_limit=-1
+        )
+        oversized_sweep = await store.list_for_deduplication(
+            provisional=False, sweep_limit=99
+        )
+
+        assert [item.entity_id for item in default] == ["changed-low"]
+        assert [item.entity_id for item in include_provisional] == [
+            "changed-low",
+            "provisional",
+        ]
+        assert [item.entity_id for item in sweep_one] == ["changed-low", "checked-a"]
+        assert [item.entity_id for item in sweep_two] == [
+            "changed-low",
+            "checked-a",
+            "checked-c",
+        ]
+        assert [item.entity_id for item in provisional_and_sweep] == [
+            "changed-low",
+            "checked-a",
+            "provisional",
+        ]
+        assert [item.entity_id for item in negative_sweep] == ["changed-low"]
+        assert [item.entity_id for item in oversized_sweep] == [
+            "changed-low",
+            "checked-a",
+            "checked-c",
+            "provisional",
+            "checked-high",
+        ]
+
+    async def test_list_for_deduplication_returns_independent_snapshots(
+        self, store: ResolverStore
+    ):
+        """Mutating one selection result does not change the stored entity."""
+        await store.write_entity_batch([entity("e1")], [])
+
+        first = await store.list_for_deduplication()
+        first[0].attributes["local"] = "mutation"
+        second = await store.list_for_deduplication()
+
+        assert second[0].attributes == {}
 
     async def test_mark_deduplication_checked_only_updates_matching_snapshots(
         self, store: ResolverStore

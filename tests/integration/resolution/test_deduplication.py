@@ -15,7 +15,7 @@ from ontogr_mem.vectorstore import (
     PermanentEmbeddingError,
     VectorKind,
 )
-from tests.contracts.resolver_store import entity
+from tests.contracts.resolver_store import alias, entity
 from tests.integration.resolution.resolver_helpers import make
 from tests.support.embedder import MockEmbedder, RecordingEmbedder
 from tests.support.graph_backend import GraphBackend
@@ -45,7 +45,7 @@ async def _duplicate_store(graph_backend: GraphBackend) -> ResolverStore:
 
 
 async def test_rule_same_pairs_are_merged_without_a_model(graph_backend: GraphBackend):
-    """Two active entities with one strict key merge on the rule alone."""
+    """A merge leaves its survivor dirty until a later pass checks it."""
     store = await _duplicate_store(graph_backend)
     resolver = await make(store)
 
@@ -62,18 +62,35 @@ async def test_rule_same_pairs_are_merged_without_a_model(graph_backend: GraphBa
     )
     survivor = (await store.get_entities([survivor_id]))[0]
     assert survivor.last_checked_version == 0
+    assert survivor.revision > survivor.last_checked_version
+
+    settled = await resolver.deduplicate()
+
+    assert settled.selected == 1
+    survivor = (await store.get_entities([survivor_id]))[0]
+    assert survivor.last_checked_version == survivor.revision
+    assert (await resolver.deduplicate()).selected == 0
 
 
 async def test_plan_only_reports_the_plan_without_writing(graph_backend: GraphBackend):
-    """A plan-only run leaves both entities active."""
-    store = await _duplicate_store(graph_backend)
+    """Repeated plans leave entity, alias, checkpoint and verdict state unchanged."""
+    store = (await graph_backend.open_stores()).resolver_store
+    await store.write_entity_batch(
+        [entity("e1", name="Acme"), entity("e2", name="acme")],
+        [alias("e1", "Acme Group")],
+    )
+    before_entities = await store.all_entities()
+    before_aliases = await store.all_aliases()
+    before_verdict = await store.live_verdict("e1", "e2")
     resolver = await make(store)
 
-    report = await resolver.deduplicate(plan_only=True)
+    reports = [await resolver.deduplicate(plan_only=True) for _ in range(2)]
 
-    assert report.plan
-    statuses = {e.entity_id: e.status for e in await store.get_entities(["e1", "e2"])}
-    assert set(statuses.values()) == {EntityStatus.ACTIVE}
+    assert reports[0].plan
+    assert reports[1].plan == reports[0].plan
+    assert await store.all_entities() == before_entities
+    assert await store.all_aliases() == before_aliases
+    assert await store.live_verdict("e1", "e2") == before_verdict
 
 
 async def test_selected_entities_are_marked_checked(graph_backend: GraphBackend):
@@ -88,6 +105,26 @@ async def test_selected_entities_are_marked_checked(graph_backend: GraphBackend)
     assert survivor.last_checked_version == survivor.revision
 
 
+async def test_completed_default_pass_does_not_reselect_checked_entities(
+    graph_backend: GraphBackend,
+):
+    """A stable entity is not selected or embedded again on the next pass."""
+    store = (await graph_backend.open_stores()).resolver_store
+    await store.write_entity_batch([entity("e1", name="Amber Maritime")], [])
+    embedder = RecordingEmbedder()
+    resolver = await make(store, embedder=embedder)
+    embedder.embedded.clear()
+
+    first = await resolver.deduplicate()
+    selected = (await store.get_entities(["e1"]))[0]
+    second = await resolver.deduplicate()
+
+    assert first.selected == 1
+    assert selected.last_checked_version == selected.revision
+    assert second.selected == 0
+    assert embedder.embedded == [entity_text(selected)]
+
+
 @pytest.mark.parametrize(
     "alias_on_selected",
     [True, False],
@@ -100,8 +137,12 @@ async def test_alias_matches_in_either_direction_without_stored_vectors(
     store = (await graph_backend.open_stores()).resolver_store
     selected = entity("e1", name="Amber Maritime Consortium")
     counterpart = entity("e2", name="Violet Quantum Laboratory")
-    await store.save_entity(counterpart, bump_revision=False)
     selected = (await store.write_entity_batch([selected], []))[0]
+    counterpart = (await store.write_entity_batch([counterpart], []))[0]
+    counterpart = await store.save_entity(
+        counterpart.model_copy(update={"last_checked_version": counterpart.revision}),
+        bump_revision=False,
+    )
     alias_entity = selected if alias_on_selected else counterpart
     alias_text = (
         counterpart.canonical_name if alias_on_selected else selected.canonical_name
@@ -126,6 +167,8 @@ async def test_alias_matches_in_either_direction_without_stored_vectors(
     report = await resolver.deduplicate()
 
     assert report.selected == 1
+    assert selected.revision < counterpart.revision
+    assert counterpart.last_checked_version == counterpart.revision
     assert report.pairs_rule_same == 1
     assert report.pairs_merged == 1
     assert embedder.embedded == [entity_text(selected)]
@@ -139,8 +182,12 @@ async def test_alias_query_uses_its_key_for_jaccard_without_stored_vectors(
     store = (await graph_backend.open_stores()).resolver_store
     selected = entity("e1", name="Amber Maritime Consortium")
     candidate = entity("e2", name="Violet Quantum Laboratory")
-    await store.save_entity(candidate, bump_revision=False)
     selected = (await store.write_entity_batch([selected], []))[0]
+    candidate = (await store.write_entity_batch([candidate], []))[0]
+    candidate = await store.save_entity(
+        candidate.model_copy(update={"last_checked_version": candidate.revision}),
+        bump_revision=False,
+    )
     await store.write_entity_batch(
         [],
         [
@@ -162,6 +209,8 @@ async def test_alias_query_uses_its_key_for_jaccard_without_stored_vectors(
     report = await resolver.deduplicate()
 
     assert report.selected == 1
+    assert selected.revision < candidate.revision
+    assert candidate.last_checked_version == candidate.revision
     assert report.pairs_considered == 1
     assert report.pairs_asked == 1
     assert report.pairs_merged == 1

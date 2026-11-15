@@ -6,7 +6,7 @@ makes no model call.
 
 from ontogr_mem.consolidation.models import StageResult, StageStatus
 from ontogr_mem.consolidation.stage import StageContext
-from ontogr_mem.data_models.entities import EntityStatus, ResolutionState
+from ontogr_mem.data_models.entities import EntityStatus
 
 
 STAGE = "deduplication"
@@ -27,11 +27,7 @@ class DeduplicationStage:
             return "no resolution"
         entities = await ctx.resolution.active_entities()
         changed = any(
-            e.status is EntityStatus.ACTIVE
-            and (
-                e.revision > e.last_checked_version
-                or e.resolution_state is ResolutionState.PROVISIONAL
-            )
+            e.status is EntityStatus.ACTIVE and e.revision > e.last_checked_version
             for e in entities
         )
         if not changed:

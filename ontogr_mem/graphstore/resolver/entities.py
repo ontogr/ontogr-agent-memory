@@ -329,7 +329,7 @@ class ResolverEntities:
         )
 
     async def list_for_deduplication(
-        self, after_revision: int, provisional: bool, sweep_limit: int
+        self, *, provisional: bool = False, sweep_limit: int = 0
     ) -> list[Entity]:
         """Return the active entities a deduplication run should consider."""
         rows = await self._runner.run(
@@ -344,9 +344,8 @@ class ResolverEntities:
         )
         return deduplication_entities(
             (Entity.model_validate_json(r["value"]) for r in rows.rows),
-            after_revision,
-            provisional,
-            sweep_limit,
+            provisional=provisional,
+            sweep_limit=sweep_limit,
         )
 
     async def mark_deduplication_checked(self, entities: Sequence[Entity]) -> None:

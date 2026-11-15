@@ -404,15 +404,15 @@ class ResolverStore(Protocol):
         ...
 
     async def list_for_deduplication(
-        self, after_revision: int, provisional: bool, sweep_limit: int
+        self, *, provisional: bool = False, sweep_limit: int = 0
     ) -> list[Entity]:
         """Return the active entities a deduplication run should consider.
 
-        The result contains the entities with ``revision`` greater than
-        ``after_revision``; when ``provisional`` is true, the provisional ones;
-        and up to ``sweep_limit`` further entities in ascending
-        ``(last_checked_version, entity_id)`` order. It is ordered by
-        ``(revision, entity_id)``.
+        Include active entities whose revision exceeds their checkpoint. When
+        ``provisional`` is true, also include checked provisional entities. Add
+        up to ``max(0, sweep_limit)`` remaining active entities in ascending
+        ``(last_checked_version, entity_id)`` order. Return distinct copies in
+        ascending ``(revision, entity_id)`` order.
         """
         ...
 

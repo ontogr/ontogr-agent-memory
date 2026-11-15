@@ -7,21 +7,26 @@ from ontogr_mem.data_models.entities import Entity, EntityStatus, ResolutionStat
 
 def deduplication_entities(
     entities: Iterable[Entity],
-    after_revision: int,
-    provisional: bool,
-    sweep_limit: int,
+    *,
+    provisional: bool = False,
+    sweep_limit: int = 0,
 ) -> list[Entity]:
     """Return copies of active entities selected for a deduplication run.
 
-    Include newer revisions and, when requested, provisional entities. Fill
-    the sweep from the least recently checked remaining entities. Return
-    the result in revision and entity-id order.
+    Include entities whose revisions exceed their checkpoints and, when
+    requested, checked provisional entities. Fill the sweep from the least
+    recently checked remaining entities. Return the result in revision and
+    entity-id order.
     """
     active = sorted(
         (entity for entity in entities if entity.status is EntityStatus.ACTIVE),
         key=lambda entity: entity.entity_id,
     )
-    selected = {e.entity_id: e for e in active if e.revision > after_revision}
+    selected = {
+        entity.entity_id: entity
+        for entity in active
+        if entity.revision > entity.last_checked_version
+    }
     if provisional:
         selected |= {
             e.entity_id: e

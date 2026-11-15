@@ -254,7 +254,9 @@ async def _context(
 ) -> tuple[list[Entity], dict[str, Entity], BlockIndex, dict[str, tuple[str, ...]]]:
     """Return selected entities, active candidates, and their blocking index."""
     store = resolver.store
-    selected = await store.list_for_deduplication(0, False, budget.sweep)
+    selected = await store.list_for_deduplication(
+        provisional=False, sweep_limit=budget.sweep
+    )
     if not selected:
         return [], {}, BlockIndex(), {}
     rows = await store.blocking_rows()

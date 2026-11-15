@@ -105,11 +105,11 @@ class GraphResolverStore:
         return await self._entities.write_verdicts(verdicts)
 
     async def list_for_deduplication(
-        self, after_revision: int, provisional: bool, sweep_limit: int
+        self, *, provisional: bool = False, sweep_limit: int = 0
     ) -> list[Entity]:
         """Return the active entities a deduplication run should consider."""
         return await self._entities.list_for_deduplication(
-            after_revision, provisional, sweep_limit
+            provisional=provisional, sweep_limit=sweep_limit
         )
 
     async def mark_deduplication_checked(self, entities: Sequence[Entity]) -> None:
