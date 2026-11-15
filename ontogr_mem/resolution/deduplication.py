@@ -273,11 +273,11 @@ async def _pair_signals(
     """Return the signals measured for every candidate pair."""
     signals: dict[Pair, PairSignals] = {}
     ordered = sorted(selected, key=lambda entity: entity.entity_id)
-    embeddings = await resolver.vectors.gateway.embed(
+    embeddings = await resolver.vectors.gateway.embed_all(
         [entity_text(entity) for entity in ordered], purpose="query"
     )
     for entity, embedding in zip(ordered, embeddings, strict=True):
-        found = await _candidates(resolver, entity, entities, index, embedding.vector)
+        found = await _candidates(resolver, entity, entities, index, embedding)
         for other_id, value in found.items():
             other = entities.get(other_id)
             if other is None or other.status is not EntityStatus.ACTIVE:

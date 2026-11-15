@@ -1,10 +1,21 @@
 """Deduplication behavior on a live graph tenant."""
 
+from collections.abc import Sequence
+
+import pytest
+
 from ontogr_mem.data_models.entities import EntityStatus
 from ontogr_mem.resolution.config import Budget
 from ontogr_mem.resolution.resolver_store import ResolverStore
+from ontogr_mem.vectorstore import (
+    EmbeddingFailedError,
+    EmbeddingPurpose,
+    PermanentEmbeddingError,
+    VectorKind,
+)
 from tests.contracts.resolver_store import entity
 from tests.integration.resolution.resolver_helpers import make
+from tests.support.embedder import MockEmbedder
 from tests.support.graph_backend import GraphBackend
 from tests.unit.resolution.helpers import oracle_models
 
@@ -55,6 +66,65 @@ async def test_selected_entities_are_marked_checked(graph_backend: GraphBackend)
 
     survivor = (await store.get_entities(["e1"]))[0]
     assert survivor.last_checked_version == survivor.revision
+
+
+async def test_embedding_failure_leaves_ann_candidates_for_retry(
+    graph_backend: GraphBackend,
+):
+    """A failed query embedding leaves entities dirty for a complete retry."""
+
+    class FailFirstQueryEmbedder(MockEmbedder):
+        """Fail one query batch, then return vectors that link all entities."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.fail_query = False
+
+        async def embed_batch(
+            self, texts: Sequence[str], *, purpose: EmbeddingPurpose
+        ) -> list[list[float]]:
+            if purpose == "query" and self.fail_query:
+                self.fail_query = False
+                raise PermanentEmbeddingError("temporary failure")
+            return [[1.0, 0.0, 0.0] for _ in texts]
+
+    store = (await graph_backend.open_stores()).resolver_store
+    await store.write_entity_batch(
+        [
+            entity("e1", name="Zephyr Quarry"),
+            entity("e2", name="Mariner Orchard"),
+        ],
+        [],
+    )
+    models, _ = oracle_models(lambda _a, _b: False)
+    embedder = FailFirstQueryEmbedder()
+    resolver = await make(store, models=models, embedder=embedder)
+    entities = await store.get_entities(["e1", "e2"])
+    for item in entities:
+        await resolver.embed(item)
+
+    embedder.fail_query = True
+    before = {item.entity_id: item.last_checked_version for item in entities}
+    with pytest.raises(EmbeddingFailedError):
+        await resolver.deduplicate()
+
+    after_failure = await store.get_entities(["e1", "e2"])
+    assert {
+        item.entity_id: item.last_checked_version for item in after_failure
+    } == before
+    assert await resolver.store.live_verdict("e1", "e2") is None
+
+    report = await resolver.deduplicate()
+
+    assert report.pairs_considered == 1
+    assert report.pairs_asked == 1
+    assert report.pairs_rejected == 1
+    recovered = await store.get_entities(["e1", "e2"])
+    assert all(item.last_checked_version == item.revision for item in recovered)
+    assert await resolver.vectors.exists(VectorKind.NODE, ["e1", "e2"]) == {
+        "e1",
+        "e2",
+    }
 
 
 async def test_a_blocked_pair_is_judged_on_its_jaccard_and_not_on_a_cosine(

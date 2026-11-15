@@ -7,7 +7,7 @@ from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionPolicy
 from ontogr_mem.resolution.resolver import EntityResolver
 from ontogr_mem.resolution.resolver_store import ResolverStore
-from ontogr_mem.vectorstore import EmbeddingGateway, VectorStore
+from ontogr_mem.vectorstore import Embedder, EmbeddingGateway, VectorStore
 from ontogr_mem.vectorstore.memory import InMemoryBackend
 from tests.support.embedder import MockEmbedder
 
@@ -38,11 +38,14 @@ async def make(
     store: ResolverStore,
     *,
     models: RoleModels | None = None,
+    embedder: Embedder | None = None,
     inline: bool = False,
     **settings: object,
 ) -> EntityResolver:
     """Build a resolver on the given store with a deterministic embedder."""
-    vectors = VectorStore(InMemoryBackend(), EmbeddingGateway(MockEmbedder()))
+    vectors = VectorStore(
+        InMemoryBackend(), EmbeddingGateway(embedder or MockEmbedder())
+    )
     await vectors.ensure_ready()
     return EntityResolver(
         store,
