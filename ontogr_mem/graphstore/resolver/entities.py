@@ -220,33 +220,74 @@ class ResolverEntities:
     async def write_entity_batch(
         self, entities: Sequence[Entity], aliases: Sequence[Alias]
     ) -> list[Entity]:
-        """Write entities and aliases and stamp each entity with a new revision."""
-        revision = await self.next_revision() if entities else None
+        """Write entities and aliases, advancing affected entity revisions."""
+        if not entities and not aliases:
+            return []
+
+        revision = await self.next_revision()
         stored = [
             entity.model_copy(update={"revision": revision}) for entity in entities
         ]
-        if stored:
+        entity_rows = [entity_row(entity) for entity in stored]
+        alias_rows = [alias_row(alias) for alias in aliases]
+        revision_key = '"revision":'
+        alias_write = (
+            "UNWIND $aliases AS item "
+            f"MATCH (owner:{ENTITY} "
+            f"{self._scope.pattern('id: item.entity_id')}) "
+            "WITH owner, item, owner.revision AS previous_revision, "
+            "owner.json AS previous_json "
+            "SET owner.revision = $revision, owner.json = CASE "
+            "WHEN previous_json CONTAINS $revision_key THEN replace("
+            "previous_json, $revision_key + toString(previous_revision), "
+            "$revision_key + toString($revision)) "
+            "ELSE left(previous_json, size(previous_json) - 1) + ',' + "
+            "$revision_key + toString($revision) + '}' END "
+            "WITH owner, item "
+            f"MERGE (a:{ALIAS} {self._scope.pattern('id: item.id')}) "
+            f"SET a += item.props{self._scope.stamp_clause('a')} "
+            "WITH a, owner "
+            f"MERGE (a)-[r:ALIAS_OF {self._scope.edge()}]->(owner)"
+            f" {self._scope.stamp_assignment('r')}"
+        )
+        if stored and aliases:
+            await self._runner.run(
+                QuerySpec(
+                    f"UNWIND $rows AS item MERGE (e:{ENTITY} "
+                    f"{self._scope.pattern('id: item.id')}) "
+                    f"SET e += item.props{self._scope.stamp_clause('e')} "
+                    "WITH count(e) AS written "
+                    f"{alias_write}",
+                    {
+                        "rows": entity_rows,
+                        "aliases": alias_rows,
+                        "revision": revision,
+                        "revision_key": revision_key,
+                    },
+                    idempotent=True,
+                    tag="resolver_entities_write",
+                )
+            )
+        elif stored:
             await self._runner.run(
                 QuerySpec(
                     f"UNWIND $rows AS item MERGE (e:{ENTITY} "
                     f"{self._scope.pattern('id: item.id')}) "
                     f"SET e += item.props{self._scope.stamp_clause('e')}",
-                    {"rows": [entity_row(e) for e in stored]},
+                    {"rows": entity_rows},
                     idempotent=True,
                     tag="resolver_entities_write",
                 )
             )
-        if aliases:
+        else:
             await self._runner.run(
                 QuerySpec(
-                    "UNWIND $rows AS item "
-                    f"MATCH (e:{ENTITY} {self._scope.pattern('id: item.entity_id')}) "
-                    f"MERGE (a:{ALIAS} {self._scope.pattern('id: item.id')}) "
-                    f"SET a += item.props{self._scope.stamp_clause('a')} "
-                    "WITH a, e "
-                    f"MERGE (a)-[r:ALIAS_OF {self._scope.edge()}]->(e)"
-                    f" {self._scope.stamp_assignment('r')}",
-                    {"rows": [alias_row(a) for a in aliases]},
+                    alias_write,
+                    {
+                        "aliases": alias_rows,
+                        "revision": revision,
+                        "revision_key": revision_key,
+                    },
                     idempotent=True,
                     tag="resolver_aliases_write",
                 )

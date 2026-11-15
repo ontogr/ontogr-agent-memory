@@ -6,6 +6,9 @@ from collections.abc import Sequence
 import pytest
 
 from ontogr_mem.data_models.entities import Alias, AliasSource, EntityStatus
+from ontogr_mem.graphstore import QuerySpec, Rows
+from ontogr_mem.graphstore.protocol import ScopedRunner
+from ontogr_mem.graphstore.resolver_store import GraphResolverStore
 from ontogr_mem.resolution.config import Budget
 from ontogr_mem.resolution.keys import entity_text
 from ontogr_mem.resolution.resolver_store import ResolverStore
@@ -105,6 +108,87 @@ async def test_selected_entities_are_marked_checked(graph_backend: GraphBackend)
     assert survivor.last_checked_version == survivor.revision
 
 
+async def test_alias_only_batch_reopens_checked_owner(graph_backend: GraphBackend):
+    """Adding a matching alias makes its checked owner eligible again."""
+    store = (await graph_backend.open_stores()).resolver_store
+    await store.write_entity_batch(
+        [
+            entity("e1", name="Amber Maritime Consortium"),
+            entity("e2", name="Violet Quantum Laboratory"),
+        ],
+        [],
+    )
+    await store.mark_deduplication_checked(await store.get_entities(["e1", "e2"]))
+
+    await store.write_entity_batch([], [alias("e1", "Violet Quantum Laboratory")])
+
+    owner = (await store.get_entities(["e1"]))[0]
+    counterpart = (await store.get_entities(["e2"]))[0]
+    report = await (await make(store)).deduplicate()
+
+    assert owner.revision > owner.last_checked_version
+    assert counterpart.last_checked_version == counterpart.revision
+    assert report.selected == 1
+    assert report.pairs_merged == 1
+
+
+async def test_checkpoint_cannot_split_entity_and_alias_batch(
+    graph_backend: GraphBackend,
+):
+    """A checkpoint cannot land between an entity update and its new alias."""
+    handle = await graph_backend.open_tenant()
+    runner = graph_backend.store.runner(handle)
+    base_store = GraphResolverStore(runner, tenant_keyed=graph_backend.tenant_keyed)
+    await base_store.write_entity_batch(
+        [
+            entity("e1", name="Amber Maritime Consortium"),
+            entity("e2", name="Violet Quantum Laboratory"),
+        ],
+        [],
+    )
+    await base_store.mark_deduplication_checked(
+        await base_store.get_entities(["e1", "e2"])
+    )
+
+    class PauseAfterWriteRunner:
+        """Pause after the entity batch is committed to the graph."""
+
+        def __init__(self, wrapped: ScopedRunner) -> None:
+            self._wrapped = wrapped
+            self.scope = wrapped.scope
+            self.write_finished = asyncio.Event()
+            self.resume = asyncio.Event()
+
+        async def run(self, spec: QuerySpec) -> Rows:
+            result = await self._wrapped.run(spec)
+            if spec.tag == "resolver_entities_write":
+                self.write_finished.set()
+                await self.resume.wait()
+            return result
+
+    pausing_runner = PauseAfterWriteRunner(runner)
+    store = GraphResolverStore(pausing_runner, tenant_keyed=graph_backend.tenant_keyed)
+    resolver = await make(store)
+    updated_owner = (await store.get_entities(["e1"]))[0].model_copy(
+        update={"description": "Updated description"}
+    )
+    batch = asyncio.create_task(
+        store.write_entity_batch(
+            [updated_owner], [alias("e1", "Violet Quantum Laboratory")]
+        )
+    )
+
+    try:
+        await asyncio.wait_for(pausing_runner.write_finished.wait(), timeout=10)
+        report = await resolver.deduplicate()
+    finally:
+        pausing_runner.resume.set()
+        await batch
+
+    assert report.selected == 1
+    assert report.pairs_merged == 1
+
+
 async def test_completed_default_pass_does_not_reselect_checked_entities(
     graph_backend: GraphBackend,
 ):
@@ -139,11 +223,15 @@ async def test_alias_matches_in_either_direction_without_stored_vectors(
     counterpart = entity("e2", name="Violet Quantum Laboratory")
     selected = (await store.write_entity_batch([selected], []))[0]
     counterpart = (await store.write_entity_batch([counterpart], []))[0]
-    counterpart = await store.save_entity(
-        counterpart.model_copy(update={"last_checked_version": counterpart.revision}),
-        bump_revision=False,
-    )
+    await store.mark_deduplication_checked(await store.get_entities(["e1", "e2"]))
+    checked = {
+        stored.entity_id: stored for stored in await store.get_entities(["e1", "e2"])
+    }
     alias_entity = selected if alias_on_selected else counterpart
+    alias_entity_id = alias_entity.entity_id
+    unchanged_entity_id = (
+        counterpart.entity_id if alias_on_selected else selected.entity_id
+    )
     alias_text = (
         counterpart.canonical_name if alias_on_selected else selected.canonical_name
     )
@@ -160,6 +248,9 @@ async def test_alias_matches_in_either_direction_without_stored_vectors(
             )
         ],
     )
+    after_alias = {
+        stored.entity_id: stored for stored in await store.get_entities(["e1", "e2"])
+    }
     embedder = RecordingEmbedder()
     resolver = await make(store, embedder=embedder)
     embedder.embedded.clear()
@@ -167,11 +258,18 @@ async def test_alias_matches_in_either_direction_without_stored_vectors(
     report = await resolver.deduplicate()
 
     assert report.selected == 1
-    assert selected.revision < counterpart.revision
-    assert counterpart.last_checked_version == counterpart.revision
+    assert after_alias[alias_entity_id].revision > checked[alias_entity_id].revision
+    assert (
+        after_alias[unchanged_entity_id].revision
+        == checked[unchanged_entity_id].revision
+    )
+    assert (
+        after_alias[unchanged_entity_id].last_checked_version
+        == checked[unchanged_entity_id].revision
+    )
     assert report.pairs_rule_same == 1
     assert report.pairs_merged == 1
-    assert embedder.embedded == [entity_text(selected)]
+    assert embedder.embedded == [entity_text(checked[alias_entity_id])]
     assert await resolver.vectors.exists(VectorKind.NODE, ["e1", "e2"]) == set()
 
 
