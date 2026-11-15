@@ -410,6 +410,13 @@ class ResolverStore(Protocol):
         """
         ...
 
+    async def mark_deduplication_checked(self, entities: Sequence[Entity]) -> None:
+        """Advance matching active snapshots to their selected revisions.
+
+        Missing, changed, inactive, or newer-checkpoint rows are left untouched.
+        """
+        ...
+
     async def apply_merge(self, plan: MergePlan) -> MergeRecord:
         """Apply one merge and return the stored record.
 

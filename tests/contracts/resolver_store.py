@@ -757,6 +757,57 @@ class ResolverStoreContract:
             (e.revision, e.entity_id) for e in first
         )
 
+    async def test_mark_deduplication_checked_only_updates_matching_snapshots(
+        self, store: ResolverStore
+    ):
+        """Stale, inactive, and missing rows are left unchanged."""
+        await store.write_entity_batch(
+            [entity(f"e{index}", name=f"Entity {index}") for index in range(1, 6)],
+            [],
+        )
+        snapshots = {
+            item.entity_id: item
+            for item in await store.get_entities([f"e{index}" for index in range(1, 6)])
+        }
+        await store.save_entity(
+            snapshots["e2"].model_copy(
+                update={"canonical_name": "Same revision change"}
+            ),
+            bump_revision=False,
+        )
+        newer = (
+            await store.write_entity_batch(
+                [snapshots["e3"].model_copy(update={"canonical_name": "New revision"})],
+                [],
+            )
+        )[0]
+        await store.set_entity_status("e4", EntityStatus.ARCHIVED)
+        await store.delete_entity("e5")
+
+        await store.mark_deduplication_checked(list(snapshots.values()))
+
+        current = {
+            item.entity_id: item
+            for item in await store.get_entities([f"e{index}" for index in range(1, 6)])
+        }
+        assert current["e1"] == snapshots["e1"].model_copy(
+            update={"last_checked_version": snapshots["e1"].revision}
+        )
+        assert current["e2"].canonical_name == "Same revision change"
+        assert (
+            current["e2"].last_checked_version == snapshots["e2"].last_checked_version
+        )
+        assert current["e3"].canonical_name == "New revision"
+        assert current["e3"].revision == newer.revision
+        assert (
+            current["e3"].last_checked_version == snapshots["e3"].last_checked_version
+        )
+        assert current["e4"].status is EntityStatus.ARCHIVED
+        assert (
+            current["e4"].last_checked_version == snapshots["e4"].last_checked_version
+        )
+        assert "e5" not in current
+
     # 11. Delete and revision
 
     async def test_delete_entity_cascades_aliases_mentions_and_tombstones(

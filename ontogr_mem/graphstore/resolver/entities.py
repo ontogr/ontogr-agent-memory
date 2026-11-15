@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from typing import Any
+from uuid import uuid4
 
 from ontogr_mem.data_models.entities import (
     Alias,
@@ -14,6 +15,7 @@ from ontogr_mem.data_models.timestamps import OPEN_MICROS
 from ontogr_mem.graphstore.cypher import TenantScope
 from ontogr_mem.graphstore.executor import QuerySpec
 from ontogr_mem.graphstore.protocol import ScopedRunner
+from ontogr_mem.graphstore.reserved import LOCK
 from ontogr_mem.graphstore.resolver.rows import (
     alias_row,
     entity_row,
@@ -345,6 +347,46 @@ class ResolverEntities:
             after_revision,
             provisional,
             sweep_limit,
+        )
+
+    async def mark_deduplication_checked(self, entities: Sequence[Entity]) -> None:
+        """Advance active rows that still match the selected snapshots."""
+        if not entities:
+            return
+        rows = [
+            {
+                "id": entity.entity_id,
+                "revision": entity.revision,
+                "snapshot_json": entity.model_dump_json(),
+                "checked_json": entity.model_copy(
+                    update={"last_checked_version": entity.revision}
+                ).model_dump_json(),
+            }
+            for entity in entities
+        ]
+        await self._runner.run(
+            QuerySpec(
+                f"UNWIND $rows AS item MATCH (e:{ENTITY} "
+                f"{self._scope.pattern('id: item.id')}) "
+                f"WITH e, item, e.{LOCK} AS previous_lock "
+                f"SET e.{LOCK} = $writer "
+                "WITH e, item, previous_lock, "
+                "(e.json = item.snapshot_json "
+                "AND e.status = $active_status "
+                "AND e.revision = item.revision "
+                "AND e.last_checked_version <= item.revision) AS eligible "
+                f"SET e.{LOCK} = previous_lock "
+                "WITH e, item WHERE eligible "
+                "SET e.json = item.checked_json, "
+                "e.last_checked_version = item.revision",
+                {
+                    "rows": rows,
+                    "writer": uuid4().hex,
+                    "active_status": EntityStatus.ACTIVE.value,
+                },
+                idempotent=True,
+                tag="resolver_dedup_checkpoint",
+            )
         )
 
     async def remove_episode_mentions(self, episode_id: str) -> list[str]:

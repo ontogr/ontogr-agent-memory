@@ -234,10 +234,16 @@ async def run_deduplication(
         to_ask=to_ask,
         known=known,
     )
+    unresolved_entities = {
+        entity_id for pair in to_ask if pair not in known for entity_id in pair
+    }
     same = {pair for pair, verdict in known.items() if verdict is VerdictKind.SAME}
     report.plan = _plan(entities, same, resolver.settings.cluster_cap)
     await _apply(resolver, report)
-    await _mark_checked(resolver, selected)
+    await _mark_checked(
+        resolver,
+        [entity for entity in selected if entity.entity_id not in unresolved_entities],
+    )
     return report
 
 
@@ -437,17 +443,7 @@ async def _apply(resolver: "EntityResolver", report: ConsolidationReport) -> Non
 
 async def _mark_checked(resolver: "EntityResolver", selected: list[Entity]) -> None:
     """Record that these entities have now been checked at their revision."""
-    current = await resolver.store.get_entities(
-        [entity.entity_id for entity in selected]
-    )
-    checked = [
-        entity.model_copy(update={"last_checked_version": entity.revision})
-        for entity in current
-        if entity.status is EntityStatus.ACTIVE
-    ]
-    await asyncio.gather(
-        *(resolver.store.save_entity(entity, bump_revision=False) for entity in checked)
-    )
+    await resolver.store.mark_deduplication_checked(selected)
 
 
 def _plan(entities: dict[str, Entity], same: set[Pair], cap: int) -> list[PlannedMerge]:

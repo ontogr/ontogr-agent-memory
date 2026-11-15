@@ -112,6 +112,10 @@ class GraphResolverStore:
             after_revision, provisional, sweep_limit
         )
 
+    async def mark_deduplication_checked(self, entities: Sequence[Entity]) -> None:
+        """Advance matching active snapshots to their selected revisions."""
+        return await self._entities.mark_deduplication_checked(entities)
+
     async def apply_merge(self, plan: MergePlan) -> MergeRecord:
         """Apply one merge atomically and return its record.
 
