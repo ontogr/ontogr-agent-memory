@@ -395,9 +395,10 @@ async def test_recovery_replays_stamped_merge_and_unmerge_intents(
     assert [item.last_checked_version for item in after_merge_recovery] == [
         item.last_checked_version for item in checked
     ]
-    merged_absorbed = after_merge_recovery[1]
-    assert merged_absorbed.status is EntityStatus.MERGED
-    assert merged_absorbed.merged_into == "e1"
+    assert [(item.status, item.merged_into) for item in after_merge_recovery] == [
+        (EntityStatus.ACTIVE, None),
+        (EntityStatus.MERGED, "e1"),
+    ]
 
     unmerge = await resolver.unmerge(merge.merge_id, actor="user")
     unmerge_rows = merge_intent(unmerge.snapshot)
@@ -423,9 +424,10 @@ async def test_recovery_replays_stamped_merge_and_unmerge_intents(
     assert [item.last_checked_version for item in after_unmerge_recovery] == [
         item.last_checked_version for item in checked
     ]
-    unmerged_absorbed = after_unmerge_recovery[1]
-    assert unmerged_absorbed.status is EntityStatus.ACTIVE
-    assert unmerged_absorbed.merged_into is None
+    assert [(item.status, item.merged_into) for item in after_unmerge_recovery] == [
+        (EntityStatus.ACTIVE, None),
+        (EntityStatus.ACTIVE, None),
+    ]
     verdict = await store.live_verdict("e1", "e2")
     assert verdict is not None
     assert verdict.verdict is VerdictKind.DISTINCT

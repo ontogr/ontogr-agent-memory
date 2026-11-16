@@ -480,10 +480,13 @@ async def test_mention_recount_retries_after_a_concurrent_alias_write(
             result = await self._wrapped.run(spec)
             if spec.tag == "resolver_mentions_count":
                 self._counted = True
-            elif spec.tag == "resolver_get_entities" and self._counted:
-                if not self._raced:
-                    self._raced = True
-                    await base_store.write_entity_batch([], [alias("e1", "Late alias")])
+            elif (
+                spec.tag == "resolver_get_entities"
+                and self._counted
+                and not self._raced
+            ):
+                self._raced = True
+                await base_store.write_entity_batch([], [alias("e1", "Late alias")])
             return result
 
     racing_store = GraphResolverStore(
