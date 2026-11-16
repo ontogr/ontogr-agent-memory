@@ -19,7 +19,6 @@ from ontogr_mem.data_models.entities import (
     MergeState,
 )
 from ontogr_mem.resolution.blocking import BlockingRow
-from ontogr_mem.resolution.errors import ConcurrentEntityWriteError
 
 
 INTENT_KEY = "intent"

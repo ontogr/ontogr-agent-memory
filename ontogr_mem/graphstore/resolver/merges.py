@@ -8,7 +8,6 @@ from typing import Any
 from uuid import uuid4
 
 from ontogr_mem.data_models.entities import (
-    Alias,
     Entity,
     EntityStatus,
     Mention,
