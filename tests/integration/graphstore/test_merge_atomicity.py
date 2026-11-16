@@ -24,7 +24,7 @@ async def test_independent_writers_cannot_absorb_the_same_entity_twice(
         second = GraphResolverStore(graph.runner(handle))
         survivor = entity("survivor")
         absorbed = entity("absorbed")
-        await first.write_entity_batch([survivor, absorbed], [])
+        survivor, absorbed = await first.write_entity_batch([survivor, absorbed], [])
         plans = [
             merge_plan("first", survivor, absorbed),
             merge_plan("second", survivor, absorbed),

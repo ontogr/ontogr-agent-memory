@@ -29,9 +29,11 @@ INTENT_KEY = "intent"
 class MergePlan:
     """Everything one merge writes, built by the pure merge planner.
 
-    The store stamps ``record.seq`` from `next_revision` and writes the rows
-    in order. The store keeps a copy of the rows in the merge record, so a
-    merge that was interrupted can be played out again.
+    The store assigns ``record.seq`` with `next_revision`. Before it saves the
+    intent, it stamps every entity row, including redirected rows, with that
+    sequence as its revision. It leaves each row's ``last_checked_version``
+    unchanged. The store keeps the intent in the merge record, so an interrupted
+    merge can be played out again.
 
     Attributes:
         record: The merge record. Its ``seq`` is filled by the store.
@@ -59,6 +61,10 @@ class MergePlan:
 @dataclass(frozen=True, slots=True)
 class UnmergePlan:
     """Everything one unmerge writes, built by the pure merge planner.
+
+    Before saving the intent, the store stamps every entity row, including
+    redirected rows, with the operation's sequence as its revision. It leaves
+    each row's ``last_checked_version`` unchanged.
 
     Attributes:
         record: The merge record, in the ``REVERTED`` state.
@@ -348,7 +354,13 @@ class ResolverStore(Protocol):
         """Write entities and aliases and stamp each entity with a new revision.
 
         Writing the same entities again stores the same fields under a new
-        revision. Returns the stored entities in input order.
+        revision. Existing aliases stay with their current entity; use a merge
+        or unmerge to change alias ownership. Returns stored entities in input
+        order.
+
+        Raises:
+            ConcurrentEntityWriteError: If rows change during all retries or an
+                alias belongs to another entity.
         """
         ...
 
@@ -398,49 +410,63 @@ class ResolverStore(Protocol):
         ...
 
     async def list_for_deduplication(
-        self, after_revision: int, provisional: bool, sweep_limit: int
+        self, *, provisional: bool = False, sweep_limit: int = 0
     ) -> list[Entity]:
         """Return the active entities a deduplication run should consider.
 
-        The result contains the entities with ``revision`` greater than
-        ``after_revision``; when ``provisional`` is true, the provisional ones;
-        and up to ``sweep_limit`` further entities in ascending
-        ``(last_checked_version, entity_id)`` order. It is ordered by
-        ``(revision, entity_id)``.
+        Include active entities whose revision exceeds their checkpoint. When
+        ``provisional`` is true, also include checked provisional entities. Add
+        up to ``max(0, sweep_limit)`` remaining active entities in ascending
+        ``(last_checked_version, entity_id)`` order. Return distinct copies in
+        ascending ``(revision, entity_id)`` order.
+        """
+        ...
+
+    async def mark_deduplication_checked(self, entities: Sequence[Entity]) -> None:
+        """Advance matching active snapshots to their selected revisions.
+
+        Missing, changed, inactive, or newer-checkpoint rows are left untouched.
         """
         ...
 
     async def apply_merge(self, plan: MergePlan) -> MergeRecord:
         """Apply one merge and return the stored record.
 
-        The rows are written in order, not in one transaction. The record is
-        written ``APPLYING`` first and keeps the rows of the merge, then the
-        entities, mentions, aliases and verdicts move, then the record is
-        written ``APPLIED``. A merge that was interrupted in between is
-        finished by `recover_merges`.
+        The entity rows, mentions, aliases, verdicts and the final record are
+        written together in one statement. The record keeps the rows of the
+        operation, so `recover_merges` can finish a record that was left
+        ``APPLYING``.
 
         The record's ``seq`` is stamped from `next_revision`. The write is
         refused when either entity is no longer active, and when the merge
-        was already applied. The record is created with a compare-and-swap,
-        so two processes cannot apply the same merge. Merges of one tenant
-        are serialized within one process only; two processes can still merge
-        the same pair under two different merge records.
+        was already applied. Each entity row in the saved intent, including
+        redirected rows, gets that sequence as its revision. Checkpoint values
+        remain unchanged. Entity rows are checked against their planned
+        revisions and checkpoints before the write. Alias moves and owner
+        revision changes share one graph statement. A stale recovery intent
+        stays ``APPLYING`` instead of moving aliases after a newer checkpoint.
 
         Raises:
             MergeRefusedError: If the survivor or the absorbed entity is not
                 active, or the merge was already applied.
+            ConcurrentEntityWriteError: If an entity changed after planning.
         """
         ...
 
     async def apply_unmerge(self, plan: UnmergePlan) -> MergeRecord:
         """Apply one unmerge and return the stored record.
 
-        The record is written ``APPLYING`` with the unmerge rows before the
-        rows move back. The record is then written ``REVERTED``. The saved rows
-        let `recover_merges` finish an interrupted unmerge.
+        The entity rows, mentions, aliases, verdicts and the final record are
+        written together in one statement. The record keeps the rows of the
+        operation, so `recover_merges` can finish a record that was left
+        ``APPLYING``. Each entity row in the intent, including redirected rows,
+        gets the operation sequence as its revision. Checkpoint values remain
+        unchanged. Alias moves and owner
+        revision changes share one graph statement.
 
         Raises:
             MergeRefusedError: If the merge record does not exist.
+            ConcurrentEntityWriteError: If an entity changed after planning.
         """
         ...
 
@@ -531,6 +557,10 @@ class ResolverStore(Protocol):
         """Write one entity and return the stored copy.
 
         With ``bump_revision`` the entity is stamped with a new revision.
+
+        Raises:
+            ConcurrentEntityWriteError: If the stored revision or checkpoint is
+                newer than the entity being written.
         """
         ...
 

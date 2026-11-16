@@ -20,8 +20,10 @@ from ontogr_mem.data_models.entities import (
     MergeRecord,
     MergeState,
     Outcome,
+    ResolutionState,
 )
 from ontogr_mem.resolution.errors import (
+    ConcurrentEntityWriteError,
     EntityHasFactsError,
     EpisodeAlreadyResolvedError,
     MergeRefusedError,
@@ -116,6 +118,7 @@ def merge_plan(
     *,
     mentions: tuple[Mention, ...] = (),
     aliases: tuple[Alias, ...] = (),
+    redirected: tuple[Entity, ...] = (),
 ) -> MergePlan:
     """Build the rows one merge writes."""
     moved_mentions = tuple(
@@ -142,6 +145,10 @@ def merge_plan(
         ),
         mentions=moved_mentions,
         aliases=moved_aliases,
+        redirected=tuple(
+            item.model_copy(update={"merged_into": survivor.entity_id})
+            for item in redirected
+        ),
     )
 
 
@@ -152,6 +159,7 @@ def unmerge_plan(
     *,
     mentions: tuple[Mention, ...] = (),
     aliases: tuple[Alias, ...] = (),
+    redirected: tuple[Entity, ...] = (),
 ) -> UnmergePlan:
     """Build the rows one unmerge writes."""
     restored_mentions = tuple(
@@ -178,6 +186,10 @@ def unmerge_plan(
         ),
         mentions=restored_mentions,
         aliases=restored_aliases,
+        redirected=tuple(
+            item.model_copy(update={"merged_into": absorbed.entity_id})
+            for item in redirected
+        ),
     )
 
 
@@ -226,7 +238,7 @@ class ResolverStoreContract:
         """Merge history protects both its survivor and absorbed entity."""
         survivor = entity("e1")
         absorbed = entity("e2")
-        await store.write_entity_batch([survivor, absorbed], [])
+        survivor, absorbed = await store.write_entity_batch([survivor, absorbed], [])
         await store.apply_merge(merge_plan("merge-1", survivor, absorbed))
 
         assert await store.has_merge_record("e1")
@@ -286,7 +298,7 @@ class ResolverStoreContract:
             alias("e1", "Zürich").model_copy(update={"loose_key": "zurich"}),
             alias("e2", "Zurich"),
         ]
-        await store.write_entity_batch([first, second], names)
+        first, second = await store.write_entity_batch([first, second], names)
         assert [e.entity_id for e in await store.entities_by_loose_key("zurich")] == [
             "e1",
             "e2",
@@ -431,7 +443,7 @@ class ResolverStoreContract:
         """A merge record still needs its survivor, so it blocks deletion."""
         survivor = entity("e1")
         absorbed = entity("e2")
-        await store.write_entity_batch([survivor, absorbed], [])
+        survivor, absorbed = await store.write_entity_batch([survivor, absorbed], [])
         await store.write_mentions("ep1", [mention("e1", "m1")])
         await store.apply_merge(merge_plan("mg1", survivor, absorbed))
         await store.remove_episode_mentions("ep1")
@@ -457,13 +469,23 @@ class ResolverStoreContract:
         """The absorbed entity, its aliases and its mentions come back."""
         survivor = entity("e1", name="Acme")
         absorbed = entity("e2", name="Acme Inc")
+        redirected = entity("e3", name="Acme Subsidiary").model_copy(
+            update={"status": EntityStatus.MERGED, "merged_into": "e2"}
+        )
         survivor_alias = alias("e1", "Acme")
         absorbed_alias = alias("e2", "Acme Inc")
         survivor_mention = mention("e1", "m1")
         absorbed_mention = mention("e2", "m2")
-        await store.write_entity_batch(
-            [survivor, absorbed], [survivor_alias, absorbed_alias]
+        written = await store.write_entity_batch(
+            [survivor, absorbed, redirected], [survivor_alias, absorbed_alias]
         )
+        survivor, absorbed, redirected = [
+            await store.save_entity(
+                item.model_copy(update={"last_checked_version": item.revision}),
+                bump_revision=False,
+            )
+            for item in written
+        ]
         await store.write_mentions("ep1", [survivor_mention, absorbed_mention])
 
         plan = merge_plan(
@@ -472,12 +494,35 @@ class ResolverStoreContract:
             absorbed.model_copy(update={"mention_count": 1}),
             mentions=(absorbed_mention,),
             aliases=(absorbed_alias,),
+            redirected=(redirected,),
         )
         record = await store.apply_merge(plan)
+        merge_rows = merge_intent(record.snapshot)
+
+        assert merge_rows is not None
+        assert (
+            merge_rows.survivor.revision,
+            merge_rows.absorbed.revision,
+            merge_rows.redirected[0].revision,
+        ) == (record.seq,) * 3
+        assert (
+            merge_rows.survivor.last_checked_version,
+            merge_rows.absorbed.last_checked_version,
+            merge_rows.redirected[0].last_checked_version,
+        ) == (
+            survivor.last_checked_version,
+            absorbed.last_checked_version,
+            redirected.last_checked_version,
+        )
 
         merged = (await store.get_entities(["e2"]))[0]
         assert merged.status is EntityStatus.MERGED
         assert merged.merged_into == "e1"
+        assert merged.revision == record.seq
+        assert merged.last_checked_version == absorbed.last_checked_version
+        redirected_after_merge = (await store.get_entities(["e3"]))[0]
+        assert redirected_after_merge.merged_into == "e1"
+        assert redirected_after_merge.revision == record.seq
         assert await store.mentions_of("e2") == []
         assert len(await store.mentions_of("e1")) == 2
         assert {a.alias_id for a in await store.aliases_of("e1")} == {
@@ -485,20 +530,43 @@ class ResolverStoreContract:
             absorbed_alias.alias_id,
         }
 
+        merged_survivor, merged_absorbed, merged_redirected = await store.get_entities(
+            ["e1", "e2", "e3"]
+        )
         restored = await store.apply_unmerge(
             unmerge_plan(
                 record,
-                plan.survivor,
-                plan.absorbed,
+                merged_survivor,
+                merged_absorbed,
                 mentions=(absorbed_mention,),
                 aliases=(absorbed_alias,),
+                redirected=(merged_redirected,),
             )
         )
 
         absorbed_again = (await store.get_entities(["e2"]))[0]
+        unmerge_rows = merge_intent(restored.snapshot)
         assert restored.state is MergeState.REVERTED
+        assert unmerge_rows is not None
+        assert (unmerge_rows.survivor.revision, unmerge_rows.absorbed.revision) == (
+            restored.seq,
+            restored.seq,
+        )
+        assert (
+            unmerge_rows.survivor.last_checked_version,
+            unmerge_rows.absorbed.last_checked_version,
+        ) == (survivor.last_checked_version, absorbed.last_checked_version)
         assert absorbed_again.status is EntityStatus.ACTIVE
         assert absorbed_again.merged_into is None
+        assert absorbed_again.revision == restored.seq
+        assert absorbed_again.last_checked_version == absorbed.last_checked_version
+        redirected_after_unmerge = (await store.get_entities(["e3"]))[0]
+        assert redirected_after_unmerge.merged_into == "e2"
+        assert redirected_after_unmerge.revision == restored.seq
+        assert (
+            redirected_after_unmerge.last_checked_version
+            == redirected.last_checked_version
+        )
         assert [m.local_id for m in await store.mentions_of("e2")] == ["m2"]
         assert {a.alias_id for a in await store.aliases_of("e2")} == {
             absorbed_alias.alias_id
@@ -512,7 +580,7 @@ class ResolverStoreContract:
         """The stored record holds the rows, so an interrupted merge can finish."""
         survivor = entity("e1", name="Acme")
         absorbed = entity("e2", name="Acme Inc")
-        await store.write_entity_batch([survivor, absorbed], [])
+        survivor, absorbed = await store.write_entity_batch([survivor, absorbed], [])
         plan = merge_plan("mg1", survivor, absorbed)
 
         record = await store.apply_merge(plan)
@@ -533,7 +601,7 @@ class ResolverStoreContract:
         """Only the first of twenty callers merges; the rest are refused."""
         survivor = entity("e1")
         absorbed = entity("e2")
-        await store.write_entity_batch([survivor, absorbed], [])
+        survivor, absorbed = await store.write_entity_batch([survivor, absorbed], [])
         plans = [merge_plan("mg1", survivor, absorbed) for _ in range(20)]
 
         results = await asyncio.gather(
@@ -542,7 +610,7 @@ class ResolverStoreContract:
 
         assert sum(not isinstance(r, Exception) for r in results) == 1
         assert all(
-            isinstance(r, MergeRefusedError)
+            isinstance(r, (MergeRefusedError, ConcurrentEntityWriteError))
             for r in results
             if isinstance(r, Exception)
         )
@@ -555,7 +623,7 @@ class ResolverStoreContract:
         """Only one merge id can apply to a pair of active entities."""
         survivor = entity("e1")
         absorbed = entity("e2")
-        await store.write_entity_batch([survivor, absorbed], [])
+        survivor, absorbed = await store.write_entity_batch([survivor, absorbed], [])
         plans = [merge_plan(f"mg{index}", survivor, absorbed) for index in range(2)]
 
         results = await asyncio.gather(
@@ -565,7 +633,9 @@ class ResolverStoreContract:
         applied = [result for result in results if not isinstance(result, Exception)]
         refused = [result for result in results if isinstance(result, Exception)]
         assert len(applied) == 1
-        assert len(refused) == 1 and isinstance(refused[0], MergeRefusedError)
+        assert len(refused) == 1 and isinstance(
+            refused[0], (MergeRefusedError, ConcurrentEntityWriteError)
+        )
         records = [await store.merge_record(plan.record.merge_id) for plan in plans]
         assert sum(record is not None for record in records) == 1
         merged = (await store.get_entities(["e2"]))[0]
@@ -680,6 +750,30 @@ class ResolverStoreContract:
             "Current Name",
         }
 
+    async def test_pruning_an_alias_invalidates_its_checked_owner(
+        self, store: ResolverStore
+    ):
+        """Removing an unsupported alias makes its checked owner dirty."""
+        stored_entity = entity("e1", name="Old Name").model_copy(
+            update={
+                "summary": "",
+                "descriptions": [],
+                "attributes": {},
+                "summary_stale": True,
+            }
+        )
+        await store.write_entity_batch(
+            [stored_entity],
+            [alias("e1", "Old Name"), alias("e1", "Unsupported Name")],
+        )
+        await store.mark_deduplication_checked(await store.get_entities(["e1"]))
+
+        await store.prune_entity_text(["e1"])
+
+        updated = (await store.get_entities(["e1"]))[0]
+        assert updated.revision > updated.last_checked_version
+        assert [row.text for row in await store.aliases_of("e1")] == ["Old Name"]
+
     async def test_prune_entity_text_replaces_unmentioned_canonical_name(
         self, store: ResolverStore
     ):
@@ -730,7 +824,7 @@ class ResolverStoreContract:
         """Pruning a surviving entity does not alter its merge history."""
         survivor = entity("e1", name="Survivor")
         absorbed = entity("e2", name="Absorbed")
-        await store.write_entity_batch([survivor, absorbed], [])
+        survivor, absorbed = await store.write_entity_batch([survivor, absorbed], [])
         record = await store.apply_merge(merge_plan("merge-1", survivor, absorbed))
         surviving_mention = mention(
             "e1", "remaining", episode_id="ep2", mention_id="m-remaining"
@@ -743,19 +837,151 @@ class ResolverStoreContract:
 
     # 10. Deduplication order
 
-    async def test_list_for_deduplication_is_ordered_by_revision_then_id(
+    async def test_list_for_deduplication_selects_dirty_and_sweeps_active_entities(
         self, store: ResolverStore
     ):
-        """Two calls over an unchanged store return the same stable order."""
-        await store.write_entity_batch([entity("e3"), entity("e1"), entity("e2")], [])
-
-        first = await store.list_for_deduplication(0, False, 0)
-        second = await store.list_for_deduplication(0, False, 0)
-
-        assert [e.entity_id for e in first] == [e.entity_id for e in second]
-        assert [(e.revision, e.entity_id) for e in first] == sorted(
-            (e.revision, e.entity_id) for e in first
+        """Dirty, provisional and swept rows follow the per-entity rules."""
+        await store.write_entity_batch([entity("changed-low")], [])
+        checked_rows = await store.write_entity_batch(
+            [entity("checked-c"), entity("checked-a")], []
         )
+        provisional = (
+            await store.write_entity_batch(
+                [
+                    entity("provisional").model_copy(
+                        update={"resolution_state": ResolutionState.PROVISIONAL}
+                    )
+                ],
+                [],
+            )
+        )[0]
+        checked_high = (await store.write_entity_batch([entity("checked-high")], []))[0]
+        archived = (
+            await store.write_entity_batch(
+                [entity("archived", status=EntityStatus.ARCHIVED)], []
+            )
+        )[0]
+        merged = (
+            await store.write_entity_batch(
+                [
+                    entity(
+                        "merged",
+                        status=EntityStatus.MERGED,
+                        merged_into="changed-low",
+                    )
+                ],
+                [],
+            )
+        )[0]
+        for checked in (*checked_rows, provisional, checked_high, archived, merged):
+            await store.save_entity(
+                checked.model_copy(update={"last_checked_version": checked.revision}),
+                bump_revision=False,
+            )
+
+        default = await store.list_for_deduplication(provisional=False, sweep_limit=0)
+        include_provisional = await store.list_for_deduplication(
+            provisional=True, sweep_limit=0
+        )
+        sweep_one = await store.list_for_deduplication(provisional=False, sweep_limit=1)
+        sweep_two = await store.list_for_deduplication(provisional=False, sweep_limit=2)
+        provisional_and_sweep = await store.list_for_deduplication(
+            provisional=True, sweep_limit=1
+        )
+        negative_sweep = await store.list_for_deduplication(
+            provisional=False, sweep_limit=-1
+        )
+        oversized_sweep = await store.list_for_deduplication(
+            provisional=False, sweep_limit=99
+        )
+
+        assert [item.entity_id for item in default] == ["changed-low"]
+        assert [item.entity_id for item in include_provisional] == [
+            "changed-low",
+            "provisional",
+        ]
+        assert [item.entity_id for item in sweep_one] == ["changed-low", "checked-a"]
+        assert [item.entity_id for item in sweep_two] == [
+            "changed-low",
+            "checked-a",
+            "checked-c",
+        ]
+        assert [item.entity_id for item in provisional_and_sweep] == [
+            "changed-low",
+            "checked-a",
+            "provisional",
+        ]
+        assert [item.entity_id for item in negative_sweep] == ["changed-low"]
+        assert [item.entity_id for item in oversized_sweep] == [
+            "changed-low",
+            "checked-a",
+            "checked-c",
+            "provisional",
+            "checked-high",
+        ]
+
+    async def test_list_for_deduplication_returns_independent_snapshots(
+        self, store: ResolverStore
+    ):
+        """Mutating one selection result does not change the stored entity."""
+        await store.write_entity_batch([entity("e1")], [])
+
+        first = await store.list_for_deduplication()
+        first[0].attributes["local"] = "mutation"
+        second = await store.list_for_deduplication()
+
+        assert second[0].attributes == {}
+
+    async def test_mark_deduplication_checked_only_updates_matching_snapshots(
+        self, store: ResolverStore
+    ):
+        """Stale, inactive, and missing rows are left unchanged."""
+        await store.write_entity_batch(
+            [entity(f"e{index}", name=f"Entity {index}") for index in range(1, 6)],
+            [],
+        )
+        snapshots = {
+            item.entity_id: item
+            for item in await store.get_entities([f"e{index}" for index in range(1, 6)])
+        }
+        await store.save_entity(
+            snapshots["e2"].model_copy(
+                update={"canonical_name": "Same revision change"}
+            ),
+            bump_revision=False,
+        )
+        newer = (
+            await store.write_entity_batch(
+                [snapshots["e3"].model_copy(update={"canonical_name": "New revision"})],
+                [],
+            )
+        )[0]
+        await store.set_entity_status("e4", EntityStatus.ARCHIVED)
+        await store.delete_entity("e5")
+
+        await store.mark_deduplication_checked(list(snapshots.values()))
+
+        current = {
+            item.entity_id: item
+            for item in await store.get_entities([f"e{index}" for index in range(1, 6)])
+        }
+        assert current["e1"] == snapshots["e1"].model_copy(
+            update={"last_checked_version": snapshots["e1"].revision}
+        )
+        assert current["e2"].canonical_name == "Same revision change"
+        assert (
+            current["e2"].last_checked_version == snapshots["e2"].last_checked_version
+        )
+        assert current["e3"].canonical_name == "New revision"
+        assert current["e3"].revision == newer.revision
+        assert (
+            current["e3"].last_checked_version == snapshots["e3"].last_checked_version
+        )
+        assert current["e4"].status is EntityStatus.ARCHIVED
+        assert (
+            current["e4"].last_checked_version == snapshots["e4"].last_checked_version
+        )
+        assert "e5" not in current
 
     # 11. Delete and revision
 

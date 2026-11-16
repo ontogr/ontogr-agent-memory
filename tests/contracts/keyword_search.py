@@ -93,7 +93,9 @@ class KeywordSearchContract:
         """A merged entity never leaks its old id through alias search."""
         survivor, absorbed = entity("survivor"), entity("absorbed")
         name = alias("absorbed", "Rarecompanyname")
-        await harness.resolver.write_entity_batch([survivor, absorbed], [name])
+        survivor, absorbed = await harness.resolver.write_entity_batch(
+            [survivor, absorbed], [name]
+        )
         await harness.resolver.apply_merge(
             merge_plan("merge-1", survivor, absorbed, aliases=(name,))
         )

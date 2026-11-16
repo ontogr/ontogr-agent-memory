@@ -15,7 +15,10 @@ from ontogr_mem.data_models.entities import (
 )
 from ontogr_mem.resolution.blocking import BlockIndex
 from ontogr_mem.resolution.config import Budget
-from ontogr_mem.resolution.errors import MergeRefusedError
+from ontogr_mem.resolution.errors import (
+    ConcurrentEntityWriteError,
+    MergeRefusedError,
+)
 from ontogr_mem.resolution.keys import (
     differ_only_in_digits,
     entity_text,
@@ -175,13 +178,15 @@ async def _candidates(
     entities: dict[str, Entity],
     index: BlockIndex,
     vector: tuple[float, ...] | None,
+    *,
+    alias_loose_keys: tuple[str, ...],
 ) -> dict[str, PairSignals]:
     """Return the signals measured between this entity and every candidate."""
     found: dict[str, PairSignals] = {}
-    keys = [entity.loose_key]
+    keys = [entity.loose_key, *alias_loose_keys]
     if resolver.policy.strip_suffixes(entity.type_label):
         keys.append(stripped_key(entity.canonical_name))
-    for key in keys:
+    for key in dict.fromkeys(keys):
         for item in index.candidates(key):
             other_id = item.split("#")[0]
             if other_id != entity.entity_id:
@@ -190,7 +195,7 @@ async def _candidates(
                     signals,
                     jaccard=_stronger(
                         signals.jaccard,
-                        index.similarity(item, entity.loose_key),
+                        index.similarity(item, key),
                     ),
                 )
     if vector is not None:
@@ -215,12 +220,12 @@ async def run_deduplication(
 ) -> ConsolidationReport:
     """Run one deduplication pass over the tenant's active entities."""
     report = ConsolidationReport(plan_only=plan_only)
-    selected, entities, index, keys = await _context(resolver, budget)
+    selected, entities, index, alias_loose_keys = await _context(resolver, budget)
     report.selected = len(selected)
     if not selected:
         return report
-    signals = await _pair_signals(resolver, selected, entities, index)
-    known, to_ask = await _classify(resolver, report, signals, entities, keys)
+    signals = await _pair_signals(resolver, selected, entities, index, alias_loose_keys)
+    known, to_ask = await _classify(resolver, report, signals, entities)
     if plan_only:
         same = {pair for pair, verdict in known.items() if verdict is VerdictKind.SAME}
         report.plan = _plan(entities, same, resolver.settings.cluster_cap)
@@ -234,34 +239,38 @@ async def run_deduplication(
         to_ask=to_ask,
         known=known,
     )
+    unresolved_entities = {
+        entity_id for pair in to_ask if pair not in known for entity_id in pair
+    }
     same = {pair for pair, verdict in known.items() if verdict is VerdictKind.SAME}
     report.plan = _plan(entities, same, resolver.settings.cluster_cap)
     await _apply(resolver, report)
-    await _mark_checked(resolver, selected)
+    await _mark_checked(
+        resolver,
+        [entity for entity in selected if entity.entity_id not in unresolved_entities],
+    )
     return report
 
 
 async def _context(
     resolver: "EntityResolver", budget: Budget
-) -> tuple[list[Entity], dict[str, Entity], BlockIndex, dict[str, set[str]]]:
-    """Return the selected entities, all active entities, the block index and keys."""
+) -> tuple[list[Entity], dict[str, Entity], BlockIndex, dict[str, tuple[str, ...]]]:
+    """Return selected entities, active candidates, and their blocking index."""
     store = resolver.store
-    selected = await store.list_for_deduplication(0, False, budget.sweep)
+    selected = await store.list_for_deduplication(
+        provisional=False, sweep_limit=budget.sweep
+    )
     if not selected:
         return [], {}, BlockIndex(), {}
     rows = await store.blocking_rows()
     active = await store.get_entities([row.entity_id for row in rows])
     entities = {entity.entity_id: entity for entity in active}
     entities.update({entity.entity_id: entity for entity in selected})
-    keys: dict[str, set[str]] = {}
-    alias_rows = await asyncio.gather(
-        *(store.aliases_of(entity.entity_id) for entity in selected)
-    )
-    for entity, aliases in zip(selected, alias_rows, strict=True):
-        keys[entity.entity_id] = {entity.strict_key} | {
-            alias.strict_key for alias in aliases
-        }
-    return selected, entities, BlockIndex.from_rows(rows), keys
+    selected_ids = {entity.entity_id for entity in selected}
+    alias_loose_keys = {
+        row.entity_id: row.alias_keys for row in rows if row.entity_id in selected_ids
+    }
+    return selected, entities, BlockIndex.from_rows(rows), alias_loose_keys
 
 
 async def _pair_signals(
@@ -269,15 +278,23 @@ async def _pair_signals(
     selected: list[Entity],
     entities: dict[str, Entity],
     index: BlockIndex,
+    alias_loose_keys: dict[str, tuple[str, ...]],
 ) -> dict[Pair, PairSignals]:
     """Return the signals measured for every candidate pair."""
     signals: dict[Pair, PairSignals] = {}
     ordered = sorted(selected, key=lambda entity: entity.entity_id)
-    embeddings = await resolver.vectors.gateway.embed(
+    embeddings = await resolver.vectors.gateway.embed_all(
         [entity_text(entity) for entity in ordered], purpose="query"
     )
     for entity, embedding in zip(ordered, embeddings, strict=True):
-        found = await _candidates(resolver, entity, entities, index, embedding.vector)
+        found = await _candidates(
+            resolver,
+            entity,
+            entities,
+            index,
+            embedding,
+            alias_loose_keys=alias_loose_keys.get(entity.entity_id, ()),
+        )
         for other_id, value in found.items():
             other = entities.get(other_id)
             if other is None or other.status is not EntityStatus.ACTIVE:
@@ -294,7 +311,6 @@ async def _classify(
     report: ConsolidationReport,
     signals: dict[Pair, PairSignals],
     entities: dict[str, Entity],
-    keys: dict[str, set[str]],
 ) -> tuple[dict[Pair, VerdictKind], list[Pair]]:
     """Use stored verdicts and rules, and return the pairs left to verify."""
     known: dict[Pair, VerdictKind] = {}
@@ -303,6 +319,21 @@ async def _classify(
     stored_rows = await asyncio.gather(
         *(resolver.store.live_verdict(*pair) for pair in pairs)
     )
+    stale_pairs = {
+        pair
+        for pair, stored in zip(pairs, stored_rows, strict=True)
+        if stored is None
+        or stored.inputs_hash != inputs_hash(entities[pair[0]], entities[pair[1]])
+    }
+    endpoints = sorted({entity_id for pair in stale_pairs for entity_id in pair})
+    alias_rows = await asyncio.gather(
+        *(resolver.store.aliases_of(entity_id) for entity_id in endpoints)
+    )
+    keys = {
+        entity_id: {entities[entity_id].strict_key}
+        | {alias.strict_key for alias in aliases}
+        for entity_id, aliases in zip(endpoints, alias_rows, strict=True)
+    }
     for pair, stored in zip(pairs, stored_rows, strict=True):
         a, b = entities[pair[0]], entities[pair[1]]
         report.pairs_considered += 1
@@ -431,23 +462,16 @@ async def _apply(resolver: "EntityResolver", report: ConsolidationReport) -> Non
             except MergeRefusedError:
                 report.pairs_rejected += 1
                 continue
+            except ConcurrentEntityWriteError:
+                report.errors += 1
+                continue
             report.merges.append(record.merge_id)
             report.pairs_merged += 1
 
 
 async def _mark_checked(resolver: "EntityResolver", selected: list[Entity]) -> None:
     """Record that these entities have now been checked at their revision."""
-    current = await resolver.store.get_entities(
-        [entity.entity_id for entity in selected]
-    )
-    checked = [
-        entity.model_copy(update={"last_checked_version": entity.revision})
-        for entity in current
-        if entity.status is EntityStatus.ACTIVE
-    ]
-    await asyncio.gather(
-        *(resolver.store.save_entity(entity, bump_revision=False) for entity in checked)
-    )
+    await resolver.store.mark_deduplication_checked(selected)
 
 
 def _plan(entities: dict[str, Entity], same: set[Pair], cap: int) -> list[PlannedMerge]:

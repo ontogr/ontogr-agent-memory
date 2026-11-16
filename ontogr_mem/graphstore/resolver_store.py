@@ -87,7 +87,12 @@ class GraphResolverStore:
     async def write_entity_batch(
         self, entities: Sequence[Entity], aliases: Sequence[Alias]
     ) -> list[Entity]:
-        """Write entities and aliases and stamp each entity with a new revision."""
+        """Write entities and aliases under one revision.
+
+        Raises:
+            ConcurrentEntityWriteError: If rows change during all retries or an
+                alias belongs to another entity.
+        """
         return await self._entities.write_entity_batch(entities, aliases)
 
     async def write_mentions(
@@ -105,12 +110,16 @@ class GraphResolverStore:
         return await self._entities.write_verdicts(verdicts)
 
     async def list_for_deduplication(
-        self, after_revision: int, provisional: bool, sweep_limit: int
+        self, *, provisional: bool = False, sweep_limit: int = 0
     ) -> list[Entity]:
         """Return the active entities a deduplication run should consider."""
         return await self._entities.list_for_deduplication(
-            after_revision, provisional, sweep_limit
+            provisional=provisional, sweep_limit=sweep_limit
         )
+
+    async def mark_deduplication_checked(self, entities: Sequence[Entity]) -> None:
+        """Advance matching active snapshots to their selected revisions."""
+        return await self._entities.mark_deduplication_checked(entities)
 
     async def apply_merge(self, plan: MergePlan) -> MergeRecord:
         """Apply one merge atomically and return its record.
@@ -118,6 +127,7 @@ class GraphResolverStore:
         Raises:
             MergeRefusedError: If either entity is no longer active, or the
                 merge was already applied.
+            ConcurrentEntityWriteError: If an entity changed after planning.
         """
         return await self._merges.apply_merge(plan)
 
@@ -126,6 +136,7 @@ class GraphResolverStore:
 
         Raises:
             MergeRefusedError: If the merge record is missing or is not applied.
+            ConcurrentEntityWriteError: If an entity changed after planning.
         """
         return await self._merges.apply_unmerge(plan)
 
@@ -195,7 +206,12 @@ class GraphResolverStore:
     async def save_entity(
         self, entity: Entity, *, bump_revision: bool = True
     ) -> Entity:
-        """Write one entity and return the stored copy."""
+        """Write one entity and return the stored copy.
+
+        Raises:
+            ConcurrentEntityWriteError: If the stored revision or checkpoint is
+                newer than the entity being written.
+        """
         return await self._entities.save_entity(entity, bump_revision=bump_revision)
 
     async def aliases_of(self, entity_id: str) -> list[Alias]:

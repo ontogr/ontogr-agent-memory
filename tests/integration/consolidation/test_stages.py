@@ -12,6 +12,7 @@ from ontogr_mem.consolidation.stage import StageContext
 from ontogr_mem.consolidation.stages.deduplication import DeduplicationStage
 from ontogr_mem.consolidation.stages.feedback_weights import FeedbackWeightsStage
 from ontogr_mem.consolidation.stages.ingest_cleanup import IngestCleanupStage
+from ontogr_mem.data_models.entities import ResolutionState
 from tests.support.consolidation import ConsWorld, new_world
 from tests.support.episodes import make_episode
 from tests.support.graph_backend import GraphBackend
@@ -99,6 +100,22 @@ async def test_dedup_gate_needs_a_changed_entity(graph_backend: GraphBackend) ->
     assert await DeduplicationStage().gate(ctx_for(world)) == (
         "no entity changed since its last check"
     )
+    provisional = await world.add_entity("provisional", "Checked Provisional")
+    provisional = provisional.model_copy(
+        update={
+            "resolution_state": ResolutionState.PROVISIONAL,
+            "last_checked_version": provisional.revision,
+        }
+    )
+    await world.resolution.save_entity(
+        provisional,
+        bump_revision=False,
+    )
+    assert await DeduplicationStage().gate(ctx_for(world)) == (
+        "no entity changed since its last check"
+    )
+    await world.resolution.save_entity(provisional, bump_revision=True)
+    assert await DeduplicationStage().gate(ctx_for(world)) is None
     await world.add_entity("a", "Acme")
     assert await DeduplicationStage().gate(ctx_for(world)) is None
 
@@ -119,6 +136,14 @@ async def test_dedup_merges_entities_that_share_a_key_and_then_gates(
     assert result.counts["pairs_merged"] == 1
     live = await world.resolution.store.active_entities()
     assert len(live) == 1
+    assert live[0].revision > live[0].last_checked_version
+    assert await DeduplicationStage().gate(ctx_for(world)) is None
+
+    settled = await DeduplicationStage().run(ctx_for(world))
+
+    assert settled.counts["selected"] == 1
+    live = await world.resolution.store.active_entities()
+    assert live[0].last_checked_version == live[0].revision
     assert await DeduplicationStage().gate(ctx_for(world)) == (
         "no entity changed since its last check"
     )

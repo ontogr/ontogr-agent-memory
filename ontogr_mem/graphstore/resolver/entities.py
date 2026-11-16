@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from typing import Any
+from uuid import uuid4
 
 from ontogr_mem.data_models.entities import (
     Alias,
@@ -14,6 +15,7 @@ from ontogr_mem.data_models.timestamps import OPEN_MICROS
 from ontogr_mem.graphstore.cypher import TenantScope
 from ontogr_mem.graphstore.executor import QuerySpec
 from ontogr_mem.graphstore.protocol import ScopedRunner
+from ontogr_mem.graphstore.reserved import LOCK
 from ontogr_mem.graphstore.resolver.rows import (
     alias_row,
     entity_row,
@@ -23,6 +25,7 @@ from ontogr_mem.graphstore.resolver.rows import (
 from ontogr_mem.graphstore.resolver.selection import deduplication_entities
 from ontogr_mem.resolution.blocking import BlockingRow
 from ontogr_mem.resolution.errors import (
+    ConcurrentEntityWriteError,
     EntityHasFactsError,
     EpisodeAlreadyResolvedError,
     NotFoundError,
@@ -36,6 +39,24 @@ ALIAS = "Alias"
 MENTION = "Mention"
 VERDICT = "EntityVerdict"
 MERGE = "MergeRecord"
+
+
+def _alias_rows_by_owner(aliases: Sequence[Alias]) -> dict[str, list[dict[str, Any]]]:
+    """Group unique alias rows by owner and reject conflicting duplicate IDs."""
+    rows_by_id: dict[str, dict[str, Any]] = {}
+    for alias in aliases:
+        row = alias_row(alias)
+        existing = rows_by_id.get(row["id"])
+        if existing is not None and existing != row:
+            raise ValueError(f"conflicting alias rows for {row['id']!r}")
+        rows_by_id[row["id"]] = row
+
+    by_owner: dict[str, list[dict[str, Any]]] = {}
+    for row in rows_by_id.values():
+        by_owner.setdefault(row["entity_id"], []).append(row)
+    for owner_rows in by_owner.values():
+        owner_rows.sort(key=lambda row: row["id"])
+    return by_owner
 
 
 class ResolverEntities:
@@ -218,38 +239,285 @@ class ResolverEntities:
     async def write_entity_batch(
         self, entities: Sequence[Entity], aliases: Sequence[Alias]
     ) -> list[Entity]:
-        """Write entities and aliases and stamp each entity with a new revision."""
-        revision = await self.next_revision() if entities else None
-        stored = [
-            entity.model_copy(update={"revision": revision}) for entity in entities
-        ]
-        if stored:
-            await self._runner.run(
+        """Write entities and aliases, advancing affected entity revisions."""
+        if not entities and not aliases:
+            return []
+
+        entities_by_id = {entity.entity_id: entity for entity in entities}
+        aliases_by_owner = _alias_rows_by_owner(aliases)
+        entity_ids = sorted(set(entities_by_id) | set(aliases_by_owner))
+
+        for _ in range(3):
+            snapshots = await self._runner.run(
                 QuerySpec(
-                    f"UNWIND $rows AS item MERGE (e:{ENTITY} "
-                    f"{self._scope.pattern('id: item.id')}) "
-                    f"SET e += item.props{self._scope.stamp_clause('e')}",
-                    {"rows": [entity_row(e) for e in stored]},
+                    "UNWIND $ids AS id "
+                    f"MATCH (e:{ENTITY} {self._scope.pattern('id: id')}) "
+                    "RETURN e.id AS id, e.json AS value, e.revision AS revision, "
+                    "e.last_checked_version AS checkpoint",
+                    {"ids": entity_ids},
+                    read_only=True,
                     idempotent=True,
-                    tag="resolver_entities_write",
+                    tag="resolver_entity_write_snapshot",
                 )
             )
-        if aliases:
-            await self._runner.run(
-                QuerySpec(
-                    "UNWIND $rows AS item "
-                    f"MATCH (e:{ENTITY} {self._scope.pattern('id: item.entity_id')}) "
-                    f"MERGE (a:{ALIAS} {self._scope.pattern('id: item.id')}) "
-                    f"SET a += item.props{self._scope.stamp_clause('a')} "
-                    "WITH a, e "
-                    f"MERGE (a)-[r:ALIAS_OF {self._scope.edge()}]->(e)"
-                    f" {self._scope.stamp_assignment('r')}",
-                    {"rows": [alias_row(a) for a in aliases]},
-                    idempotent=True,
-                    tag="resolver_aliases_write",
+            current: dict[str, tuple[Entity, str, int, int]] = {}
+            for row in snapshots.rows:
+                value = row["value"]
+                revision = int(row["revision"] or 0)
+                checkpoint = int(row["checkpoint"] or 0)
+                entity = Entity.model_validate_json(value).model_copy(
+                    update={
+                        "revision": revision,
+                        "last_checked_version": checkpoint,
+                    }
                 )
+                current[row["id"]] = (entity, value, revision, checkpoint)
+
+            missing_alias_owners = (
+                set(aliases_by_owner) - set(current) - set(entities_by_id)
             )
-        return [e.model_copy(deep=True) for e in stored]
+            if missing_alias_owners:
+                raise NotFoundError(f"entity {sorted(missing_alias_owners)[0]!r}")
+
+            revision = await self.next_revision()
+            write_rows: list[dict[str, Any]] = []
+            stored: dict[str, Entity] = {}
+            for entity_id in entity_ids:
+                snapshot = current.get(entity_id)
+                incoming = entities_by_id.get(entity_id)
+                entity = snapshot[0] if incoming is None and snapshot else incoming
+                if entity is None:
+                    raise NotFoundError(f"entity {entity_id!r}")
+                checkpoint = max(
+                    entity.last_checked_version,
+                    snapshot[3] if snapshot else 0,
+                )
+                stamped = entity.model_copy(
+                    update={
+                        "revision": revision,
+                        "last_checked_version": checkpoint,
+                    }
+                )
+                stored[entity_id] = stamped
+                row = entity_row(stamped)
+                row.update(
+                    {
+                        "expected_json": snapshot[1] if snapshot else None,
+                        "expected_revision": snapshot[2] if snapshot else None,
+                        "expected_checkpoint": snapshot[3] if snapshot else None,
+                        "aliases": aliases_by_owner.get(entity_id, []),
+                    }
+                )
+                write_rows.append(row)
+
+            if await self._write_entity_rows(write_rows, strict_snapshot=True):
+                return [
+                    stored[entity.entity_id].model_copy(deep=True)
+                    for entity in entities
+                ]
+
+        raise ConcurrentEntityWriteError(
+            "entity rows changed during three write attempts"
+        )
+
+    async def delete_aliases(self, entity: Entity, alias_ids: Sequence[str]) -> Entity:
+        """Delete aliases and advance their owner's revision atomically."""
+        if not alias_ids:
+            return entity.model_copy(deep=True)
+
+        snapshots = await self._runner.run(
+            QuerySpec(
+                "UNWIND $ids AS id "
+                f"MATCH (e:{ENTITY} {self._scope.pattern('id: id')}) "
+                "RETURN e.id AS id, e.json AS value, e.revision AS revision, "
+                "e.last_checked_version AS checkpoint",
+                {"ids": [entity.entity_id]},
+                read_only=True,
+                idempotent=True,
+                tag="resolver_entity_write_snapshot",
+            )
+        )
+        if not snapshots.rows:
+            raise NotFoundError(f"entity {entity.entity_id!r}")
+
+        snapshot = snapshots.rows[0]
+        revision = int(snapshot["revision"] or 0)
+        checkpoint = int(snapshot["checkpoint"] or 0)
+        if revision != entity.revision or checkpoint != entity.last_checked_version:
+            raise ConcurrentEntityWriteError(
+                "entity changed before its aliases could be deleted"
+            )
+
+        current = Entity.model_validate_json(snapshot["value"]).model_copy(
+            update={"revision": revision, "last_checked_version": checkpoint}
+        )
+        next_revision = await self.next_revision()
+        stamped = current.model_copy(update={"revision": next_revision})
+        row = entity_row(stamped)
+        row.update(
+            {
+                "expected_json": snapshot["value"],
+                "expected_revision": revision,
+                "expected_checkpoint": checkpoint,
+                "aliases": [
+                    {"id": alias_id, "entity_id": entity.entity_id, "remove": True}
+                    for alias_id in sorted(set(alias_ids))
+                ],
+            }
+        )
+        if not await self._write_entity_rows([row], strict_snapshot=True):
+            raise ConcurrentEntityWriteError(
+                "entity changed before its aliases could be deleted"
+            )
+        return stamped.model_copy(deep=True)
+
+    async def _write_entity_rows(
+        self,
+        rows: Sequence[dict[str, Any]],
+        *,
+        strict_snapshot: bool,
+        allow_alias_moves: bool = False,
+    ) -> bool:
+        """Apply entity and alias rows only when every owner is safe to write."""
+        aliases = [alias for row in rows for alias in row["aliases"]]
+        counter_pattern = self._scope.pattern("id: 'revision'")
+        cypher = (
+            "WITH 1 AS seed "
+            "FOREACH (_ IN CASE WHEN size($aliases) > 0 THEN [1] ELSE [] END | "
+            f"MERGE (guard:{COUNTER} {counter_pattern}) "
+            "ON CREATE SET guard.value = 0 "
+            f"SET guard.{LOCK} = $writer REMOVE guard.{LOCK}) "
+            "WITH seed "
+            "UNWIND CASE WHEN size($aliases) = 0 "
+            "THEN [null] ELSE $aliases END AS alias_item "
+            f"OPTIONAL MATCH (existing_alias:{ALIAS} "
+            f"{self._scope.pattern('id: alias_item.id')}) "
+            f"OPTIONAL MATCH (existing_alias)-[:ALIAS_OF {self._scope.edge()}]->"
+            f"(old_owner:{ENTITY} {self._scope.pattern()}) "
+            "WITH alias_item, existing_alias, collect(old_owner.id) "
+            "AS old_owner_ids "
+            "WITH collect({item: alias_item, node: existing_alias, "
+            "old_owner_ids: old_owner_ids}) AS alias_checks "
+            "WITH alias_checks, coalesce(all(alias IN alias_checks "
+            "WHERE alias.item IS NULL OR "
+            "(alias.item.entity_id IN [row IN $rows | row.id] AND "
+            "(alias.node IS NULL OR "
+            "(alias.node.entity_id IN [row IN $rows | row.id] AND "
+            "all(owner_id IN alias.old_owner_ids "
+            "WHERE owner_id IN [row IN $rows | row.id]) AND "
+            "($allow_alias_moves OR "
+            "(alias.node.entity_id = alias.item.entity_id AND "
+            "all(owner_id IN alias.old_owner_ids "
+            "WHERE owner_id = alias.item.entity_id))))))), false) "
+            "AS aliases_match "
+            "WITH alias_checks, aliases_match, "
+            "coalesce(all(alias IN alias_checks WHERE alias.item IS NULL OR "
+            "(alias.node IS NOT NULL AND "
+            "alias.node.entity_id = alias.item.entity_id AND "
+            "size(alias.old_owner_ids) > 0 AND "
+            "all(owner_id IN alias.old_owner_ids "
+            "WHERE owner_id = alias.item.entity_id))), false) "
+            "AS aliases_already_moved "
+            "UNWIND $rows AS item WITH aliases_match, aliases_already_moved, item "
+            "ORDER BY item.id "
+            f"MERGE (e:{ENTITY} "
+            f"{self._scope.pattern('id: item.id')}) "
+            f"ON CREATE SET e.{LOCK} = $writer "
+            f"WITH aliases_match, aliases_already_moved, e, item, "
+            f"e.{LOCK} AS previous_lock ORDER BY e.id "
+            "WITH aliases_match, aliases_already_moved, e, item, previous_lock, "
+            "coalesce(previous_lock = $writer, false) AS created "
+            f"FOREACH (_ IN CASE WHEN created THEN [] ELSE [1] END | "
+            f"SET e.{LOCK} = $writer) "
+            "WITH aliases_match, aliases_already_moved, "
+            "collect({node: e, item: item, created: created, "
+            "previous_lock: CASE WHEN created THEN null ELSE previous_lock END, "
+            "eligible: coalesce(CASE WHEN created THEN item.expected_json IS NULL "
+            "WHEN $strict_snapshot THEN e.json = item.expected_json "
+            "AND coalesce(e.revision, 0) = item.expected_revision "
+            "AND item.props.revision > coalesce(e.revision, 0) "
+            "AND coalesce(e.last_checked_version, 0) = item.expected_checkpoint "
+            "ELSE (coalesce(e.revision, 0) < item.props.revision OR "
+            "(coalesce(e.revision, 0) = item.props.revision AND "
+            "(NOT $allow_alias_moves OR aliases_already_moved))) "
+            "AND coalesce(e.last_checked_version, 0) "
+            "<= item.props.last_checked_version END, false)}) AS owners "
+            "WITH owners, aliases_match, aliases_already_moved, "
+            "size(owners) = size($rows) "
+            "AND all(owner IN owners WHERE owner.eligible = true) AS applied "
+            "WITH owners, applied AND aliases_match AS applied "
+            "FOREACH (owner IN owners | "
+            "FOREACH (e IN CASE WHEN applied THEN [owner.node] ELSE [] END | "
+            f"SET e += owner.item.props, e.{LOCK} = owner.previous_lock "
+            ") "
+            "FOREACH (e IN CASE WHEN NOT applied AND owner.created "
+            "THEN [owner.node] ELSE [] END | DETACH DELETE e) "
+            "FOREACH (e IN CASE WHEN NOT applied AND NOT owner.created "
+            "THEN [owner.node] ELSE [] END | "
+            f"SET e.{LOCK} = owner.previous_lock)) "
+            "WITH applied "
+            "UNWIND CASE WHEN size($aliases) = 0 "
+            "THEN [null] ELSE $aliases END AS alias_item "
+            f"OPTIONAL MATCH (owner:{ENTITY} "
+            f"{self._scope.pattern('id: alias_item.entity_id')}) "
+            f"OPTIONAL MATCH (existing_alias:{ALIAS} "
+            f"{self._scope.pattern('id: alias_item.id')}) "
+            "FOREACH (a IN CASE WHEN applied AND existing_alias IS NOT NULL "
+            "AND ($allow_alias_moves OR coalesce(alias_item.remove, false)) "
+            "THEN [existing_alias] ELSE [] END | DETACH DELETE a) "
+            "FOREACH (_ IN CASE WHEN applied AND alias_item IS NOT NULL "
+            "AND owner IS NOT NULL AND NOT coalesce(alias_item.remove, false) "
+            "THEN [1] ELSE [] END | "
+            f"MERGE (a:{ALIAS} {self._scope.pattern('id: alias_item.id')}) "
+            f"SET a += alias_item.props{self._scope.stamp_clause('a')} "
+            f"MERGE (a)-[r:ALIAS_OF {self._scope.edge()}]->(owner)"
+            f" {self._scope.stamp_assignment('r')}) "
+            "RETURN applied AS applied"
+        )
+        result = await self._runner.run(
+            QuerySpec(
+                cypher,
+                {
+                    "rows": list(rows),
+                    "aliases": aliases,
+                    "strict_snapshot": strict_snapshot,
+                    "allow_alias_moves": allow_alias_moves,
+                    "writer": uuid4().hex,
+                },
+                idempotent=False,
+                tag="resolver_entities_write",
+            )
+        )
+        return bool(result.scalar("applied", False))
+
+    async def write_intent_rows(
+        self, entities: Sequence[Entity], aliases: Sequence[Alias]
+    ) -> None:
+        """Replay stamped merge rows with their aliases in one graph write."""
+        entities_by_id = {entity.entity_id: entity for entity in entities}
+        aliases_by_owner = _alias_rows_by_owner(aliases)
+        for alias in aliases:
+            if alias.entity_id not in entities_by_id:
+                raise ValueError("merge intent is missing an alias owner row")
+
+        rows = []
+        for entity_id in sorted(entities_by_id):
+            row = entity_row(entities_by_id[entity_id])
+            row.update(
+                {
+                    "expected_json": "must_exist",
+                    "expected_revision": None,
+                    "expected_checkpoint": None,
+                    "aliases": aliases_by_owner.get(entity_id, []),
+                }
+            )
+            rows.append(row)
+        if not await self._write_entity_rows(
+            rows, strict_snapshot=False, allow_alias_moves=True
+        ):
+            raise ConcurrentEntityWriteError(
+                "merge intent is older than an entity revision or checkpoint"
+            )
 
     async def write_mentions(
         self, episode_id: str, mentions: Sequence[Mention]
@@ -327,7 +595,7 @@ class ResolverEntities:
         )
 
     async def list_for_deduplication(
-        self, after_revision: int, provisional: bool, sweep_limit: int
+        self, *, provisional: bool = False, sweep_limit: int = 0
     ) -> list[Entity]:
         """Return the active entities a deduplication run should consider."""
         rows = await self._runner.run(
@@ -342,9 +610,48 @@ class ResolverEntities:
         )
         return deduplication_entities(
             (Entity.model_validate_json(r["value"]) for r in rows.rows),
-            after_revision,
-            provisional,
-            sweep_limit,
+            provisional=provisional,
+            sweep_limit=sweep_limit,
+        )
+
+    async def mark_deduplication_checked(self, entities: Sequence[Entity]) -> None:
+        """Advance active rows that still match the selected snapshots."""
+        if not entities:
+            return
+        rows = [
+            {
+                "id": entity.entity_id,
+                "revision": entity.revision,
+                "snapshot_json": entity.model_dump_json(),
+                "checked_json": entity.model_copy(
+                    update={"last_checked_version": entity.revision}
+                ).model_dump_json(),
+            }
+            for entity in sorted(entities, key=lambda entity: entity.entity_id)
+        ]
+        await self._runner.run(
+            QuerySpec(
+                f"UNWIND $rows AS item MATCH (e:{ENTITY} "
+                f"{self._scope.pattern('id: item.id')}) "
+                f"WITH e, item, e.{LOCK} AS previous_lock "
+                f"SET e.{LOCK} = $writer "
+                "WITH e, item, previous_lock, "
+                "(e.json = item.snapshot_json "
+                "AND e.status = $active_status "
+                "AND e.revision = item.revision "
+                "AND e.last_checked_version <= item.revision) AS eligible "
+                f"SET e.{LOCK} = previous_lock "
+                "WITH e, item WHERE eligible "
+                "SET e.json = item.checked_json, "
+                "e.last_checked_version = item.revision",
+                {
+                    "rows": rows,
+                    "writer": uuid4().hex,
+                    "active_status": EntityStatus.ACTIVE.value,
+                },
+                idempotent=True,
+                tag="resolver_dedup_checkpoint",
+            )
         )
 
     async def remove_episode_mentions(self, episode_id: str) -> list[str]:
@@ -439,11 +746,18 @@ class ResolverEntities:
 
     async def set_entity_status(self, entity_id: str, status: EntityStatus) -> None:
         """Set the status without bumping the revision or changing `updated_at`."""
-        entity = await self.get_one(entity_id)
-        if entity is None:
-            raise NotFoundError(f"entity {entity_id!r}")
-        updated = entity.model_copy(update={"status": status})
-        await self.write_entities([updated])
+        for attempt in range(3):
+            entity = await self.get_one(entity_id)
+            if entity is None:
+                raise NotFoundError(f"entity {entity_id!r}")
+            updated = entity.model_copy(update={"status": status})
+            try:
+                await self.write_entities([updated])
+            except ConcurrentEntityWriteError:
+                if attempt == 2:
+                    raise
+            else:
+                return
 
     async def delete_entity(self, entity_id: str) -> None:
         """Delete an entity with its aliases, mentions and tombstone edges."""
@@ -560,16 +874,24 @@ class ResolverEntities:
         """Write entity rows without allocating a revision."""
         if not entities:
             return
-        await self._runner.run(
-            QuerySpec(
-                f"UNWIND $rows AS item MERGE (e:{ENTITY} "
-                f"{self._scope.pattern('id: item.id')}) "
-                f"SET e += item.props{self._scope.stamp_clause('e')}",
-                {"rows": [entity_row(e) for e in entities]},
-                idempotent=True,
-                tag="resolver_entities_write",
+        entities_by_id = {item.entity_id: item for item in entities}
+        rows = []
+        for entity_id in sorted(entities_by_id):
+            entity = entities_by_id[entity_id]
+            row = entity_row(entity)
+            row.update(
+                {
+                    "expected_json": None,
+                    "expected_revision": None,
+                    "expected_checkpoint": None,
+                    "aliases": [],
+                }
             )
-        )
+            rows.append(row)
+        if not await self._write_entity_rows(rows, strict_snapshot=False):
+            raise ConcurrentEntityWriteError(
+                "entity revision or checkpoint advanced before the write"
+            )
 
     async def _recount(self, entity_ids: set[str]) -> None:
         if not entity_ids:
@@ -587,15 +909,22 @@ class ResolverEntities:
             )
         )
         counts = {r["id"]: int(r["n"]) for r in rows.rows}
-        entities = await self.get_entities(sorted(entity_ids))
-        await self.write_entities(
-            [
-                entity.model_copy(
-                    update={"mention_count": counts.get(entity.entity_id, 0)}
+        for attempt in range(3):
+            entities = await self.get_entities(sorted(entity_ids))
+            try:
+                await self.write_entities(
+                    [
+                        entity.model_copy(
+                            update={"mention_count": counts.get(entity.entity_id, 0)}
+                        )
+                        for entity in entities
+                    ]
                 )
-                for entity in entities
-            ]
-        )
+            except ConcurrentEntityWriteError:
+                if attempt == 2:
+                    raise
+            else:
+                return
 
     async def get_one(self, entity_id: str) -> Entity | None:
         """Return one entity, or None if its id is absent."""

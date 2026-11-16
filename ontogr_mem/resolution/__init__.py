@@ -2,6 +2,7 @@
 
 from ontogr_mem.resolution.config import Budget, ResolverSettings
 from ontogr_mem.resolution.errors import (
+    ConcurrentEntityWriteError,
     EntityHasFactsError,
     EpisodeAlreadyResolvedError,
     MergeRefusedError,
@@ -17,6 +18,7 @@ from ontogr_mem.resolution.resolver_store import MergePlan, ResolverStore, Unmer
 
 __all__ = [
     "Budget",
+    "ConcurrentEntityWriteError",
     "Decision",
     "EntityHasFactsError",
     "EntityResolver",
