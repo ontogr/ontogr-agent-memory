@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from ontogr_mem.data_models.entities import (
     Alias,
+    Entity,
     EntityStatus,
     Mention,
     MergeRecord,
@@ -26,7 +27,7 @@ from ontogr_mem.graphstore.resolver.rows import (
     merge_row,
     verdict_row,
 )
-from ontogr_mem.resolution.errors import MergeRefusedError
+from ontogr_mem.resolution.errors import ConcurrentEntityWriteError, MergeRefusedError
 from ontogr_mem.resolution.resolver_store import (
     MergePlan,
     MergeRows,
@@ -43,6 +44,7 @@ ALIAS = "Alias"
 MENTION = "Mention"
 VERDICT = "EntityVerdict"
 MERGE = "MergeRecord"
+COUNTER = "ResolverCounter"
 
 
 log = logging.getLogger(__name__)
@@ -83,24 +85,36 @@ class ResolverMerges:
         Raises:
             MergeRefusedError: If either entity is no longer active, or the
                 merge was already applied.
+            ConcurrentEntityWriteError: If an entity changed after planning.
         """
         async with self._resolve_lock:
             record = plan.record.model_copy(
                 update={"seq": await self._entities.next_revision()}
             )
-            rows = _stamp_entity_revisions(MergeRows.from_merge_plan(plan), record.seq)
+            expected_rows = MergeRows.from_merge_plan(plan)
+            rows = _stamp_entity_revisions(expected_rows, record.seq)
             applied = record.model_copy(
                 update={
                     "snapshot": snapshot_with_intent(record.snapshot, rows),
                 }
             )
-            result = await self._apply_merge_atomically(applied, rows)
+            result = await self._apply_merge_atomically(
+                applied,
+                rows,
+                expected_entity_rows=(
+                    expected_rows.survivor,
+                    expected_rows.absorbed,
+                    *expected_rows.redirected,
+                ),
+            )
             if not result.rows:
                 if await self.merge_record(record.merge_id) is not None:
                     raise MergeRefusedError("already_applied", record.merge_id)
                 await self._require_active(plan.survivor.entity_id)
                 await self._require_active(plan.absorbed.entity_id)
-                raise MergeRefusedError("rows_missing", record.merge_id)
+                raise ConcurrentEntityWriteError(
+                    "merge plan lost an entity revision or checkpoint race"
+                )
             return applied.model_copy(deep=True)
 
     async def apply_unmerge(self, plan: UnmergePlan) -> MergeRecord:
@@ -108,21 +122,28 @@ class ResolverMerges:
 
         Raises:
             MergeRefusedError: If the merge record is missing or is not applied.
+            ConcurrentEntityWriteError: If an entity changed after planning.
         """
         async with self._resolve_lock:
             record = plan.record.model_copy(
                 update={"seq": await self._entities.next_revision()}
             )
-            rows = _stamp_entity_revisions(
-                MergeRows.from_unmerge_plan(plan), record.seq
-            )
+            expected_rows = MergeRows.from_unmerge_plan(plan)
+            rows = _stamp_entity_revisions(expected_rows, record.seq)
             reverted = record.model_copy(
                 update={
                     "snapshot": snapshot_with_intent(record.snapshot, rows),
                 }
             )
             result = await self._apply_merge_atomically(
-                reverted, rows, expected_record_state=MergeState.APPLIED
+                reverted,
+                rows,
+                expected_entity_rows=(
+                    expected_rows.survivor,
+                    expected_rows.absorbed,
+                    *expected_rows.redirected,
+                ),
+                expected_record_state=MergeState.APPLIED,
             )
             if not result.rows:
                 current = await self.merge_record(record.merge_id)
@@ -130,7 +151,14 @@ class ResolverMerges:
                     raise MergeRefusedError("missing", record.merge_id)
                 if current.state is not MergeState.APPLIED:
                     raise MergeRefusedError("not_applied", record.merge_id)
-                raise MergeRefusedError("rows_missing", record.merge_id)
+                current_entities = await self._entities.get_entities(
+                    [plan.record.survivor_id, plan.record.absorbed_id]
+                )
+                if len(current_entities) < 2:
+                    raise MergeRefusedError("rows_missing", record.merge_id)
+                raise ConcurrentEntityWriteError(
+                    "unmerge plan lost an entity revision or checkpoint race"
+                )
             return reverted.model_copy(deep=True)
 
     async def _apply_merge_atomically(
@@ -138,6 +166,7 @@ class ResolverMerges:
         record: MergeRecord,
         rows: MergeRows,
         *,
+        expected_entity_rows: Sequence[Entity],
         expected_record_state: MergeState | None = None,
     ) -> Rows:
         """Write a merge's graph rows and final record in one statement."""
@@ -154,6 +183,21 @@ class ResolverMerges:
                 *(alias.entity_id for alias in rows.aliases),
             }
         )
+        expected_by_id = {entity.entity_id: entity for entity in expected_entity_rows}
+        entity_rows = []
+        for entity in sorted(
+            (rows.survivor, rows.absorbed, *rows.redirected),
+            key=lambda item: item.entity_id,
+        ):
+            expected = expected_by_id[entity.entity_id]
+            row = entity_row(entity)
+            row.update(
+                {
+                    "expected_revision": expected.revision,
+                    "expected_checkpoint": expected.last_checked_version,
+                }
+            )
+            entity_rows.append(row)
         params: dict[str, Any] = {
             "survivor_id": rows.survivor.entity_id,
             "absorbed_id": rows.absorbed.entity_id,
@@ -163,11 +207,9 @@ class ResolverMerges:
                 if expected_record_state is None
                 else EntityStatus.MERGED.value
             ),
-            "entity_rows": [
-                entity_row(entity)
-                for entity in (rows.survivor, rows.absorbed, *rows.redirected)
-            ],
+            "entity_rows": entity_rows,
             "entity_ids": entity_ids,
+            "locked_entity_ids": [row["id"] for row in entity_rows],
             "mention_rows": mention_rows,
             "mention_ids": [row["id"] for row in mention_rows],
             "alias_rows": alias_rows,
@@ -178,24 +220,42 @@ class ResolverMerges:
             "owner": uuid4().hex,
             "writer": uuid4().hex,
         }
+        counter_pattern = self._scope.pattern("id: 'revision'")
         lines = [
-            f"MATCH (survivor:{ENTITY} {self._scope.pattern('id: $survivor_id')})",
-            f"MATCH (absorbed:{ENTITY} {self._scope.pattern('id: $absorbed_id')})",
+            "WITH 1 AS seed",
+            "FOREACH (_ IN CASE WHEN size($alias_rows) > 0 "
+            "THEN [1] ELSE [] END | "
+            f"MERGE (guard:{COUNTER} {counter_pattern}) "
+            "ON CREATE SET guard.value = 0 "
+            f"SET guard.{LOCK} = $writer REMOVE guard.{LOCK})",
+            "WITH seed",
+            "UNWIND $entity_rows AS item",
+            f"MATCH (e:{ENTITY} {self._scope.pattern('id: item.id')})",
+            f"WITH e, item, e.{LOCK} AS previous_lock ORDER BY e.id",
+            f"SET e.{LOCK} = $writer",
+            "WITH collect({node: e, item: item, previous_lock: previous_lock}) "
+            "AS locked_entities",
+            "WITH locked_entities, "
+            "all(row IN locked_entities WHERE "
+            "coalesce(row.node.revision, 0) = row.item.expected_revision "
+            "AND coalesce(row.node.last_checked_version, 0) "
+            "= row.item.expected_checkpoint) "
+            "AND size(locked_entities) = size($entity_rows) "
+            "AS revisions_current",
+            "WITH locked_entities, revisions_current, "
+            "head([row IN locked_entities WHERE "
+            "row.node.id = $survivor_id | row.node]) AS survivor, "
+            "head([row IN locked_entities WHERE "
+            "row.node.id = $absorbed_id | row.node]) AS absorbed",
+            "FOREACH (row IN locked_entities | "
+            "FOREACH (node IN [row.node] | "
+            f"SET node.{LOCK} = row.previous_lock))",
+            "WITH survivor, absorbed, revisions_current WHERE revisions_current",
             "WITH survivor, absorbed, "
-            "CASE WHEN survivor.id < absorbed.id THEN survivor ELSE absorbed END "
-            "AS first, "
-            "CASE WHEN survivor.id < absorbed.id THEN absorbed ELSE survivor END "
-            "AS second",
-            f"WITH survivor, absorbed, first, second, first.{LOCK} AS first_lock, "
-            f"second.{LOCK} AS second_lock",
-            f"SET first.{LOCK} = $writer",
-            f"SET second.{LOCK} = $writer",
-            "WITH survivor, absorbed, first, second, first_lock, second_lock, "
             "(survivor.status = $survivor_status "
             "AND absorbed.status = $absorbed_status "
             "AND (absorbed.merged_into = $survivor_id "
             "OR $absorbed_status = 'active')) AS eligible",
-            f"SET first.{LOCK} = first_lock, second.{LOCK} = second_lock",
             "WITH survivor, absorbed, eligible WHERE eligible",
             f"OPTIONAL MATCH (target_entity:{ENTITY} "
             f"{self._scope.pattern()}) "
@@ -207,10 +267,19 @@ class ResolverMerges:
             f"{self._scope.pattern()}) WHERE mention.id IN $mention_ids",
             "WITH survivor, absorbed, collect(DISTINCT mention) AS mentions "
             "WHERE size(mentions) = size($mention_ids)",
-            f"OPTIONAL MATCH (alias:{ALIAS} "
-            f"{self._scope.pattern()}) WHERE alias.id IN $alias_ids",
-            "WITH survivor, absorbed, collect(DISTINCT alias) AS aliases "
-            "WHERE size(aliases) = size($alias_ids)",
+            f"OPTIONAL MATCH (alias:{ALIAS} {self._scope.pattern()}) "
+            "WHERE alias.id IN $alias_ids "
+            f"OPTIONAL MATCH (alias)-[:ALIAS_OF {self._scope.edge()}]->"
+            f"(alias_owner:{ENTITY} {self._scope.pattern()})",
+            "WITH survivor, absorbed, alias, "
+            "collect(DISTINCT alias_owner.id) AS owner_ids",
+            "WITH survivor, absorbed, collect({id: alias.id, "
+            "scalar_owner: alias.entity_id, owner_ids: owner_ids}) AS alias_checks "
+            "WHERE size([item IN alias_checks WHERE item.id IS NOT NULL]) "
+            "= size($alias_ids) AND all(item IN alias_checks "
+            "WHERE item.id IS NULL OR (item.scalar_owner IN $locked_entity_ids "
+            "AND size(item.owner_ids) > 0 AND all(owner_id IN item.owner_ids "
+            "WHERE owner_id IN $locked_entity_ids)))",
         ]
 
         if expected_record_state is None:
@@ -342,7 +411,13 @@ class ResolverMerges:
                 "merge %s keeps no rows and cannot be finished", record.merge_id
             )
             return None
-        await self._apply_rows(rows)
+        try:
+            await self._apply_rows(rows)
+        except ConcurrentEntityWriteError:
+            log.warning(
+                "merge %s has newer entity rows and stays applying", record.merge_id
+            )
+            return None
         if not await self._rows_moved(rows):
             log.warning(
                 "merge %s did not move its rows and stays applying", record.merge_id
@@ -385,18 +460,14 @@ class ResolverMerges:
 
     async def _apply_rows(self, rows: MergeRows) -> None:
         """Write the rows of one merge or unmerge."""
-        await self._entities.write_entities(
-            [rows.survivor, rows.absorbed, *rows.redirected]
+        await self._entities.write_intent_rows(
+            [rows.survivor, rows.absorbed, *rows.redirected], rows.aliases
         )
-        await self._move_rows(rows.mentions, rows.aliases)
+        await self._move_mentions(rows.mentions)
         await self._entities.write_verdicts(rows.verdicts)
 
-    async def _move_rows(
-        self,
-        mentions: Sequence[Mention],
-        aliases: Sequence[Alias],
-    ) -> None:
-        """Move mentions and aliases to the entity they now belong to."""
+    async def _move_mentions(self, mentions: Sequence[Mention]) -> None:
+        """Move mentions to the entity they now belong to."""
         if mentions:
             await self._runner.run(
                 QuerySpec(
@@ -411,22 +482,6 @@ class ResolverMerges:
                     {"rows": [mention_row(m) for m in mentions]},
                     idempotent=True,
                     tag="resolver_mention_move",
-                )
-            )
-        if aliases:
-            await self._runner.run(
-                QuerySpec(
-                    "UNWIND $rows AS item "
-                    f"MATCH (a:{ALIAS} {self._scope.pattern('id: item.id')}) "
-                    f"MATCH (e:{ENTITY} {self._scope.pattern('id: item.entity_id')}) "
-                    f"OPTIONAL MATCH (a)-[old:ALIAS_OF {self._scope.edge()}]->"
-                    f"(:{ENTITY} {self._scope.pattern()}) DELETE old "
-                    "SET a += item.props WITH a, e "
-                    f"MERGE (a)-[r:ALIAS_OF {self._scope.edge()}]->(e)"
-                    f" {self._scope.stamp_assignment('r')}",
-                    {"rows": [alias_row(a) for a in aliases]},
-                    idempotent=True,
-                    tag="resolver_alias_move",
                 )
             )
 

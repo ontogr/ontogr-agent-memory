@@ -15,7 +15,6 @@ from ontogr_mem.graphstore.resolver.text import (
 from ontogr_mem.resolution.errors import ResolutionError
 
 
-ALIAS = "Alias"
 MERGE = "MergeRecord"
 
 
@@ -81,18 +80,17 @@ class ResolverPrune:
             removed_ids = [
                 row.alias_id for row in aliases if row.alias_id not in retained_ids
             ]
+            content_changed = updated != entity
             if removed_ids:
-                await self._runner.run(
-                    QuerySpec(
-                        f"UNWIND $ids AS id MATCH (a:{ALIAS} "
-                        f"{self._scope.pattern('id: id')}) DETACH DELETE a",
-                        {"ids": removed_ids},
-                        idempotent=True,
-                        tag="resolver_aliases_prune",
-                    )
-                )
+                entity = await self._entities.delete_aliases(entity, removed_ids)
 
-            if updated != entity:
+            if content_changed:
+                updated = updated.model_copy(
+                    update={
+                        "revision": entity.revision,
+                        "last_checked_version": entity.last_checked_version,
+                    }
+                )
                 await self._entities.save_entity(updated)
             if new_aliases:
                 await self._entities.write_entity_batch([], new_aliases)

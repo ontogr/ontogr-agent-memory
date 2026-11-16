@@ -11,6 +11,10 @@ class NotFoundError(ResolutionError):
     """An entity or merge record does not exist in the tenant."""
 
 
+class ConcurrentEntityWriteError(ResolutionError):
+    """An entity write conflicts with its stored owner, revision, or checkpoint."""
+
+
 class MergeRefusedError(ResolutionError):
     """A merge broke a rule such as family, uri or status.
 

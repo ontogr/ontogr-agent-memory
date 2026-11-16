@@ -15,7 +15,10 @@ from ontogr_mem.data_models.entities import (
 )
 from ontogr_mem.resolution.blocking import BlockIndex
 from ontogr_mem.resolution.config import Budget
-from ontogr_mem.resolution.errors import MergeRefusedError
+from ontogr_mem.resolution.errors import (
+    ConcurrentEntityWriteError,
+    MergeRefusedError,
+)
 from ontogr_mem.resolution.keys import (
     differ_only_in_digits,
     entity_text,
@@ -456,7 +459,7 @@ async def _apply(resolver: "EntityResolver", report: ConsolidationReport) -> Non
                     actor="resolver",
                     reason="deduplication: verified same",
                 )
-            except MergeRefusedError:
+            except (MergeRefusedError, ConcurrentEntityWriteError):
                 report.pairs_rejected += 1
                 continue
             report.merges.append(record.merge_id)

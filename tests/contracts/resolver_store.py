@@ -23,6 +23,7 @@ from ontogr_mem.data_models.entities import (
     ResolutionState,
 )
 from ontogr_mem.resolution.errors import (
+    ConcurrentEntityWriteError,
     EntityHasFactsError,
     EpisodeAlreadyResolvedError,
     MergeRefusedError,
@@ -237,7 +238,7 @@ class ResolverStoreContract:
         """Merge history protects both its survivor and absorbed entity."""
         survivor = entity("e1")
         absorbed = entity("e2")
-        await store.write_entity_batch([survivor, absorbed], [])
+        survivor, absorbed = await store.write_entity_batch([survivor, absorbed], [])
         await store.apply_merge(merge_plan("merge-1", survivor, absorbed))
 
         assert await store.has_merge_record("e1")
@@ -297,7 +298,7 @@ class ResolverStoreContract:
             alias("e1", "Zürich").model_copy(update={"loose_key": "zurich"}),
             alias("e2", "Zurich"),
         ]
-        await store.write_entity_batch([first, second], names)
+        first, second = await store.write_entity_batch([first, second], names)
         assert [e.entity_id for e in await store.entities_by_loose_key("zurich")] == [
             "e1",
             "e2",
@@ -442,7 +443,7 @@ class ResolverStoreContract:
         """A merge record still needs its survivor, so it blocks deletion."""
         survivor = entity("e1")
         absorbed = entity("e2")
-        await store.write_entity_batch([survivor, absorbed], [])
+        survivor, absorbed = await store.write_entity_batch([survivor, absorbed], [])
         await store.write_mentions("ep1", [mention("e1", "m1")])
         await store.apply_merge(merge_plan("mg1", survivor, absorbed))
         await store.remove_episode_mentions("ep1")
@@ -529,14 +530,17 @@ class ResolverStoreContract:
             absorbed_alias.alias_id,
         }
 
+        merged_survivor, merged_absorbed, merged_redirected = await store.get_entities(
+            ["e1", "e2", "e3"]
+        )
         restored = await store.apply_unmerge(
             unmerge_plan(
                 record,
-                plan.survivor,
-                plan.absorbed,
+                merged_survivor,
+                merged_absorbed,
                 mentions=(absorbed_mention,),
                 aliases=(absorbed_alias,),
-                redirected=(redirected,),
+                redirected=(merged_redirected,),
             )
         )
 
@@ -576,7 +580,7 @@ class ResolverStoreContract:
         """The stored record holds the rows, so an interrupted merge can finish."""
         survivor = entity("e1", name="Acme")
         absorbed = entity("e2", name="Acme Inc")
-        await store.write_entity_batch([survivor, absorbed], [])
+        survivor, absorbed = await store.write_entity_batch([survivor, absorbed], [])
         plan = merge_plan("mg1", survivor, absorbed)
 
         record = await store.apply_merge(plan)
@@ -597,7 +601,7 @@ class ResolverStoreContract:
         """Only the first of twenty callers merges; the rest are refused."""
         survivor = entity("e1")
         absorbed = entity("e2")
-        await store.write_entity_batch([survivor, absorbed], [])
+        survivor, absorbed = await store.write_entity_batch([survivor, absorbed], [])
         plans = [merge_plan("mg1", survivor, absorbed) for _ in range(20)]
 
         results = await asyncio.gather(
@@ -606,7 +610,7 @@ class ResolverStoreContract:
 
         assert sum(not isinstance(r, Exception) for r in results) == 1
         assert all(
-            isinstance(r, MergeRefusedError)
+            isinstance(r, (MergeRefusedError, ConcurrentEntityWriteError))
             for r in results
             if isinstance(r, Exception)
         )
@@ -619,7 +623,7 @@ class ResolverStoreContract:
         """Only one merge id can apply to a pair of active entities."""
         survivor = entity("e1")
         absorbed = entity("e2")
-        await store.write_entity_batch([survivor, absorbed], [])
+        survivor, absorbed = await store.write_entity_batch([survivor, absorbed], [])
         plans = [merge_plan(f"mg{index}", survivor, absorbed) for index in range(2)]
 
         results = await asyncio.gather(
@@ -629,7 +633,9 @@ class ResolverStoreContract:
         applied = [result for result in results if not isinstance(result, Exception)]
         refused = [result for result in results if isinstance(result, Exception)]
         assert len(applied) == 1
-        assert len(refused) == 1 and isinstance(refused[0], MergeRefusedError)
+        assert len(refused) == 1 and isinstance(
+            refused[0], (MergeRefusedError, ConcurrentEntityWriteError)
+        )
         records = [await store.merge_record(plan.record.merge_id) for plan in plans]
         assert sum(record is not None for record in records) == 1
         merged = (await store.get_entities(["e2"]))[0]
@@ -744,6 +750,30 @@ class ResolverStoreContract:
             "Current Name",
         }
 
+    async def test_pruning_an_alias_invalidates_its_checked_owner(
+        self, store: ResolverStore
+    ):
+        """Removing an unsupported alias makes its checked owner dirty."""
+        stored_entity = entity("e1", name="Old Name").model_copy(
+            update={
+                "summary": "",
+                "descriptions": [],
+                "attributes": {},
+                "summary_stale": True,
+            }
+        )
+        await store.write_entity_batch(
+            [stored_entity],
+            [alias("e1", "Old Name"), alias("e1", "Unsupported Name")],
+        )
+        await store.mark_deduplication_checked(await store.get_entities(["e1"]))
+
+        await store.prune_entity_text(["e1"])
+
+        updated = (await store.get_entities(["e1"]))[0]
+        assert updated.revision > updated.last_checked_version
+        assert [row.text for row in await store.aliases_of("e1")] == ["Old Name"]
+
     async def test_prune_entity_text_replaces_unmentioned_canonical_name(
         self, store: ResolverStore
     ):
@@ -794,7 +824,7 @@ class ResolverStoreContract:
         """Pruning a surviving entity does not alter its merge history."""
         survivor = entity("e1", name="Survivor")
         absorbed = entity("e2", name="Absorbed")
-        await store.write_entity_batch([survivor, absorbed], [])
+        survivor, absorbed = await store.write_entity_batch([survivor, absorbed], [])
         record = await store.apply_merge(merge_plan("merge-1", survivor, absorbed))
         surviving_mention = mention(
             "e1", "remaining", episode_id="ep2", mention_id="m-remaining"

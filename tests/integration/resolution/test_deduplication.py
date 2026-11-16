@@ -10,6 +10,7 @@ from ontogr_mem.graphstore import QuerySpec, Rows
 from ontogr_mem.graphstore.protocol import ScopedRunner
 from ontogr_mem.graphstore.resolver_store import GraphResolverStore
 from ontogr_mem.resolution.config import Budget
+from ontogr_mem.resolution.errors import ConcurrentEntityWriteError
 from ontogr_mem.resolution.keys import entity_text
 from ontogr_mem.resolution.resolver_store import ResolverStore
 from ontogr_mem.vectorstore import (
@@ -187,6 +188,293 @@ async def test_checkpoint_cannot_split_entity_and_alias_batch(
 
     assert report.selected == 1
     assert report.pairs_merged == 1
+
+
+async def test_alias_writes_retry_out_of_order_revision_allocations(
+    graph_backend: GraphBackend,
+):
+    """A late alias writer retries instead of lowering its owner's revision."""
+    handle = await graph_backend.open_tenant()
+    runner = graph_backend.store.runner(handle)
+    base_store = GraphResolverStore(runner, tenant_keyed=graph_backend.tenant_keyed)
+    owner = entity("e1", name="Amber Maritime").model_copy(
+        update={"attributes": {"revision": 1}}
+    )
+    await base_store.write_entity_batch([owner], [])
+    await base_store.mark_deduplication_checked(await base_store.get_entities(["e1"]))
+
+    class PauseFirstRevisionRunner:
+        """Hold one alias writer after it reserves a revision."""
+
+        def __init__(self, wrapped: ScopedRunner) -> None:
+            self._wrapped = wrapped
+            self.scope = wrapped.scope
+            self.revision_reserved = asyncio.Event()
+            self.resume = asyncio.Event()
+            self._paused = False
+
+        async def run(self, spec: QuerySpec) -> Rows:
+            result = await self._wrapped.run(spec)
+            if spec.tag == "resolver_revision" and not self._paused:
+                self._paused = True
+                self.revision_reserved.set()
+                await self.resume.wait()
+            return result
+
+    pausing_runner = PauseFirstRevisionRunner(runner)
+    delayed_store = GraphResolverStore(
+        pausing_runner, tenant_keyed=graph_backend.tenant_keyed
+    )
+    delayed_write = asyncio.create_task(
+        delayed_store.write_entity_batch([], [alias("e1", "Delayed alias")])
+    )
+
+    try:
+        await asyncio.wait_for(pausing_runner.revision_reserved.wait(), timeout=5)
+        await base_store.write_entity_batch([], [alias("e1", "Concurrent alias")])
+        await base_store.mark_deduplication_checked(
+            await base_store.get_entities(["e1"])
+        )
+    finally:
+        pausing_runner.resume.set()
+        await delayed_write
+
+    stored_owner = (await base_store.get_entities(["e1"]))[0]
+    stored_aliases = await base_store.aliases_of("e1")
+
+    assert stored_owner.revision > stored_owner.last_checked_version
+    assert stored_owner.attributes["revision"] == 1
+    assert {stored_alias.text for stored_alias in stored_aliases} == {
+        "Concurrent alias",
+        "Delayed alias",
+    }
+
+
+async def test_concurrent_alias_id_claims_keep_one_checked_owner_dirty(
+    graph_backend: GraphBackend,
+):
+    """Only one owner can claim an alias ID in concurrent batches."""
+    handle = await graph_backend.open_tenant()
+    runner = graph_backend.store.runner(handle)
+    base_store = GraphResolverStore(runner, tenant_keyed=graph_backend.tenant_keyed)
+    await base_store.write_entity_batch(
+        [entity("e1", name="Amber Maritime"), entity("e2", name="Violet Quantum")],
+        [],
+    )
+    await base_store.mark_deduplication_checked(
+        await base_store.get_entities(["e1", "e2"])
+    )
+
+    class AliasWriteBarrier:
+        """Start two alias batches together after they reserve revisions."""
+
+        def __init__(self) -> None:
+            self.arrived = 0
+            self.both_arrived = asyncio.Event()
+
+    barrier = AliasWriteBarrier()
+
+    class BarrierRunner:
+        """Wait until both alias batches reach their graph write."""
+
+        def __init__(self, wrapped: ScopedRunner) -> None:
+            self._wrapped = wrapped
+            self.scope = wrapped.scope
+
+        async def run(self, spec: QuerySpec) -> Rows:
+            if spec.tag == "resolver_entities_write":
+                barrier.arrived += 1
+                if barrier.arrived == 2:
+                    barrier.both_arrived.set()
+                await barrier.both_arrived.wait()
+            return await self._wrapped.run(spec)
+
+    first_store = GraphResolverStore(
+        BarrierRunner(runner), tenant_keyed=graph_backend.tenant_keyed
+    )
+    second_store = GraphResolverStore(
+        BarrierRunner(runner), tenant_keyed=graph_backend.tenant_keyed
+    )
+    results = await asyncio.gather(
+        first_store.write_entity_batch([], [alias("e1", "Shared alias", "same-id")]),
+        second_store.write_entity_batch([], [alias("e2", "Shared alias", "same-id")]),
+        return_exceptions=True,
+    )
+
+    assert (
+        sum(isinstance(result, ConcurrentEntityWriteError) for result in results) == 1
+    )
+    stored_aliases = await base_store.all_aliases()
+    assert len(stored_aliases) == 1
+    owner_id = stored_aliases[0].entity_id
+    assert owner_id in {"e1", "e2"}
+    assert [row.alias_id for row in await base_store.aliases_of(owner_id)] == [
+        "same-id"
+    ]
+    assert await base_store.aliases_of("e2" if owner_id == "e1" else "e1") == []
+    owners = {row.entity_id: row for row in await base_store.get_entities(["e1", "e2"])}
+    assert owners[owner_id].revision > owners[owner_id].last_checked_version
+    other_id = "e2" if owner_id == "e1" else "e1"
+    assert owners[other_id].revision == owners[other_id].last_checked_version
+
+
+async def test_stale_mixed_batch_leaves_no_entity_or_alias_rows(
+    graph_backend: GraphBackend,
+):
+    """A conflicted batch removes its placeholders before retrying."""
+    handle = await graph_backend.open_tenant()
+    runner = graph_backend.store.runner(handle)
+    base_store = GraphResolverStore(runner, tenant_keyed=graph_backend.tenant_keyed)
+    await base_store.write_entity_batch([entity("e1", name="Amber Maritime")], [])
+
+    class PauseConflictRunner:
+        """Pause one batch before its snapshot-conflict retry."""
+
+        def __init__(self, wrapped: ScopedRunner) -> None:
+            self._wrapped = wrapped
+            self.scope = wrapped.scope
+            self.revision_reserved = asyncio.Event()
+            self.conflict_found = asyncio.Event()
+            self.resume_write = asyncio.Event()
+            self.resume_retry = asyncio.Event()
+            self._paused_revision = False
+
+        async def run(self, spec: QuerySpec) -> Rows:
+            result = await self._wrapped.run(spec)
+            if spec.tag == "resolver_revision" and not self._paused_revision:
+                self._paused_revision = True
+                self.revision_reserved.set()
+                await self.resume_write.wait()
+            elif spec.tag == "resolver_entities_write" and not result.scalar(
+                "applied", True
+            ):
+                self.conflict_found.set()
+                await self.resume_retry.wait()
+            return result
+
+    pausing_runner = PauseConflictRunner(runner)
+    delayed_store = GraphResolverStore(
+        pausing_runner, tenant_keyed=graph_backend.tenant_keyed
+    )
+    delayed_batch = asyncio.create_task(
+        delayed_store.write_entity_batch(
+            [entity("e2", name="Violet Quantum")],
+            [alias("e1", "Delayed alias")],
+        )
+    )
+
+    try:
+        await asyncio.wait_for(pausing_runner.revision_reserved.wait(), timeout=5)
+        current = (await base_store.get_entities(["e1"]))[0]
+        await base_store.save_entity(
+            current.model_copy(update={"description": "Concurrent update"})
+        )
+        pausing_runner.resume_write.set()
+        await asyncio.wait_for(pausing_runner.conflict_found.wait(), timeout=5)
+
+        assert await base_store.get_entities(["e2"]) == []
+        assert await base_store.aliases_of("e1") == []
+    finally:
+        pausing_runner.resume_write.set()
+        pausing_runner.resume_retry.set()
+        await delayed_batch
+
+    assert (await base_store.get_entities(["e2"]))[0].canonical_name == "Violet Quantum"
+    assert [item.text for item in await base_store.aliases_of("e1")] == [
+        "Delayed alias"
+    ]
+
+
+async def test_stale_no_bump_save_cannot_restore_a_checkpoint(
+    graph_backend: GraphBackend,
+):
+    """A stale full-row save cannot roll back alias invalidation or checking."""
+    store = (await graph_backend.open_stores()).resolver_store
+    await store.write_entity_batch([entity("e1", name="Amber Maritime")], [])
+    stale = (await store.get_entities(["e1"]))[0]
+    await store.mark_deduplication_checked([stale])
+    stale = (await store.get_entities(["e1"]))[0]
+
+    await store.write_entity_batch([], [alias("e1", "New owner alias")])
+    invalidated = (await store.get_entities(["e1"]))[0]
+    await store.mark_deduplication_checked([invalidated])
+    checked = (await store.get_entities(["e1"]))[0]
+
+    with pytest.raises(ConcurrentEntityWriteError):
+        await store.save_entity(stale, bump_revision=False)
+
+    after_stale_save = (await store.get_entities(["e1"]))[0]
+    assert after_stale_save.revision == checked.revision
+    assert after_stale_save.last_checked_version == checked.last_checked_version
+
+
+async def test_alias_batch_cannot_reassign_an_existing_alias(
+    graph_backend: GraphBackend,
+):
+    """An alias batch cannot change ownership without checking both owners."""
+    store = (await graph_backend.open_stores()).resolver_store
+    await store.write_entity_batch(
+        [
+            entity("e1", name="Amber Maritime"),
+            entity("e2", name="Violet Quantum"),
+        ],
+        [alias("e1", "Shared display name")],
+    )
+    selected = await store.get_entities(["e1", "e2"])
+    await store.mark_deduplication_checked(selected)
+    checked = {item.entity_id: item for item in await store.get_entities(["e1", "e2"])}
+    moved = alias("e1", "Shared display name").model_copy(update={"entity_id": "e3"})
+
+    with pytest.raises(ConcurrentEntityWriteError):
+        await store.write_entity_batch([entity("e3", name="Silver Systems")], [moved])
+
+    current = {item.entity_id: item for item in await store.get_entities(["e1", "e2"])}
+    assert current["e1"].revision == checked["e1"].revision
+    assert current["e1"].last_checked_version == checked["e1"].last_checked_version
+    assert [item.entity_id for item in await store.aliases_of("e1")] == ["e1"]
+    assert await store.get_entities(["e3"]) == []
+    assert await store.aliases_of("e3") == []
+
+
+async def test_alias_batch_rejects_a_conflicting_relationship_owner(
+    graph_backend: GraphBackend,
+):
+    """An alias link to another owner blocks an ordinary alias write."""
+    handle = await graph_backend.open_tenant()
+    runner = graph_backend.store.runner(handle)
+    store = (await graph_backend.stores_for(handle.tenant)).resolver_store
+    await store.write_entity_batch(
+        [
+            entity("e1", name="Amber Maritime"),
+            entity("e2", name="Violet Quantum"),
+        ],
+        [alias("e1", "Shared display name")],
+    )
+    selected = await store.get_entities(["e1", "e2"])
+    await store.mark_deduplication_checked(selected)
+    checked = (await store.get_entities(["e1"]))[0]
+    scope = runner.scope
+    await runner.run(
+        QuerySpec(
+            f"MATCH (a:Alias {scope.pattern('id: $alias_id')}) "
+            f"OPTIONAL MATCH (a)-[old:ALIAS_OF {scope.edge()}]->"
+            f"(:Entity {scope.pattern()}) DELETE old "
+            f"WITH a MATCH (e:Entity {scope.pattern('id: $entity_id')}) "
+            f"MERGE (a)-[r:ALIAS_OF {scope.edge()}]->(e) "
+            f"{scope.stamp_assignment('r')}",
+            {"alias_id": "a-e1-Shared display name", "entity_id": "e2"},
+            idempotent=True,
+            tag="test_alias_owner_mismatch",
+        )
+    )
+
+    with pytest.raises(ConcurrentEntityWriteError):
+        await store.write_entity_batch([], [alias("e1", "Shared display name")])
+
+    current = (await store.get_entities(["e1"]))[0]
+    assert current.revision == checked.revision
+    assert current.last_checked_version == checked.last_checked_version
+    assert [item.entity_id for item in await store.aliases_of("e1")] == ["e1"]
 
 
 async def test_completed_default_pass_does_not_reselect_checked_entities(

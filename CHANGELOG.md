@@ -13,7 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   candidate discovery or verification leaves them eligible, and merge or
   unmerge writes advance revisions so changed active entities are reconsidered.
 - Alias batches advance each owner revision in the same graph query as the alias
-  write, so a checkpoint cannot hide a concurrent alias change.
+  write, so a checkpoint cannot hide a concurrent alias change. Batches reject
+  ownership changes; merge and unmerge move aliases with revision checks.
+- Stale merge plans are rejected, and merge recovery keeps an intent applying
+  when newer entity revisions or checkpoints prevent a safe replay.
+- Graph entity writes expose `ConcurrentEntityWriteError` when a stale full-row
+  update would replace a newer revision or checkpoint.
 - `ResolverStore.list_for_deduplication` no longer accepts `after_revision`.
   Custom adapters must use the keyword-only `provisional` and `sweep_limit`
   arguments and implement snapshot-conditional `mark_deduplication_checked`.

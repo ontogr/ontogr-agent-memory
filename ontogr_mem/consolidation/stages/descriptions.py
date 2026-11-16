@@ -18,6 +18,7 @@ from ontogr_mem.data_models.extraction import Usage
 from ontogr_mem.llm.failures import ModelFailure
 from ontogr_mem.llm.roles import ModelRole
 from ontogr_mem.llm.run import run_agent
+from ontogr_mem.resolution.errors import ConcurrentEntityWriteError
 
 
 STAGE = "descriptions"
@@ -123,7 +124,11 @@ class DescriptionsStage:
             )
             # Written without a new revision: identity did not change, so dedup
             # must not pick this entity up again.
-            await resolution.save_entity(fresh, bump_revision=False)
+            try:
+                await resolution.save_entity(fresh, bump_revision=False)
+            except ConcurrentEntityWriteError as exc:
+                errors.append(f"{entity.entity_id}: {exc}")
+                return "failed"
             return how
 
         outcomes = Counter(await asyncio.gather(*(rewrite(e) for e in stale)))

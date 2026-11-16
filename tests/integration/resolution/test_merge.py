@@ -2,6 +2,7 @@
 
 import pytest
 
+from ontogr_mem.data_models import SystemClock
 from ontogr_mem.data_models.entities import (
     EntityStatus,
     MergeRecord,
@@ -12,15 +13,21 @@ from ontogr_mem.data_models.entities import (
 from ontogr_mem.graphstore import QuerySpec
 from ontogr_mem.graphstore.cypher import TenantScope
 from ontogr_mem.resolution.errors import (
+    ConcurrentEntityWriteError,
     EntityHasFactsError,
     SnapshotPurgedError,
     UnmergeBlockedError,
 )
 from ontogr_mem.resolution.ids import entity_id
-from ontogr_mem.resolution.merge import pick_survivor, survivor_order
+from ontogr_mem.resolution.merge import (
+    build_merge_plan,
+    pick_survivor,
+    survivor_order,
+)
+from ontogr_mem.resolution.policy import ResolutionPolicy, TypeRelations
 from ontogr_mem.resolution.resolver_store import ResolverStore, merge_intent
 from ontogr_mem.vectorstore import VectorKind
-from tests.contracts.resolver_store import entity
+from tests.contracts.resolver_store import alias, entity
 from tests.integration.resolution.resolver_helpers import ex, make
 from tests.support.graph_backend import GraphBackend
 
@@ -85,6 +92,232 @@ async def test_merge_after_a_user_unmerge_is_refused(graph_backend: GraphBackend
 
     with pytest.raises(UnmergeBlockedError):
         await resolver.merge(survivor_id, absorbed_id, actor="resolver")
+
+
+async def test_merge_rejects_aliases_added_after_planning(
+    graph_backend: GraphBackend,
+):
+    """A stale merge plan cannot drop an alias added after it was built."""
+    store = (await graph_backend.open_stores()).resolver_store
+    await store.write_entity_batch(
+        [
+            entity("e1", name="Acme"),
+            entity("e2", name="Acme Incorporated"),
+        ],
+        [alias("e2", "Original name")],
+    )
+    plan = await build_merge_plan(
+        store,
+        ResolutionPolicy(),
+        TypeRelations(),
+        "e1",
+        "e2",
+        clock=SystemClock(),
+        actor="user",
+        reason="",
+    )
+    await store.write_entity_batch([], [alias("e2", "Name added later")])
+
+    with pytest.raises(ConcurrentEntityWriteError):
+        await store.apply_merge(plan)
+
+    absorbed = (await store.get_entities(["e2"]))[0]
+    assert absorbed.status is EntityStatus.ACTIVE
+    assert {item.text for item in await store.aliases_of("e2")} == {
+        "Original name",
+        "Name added later",
+    }
+    assert await store.aliases_of("e1") == []
+
+
+@pytest.mark.parametrize("checkpoint_before_recovery", [True, False])
+async def test_recovery_does_not_hide_an_alias_move_from_a_checkpoint(
+    graph_backend: GraphBackend,
+    checkpoint_before_recovery: bool,
+):
+    """A survivor checkpoint does not hide an alias move from recovery."""
+    handle = await graph_backend.open_tenant()
+    stores = await graph_backend.stores_for(handle.tenant)
+    store = stores.resolver_store
+    runner = graph_backend.store.runner(handle)
+    scope = TenantScope.from_mode(graph_backend.tenant_keyed)
+    await store.write_entity_batch(
+        [
+            entity("e1", name="Acme"),
+            entity("e2", name="Acme Incorporated"),
+        ],
+        [alias("e2", "Original name")],
+    )
+    resolver = await make(store)
+    record = await resolver.merge("e1", "e2", actor="user")
+    applying = record.model_copy(update={"state": MergeState.APPLYING})
+    await runner.run(
+        QuerySpec(
+            f"MATCH (m:MergeRecord {scope.pattern('id: $id')}) "
+            "SET m.state = $state, m.json = $json",
+            {
+                "id": record.merge_id,
+                "state": MergeState.APPLYING.value,
+                "json": applying.model_dump_json(),
+            },
+            idempotent=True,
+            tag="test_merge_interruption",
+        )
+    )
+    moved_alias = (await store.aliases_of("e1"))[0]
+    restored_alias = moved_alias.model_copy(update={"entity_id": "e2"})
+    await runner.run(
+        QuerySpec(
+            f"MATCH (a:Alias {scope.pattern('id: $alias_id')}) "
+            f"OPTIONAL MATCH (a)-[old:ALIAS_OF {scope.edge()}]->"
+            f"(:Entity {scope.pattern()}) DELETE old "
+            f"WITH a MATCH (e:Entity {scope.pattern('id: $entity_id')}) "
+            "SET a += $props "
+            f"MERGE (a)-[r:ALIAS_OF {scope.edge()}]->(e) "
+            f"{scope.stamp_assignment('r')}",
+            {
+                "alias_id": restored_alias.alias_id,
+                "entity_id": restored_alias.entity_id,
+                "props": {
+                    "entity_id": restored_alias.entity_id,
+                    "strict_key": restored_alias.strict_key,
+                    "loose_key": restored_alias.loose_key,
+                    "text": restored_alias.text,
+                    "json": restored_alias.model_dump_json(),
+                },
+            },
+            idempotent=True,
+            tag="test_restore_alias_owner",
+        )
+    )
+    survivor = (await store.get_entities(["e1"]))[0]
+    if checkpoint_before_recovery:
+        await store.mark_deduplication_checked([survivor])
+        assert await store.recover_merges() == []
+    else:
+        assert await store.recover_merges() == []
+        await store.mark_deduplication_checked([survivor])
+
+    current_record = await store.merge_record(record.merge_id)
+    assert current_record is not None
+    assert current_record.state is MergeState.APPLYING
+    assert [item.text for item in await store.aliases_of("e2")] == ["Original name"]
+    assert await store.aliases_of("e1") == []
+
+
+async def test_recovery_keeps_aliases_a_finished_merge_already_moved(
+    graph_backend: GraphBackend,
+):
+    """Recovery finishes an applying merge whose aliases already moved."""
+    handle = await graph_backend.open_tenant()
+    stores = await graph_backend.stores_for(handle.tenant)
+    store = stores.resolver_store
+    runner = graph_backend.store.runner(handle)
+    scope = TenantScope.from_mode(graph_backend.tenant_keyed)
+    await store.write_entity_batch(
+        [
+            entity("e1", name="Acme"),
+            entity("e2", name="Acme Incorporated"),
+        ],
+        [alias("e2", "Original name")],
+    )
+    resolver = await make(store)
+    record = await resolver.merge("e1", "e2", actor="user")
+    applying = record.model_copy(update={"state": MergeState.APPLYING})
+    await runner.run(
+        QuerySpec(
+            f"MATCH (m:MergeRecord {scope.pattern('id: $id')}) "
+            "SET m.state = $state, m.json = $json",
+            {
+                "id": record.merge_id,
+                "state": MergeState.APPLYING.value,
+                "json": applying.model_dump_json(),
+            },
+            idempotent=True,
+            tag="test_merge_interruption",
+        )
+    )
+
+    finished = await store.recover_merges()
+
+    assert [item.merge_id for item in finished] == [record.merge_id]
+    current_record = await store.merge_record(record.merge_id)
+    assert current_record is not None
+    assert current_record.state is MergeState.APPLIED
+    assert [item.text for item in await store.aliases_of("e1")] == ["Original name"]
+    assert await store.aliases_of("e2") == []
+
+
+async def test_recovery_refuses_aliases_owned_outside_the_intent(
+    graph_backend: GraphBackend,
+):
+    """Recovery leaves a third owner's alias and checkpoint unchanged."""
+    handle = await graph_backend.open_tenant()
+    stores = await graph_backend.stores_for(handle.tenant)
+    store = stores.resolver_store
+    runner = graph_backend.store.runner(handle)
+    scope = TenantScope.from_mode(graph_backend.tenant_keyed)
+    await store.write_entity_batch(
+        [
+            entity("e1", name="Acme"),
+            entity("e2", name="Acme Incorporated"),
+            entity("e3", name="Other owner"),
+        ],
+        [alias("e2", "Original name")],
+    )
+    resolver = await make(store)
+    record = await resolver.merge("e1", "e2", actor="user")
+    applying = record.model_copy(update={"state": MergeState.APPLYING})
+    await runner.run(
+        QuerySpec(
+            f"MATCH (m:MergeRecord {scope.pattern('id: $id')}) "
+            "SET m.state = $state, m.json = $json",
+            {
+                "id": record.merge_id,
+                "state": MergeState.APPLYING.value,
+                "json": applying.model_dump_json(),
+            },
+            idempotent=True,
+            tag="test_merge_interruption",
+        )
+    )
+    moved_alias = (await store.aliases_of("e1"))[0]
+    third_owner_alias = moved_alias.model_copy(update={"entity_id": "e3"})
+    await runner.run(
+        QuerySpec(
+            f"MATCH (a:Alias {scope.pattern('id: $alias_id')}) "
+            f"OPTIONAL MATCH (a)-[old:ALIAS_OF {scope.edge()}]->"
+            f"(:Entity {scope.pattern()}) DELETE old "
+            f"WITH a MATCH (e:Entity {scope.pattern('id: $entity_id')}) "
+            "SET a += $props "
+            f"MERGE (a)-[r:ALIAS_OF {scope.edge()}]->(e) "
+            f"{scope.stamp_assignment('r')}",
+            {
+                "alias_id": third_owner_alias.alias_id,
+                "entity_id": third_owner_alias.entity_id,
+                "props": {
+                    "entity_id": third_owner_alias.entity_id,
+                    "strict_key": third_owner_alias.strict_key,
+                    "loose_key": third_owner_alias.loose_key,
+                    "text": third_owner_alias.text,
+                    "json": third_owner_alias.model_dump_json(),
+                },
+            },
+            idempotent=True,
+            tag="test_restore_alias_owner",
+        )
+    )
+    third_owner = (await store.get_entities(["e3"]))[0]
+    await store.mark_deduplication_checked([third_owner])
+    checked_third_owner = (await store.get_entities(["e3"]))[0]
+
+    assert await store.recover_merges() == []
+
+    current_record = await store.merge_record(record.merge_id)
+    assert current_record is not None
+    assert current_record.state is MergeState.APPLYING
+    assert (await store.get_entities(["e3"]))[0] == checked_third_owner
+    assert [item.entity_id for item in await store.aliases_of("e3")] == ["e3"]
 
 
 async def test_recovery_replays_stamped_merge_and_unmerge_intents(

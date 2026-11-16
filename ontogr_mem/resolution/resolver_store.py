@@ -19,6 +19,7 @@ from ontogr_mem.data_models.entities import (
     MergeState,
 )
 from ontogr_mem.resolution.blocking import BlockingRow
+from ontogr_mem.resolution.errors import ConcurrentEntityWriteError
 
 
 INTENT_KEY = "intent"
@@ -354,7 +355,13 @@ class ResolverStore(Protocol):
         """Write entities and aliases and stamp each entity with a new revision.
 
         Writing the same entities again stores the same fields under a new
-        revision. Returns the stored entities in input order.
+        revision. Existing aliases stay with their current entity; use a merge
+        or unmerge to change alias ownership. Returns stored entities in input
+        order.
+
+        Raises:
+            ConcurrentEntityWriteError: If rows change during all retries or an
+                alias belongs to another entity.
         """
         ...
 
@@ -436,14 +443,15 @@ class ResolverStore(Protocol):
         refused when either entity is no longer active, and when the merge
         was already applied. Each entity row in the saved intent, including
         redirected rows, gets that sequence as its revision. Checkpoint values
-        remain unchanged. The record is created with a compare-and-swap,
-        so two processes cannot apply the same merge. Merges of one tenant
-        are serialized within one process only; two processes can still merge
-        the same pair under two different merge records.
+        remain unchanged. Entity rows are checked against their planned
+        revisions and checkpoints before the write. Alias moves and owner
+        revision changes share one graph statement. A stale recovery intent
+        stays ``APPLYING`` instead of moving aliases after a newer checkpoint.
 
         Raises:
             MergeRefusedError: If the survivor or the absorbed entity is not
                 active, or the merge was already applied.
+            ConcurrentEntityWriteError: If an entity changed after planning.
         """
         ...
 
@@ -454,10 +462,12 @@ class ResolverStore(Protocol):
         rows move back. The record is then written ``REVERTED``. The saved rows
         let `recover_merges` finish an interrupted unmerge. Each entity row in
         the intent, including redirected rows, gets the operation sequence as
-        its revision. Checkpoint values remain unchanged.
+        its revision. Checkpoint values remain unchanged. Alias moves and owner
+        revision changes share one graph statement.
 
         Raises:
             MergeRefusedError: If the merge record does not exist.
+            ConcurrentEntityWriteError: If an entity changed after planning.
         """
         ...
 
@@ -548,6 +558,10 @@ class ResolverStore(Protocol):
         """Write one entity and return the stored copy.
 
         With ``bump_revision`` the entity is stamped with a new revision.
+
+        Raises:
+            ConcurrentEntityWriteError: If the stored revision or checkpoint is
+                newer than the entity being written.
         """
         ...
 
