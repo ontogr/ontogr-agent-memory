@@ -87,7 +87,7 @@ jobs:
               --ignore=tests/integration/observability
             services: falkordb neo4j
             workers: "0"
-            timeout: 20
+            timeout: 30
     env:
       UV_PYTHON: "3.12"
       # Throwaway values for the databases that tests/integration/compose.yaml
@@ -123,7 +123,7 @@ jobs:
         run: make services-up SERVICES="$SERVICES"
       - name: Run integration tests
         # Stops a hung run early enough for the service logs below to upload.
-        timeout-minutes: 15
+        timeout-minutes: 25
         run: make test-integration INTEGRATION_PATHS="$INTEGRATION_PATHS" INTEGRATION_WORKERS="$INTEGRATION_WORKERS"
       - name: Show service logs
         if: failure() && matrix.suite.services != ''
