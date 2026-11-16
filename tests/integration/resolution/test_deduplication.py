@@ -19,7 +19,7 @@ from ontogr_mem.vectorstore import (
     PermanentEmbeddingError,
     VectorKind,
 )
-from tests.contracts.resolver_store import alias, entity
+from tests.contracts.resolver_store import alias, entity, mention
 from tests.integration.resolution.resolver_helpers import make
 from tests.support.embedder import MockEmbedder, RecordingEmbedder
 from tests.support.graph_backend import GraphBackend
@@ -406,6 +406,95 @@ async def test_stale_no_bump_save_cannot_restore_a_checkpoint(
     after_stale_save = (await store.get_entities(["e1"]))[0]
     assert after_stale_save.revision == checked.revision
     assert after_stale_save.last_checked_version == checked.last_checked_version
+
+
+async def test_pass_continues_when_a_merge_loses_a_concurrent_write(
+    graph_backend: GraphBackend,
+):
+    """A merge that loses a write race is rejected and retried by a later pass."""
+    handle = await graph_backend.open_tenant()
+    runner = graph_backend.store.runner(handle)
+    base_store = GraphResolverStore(runner, tenant_keyed=graph_backend.tenant_keyed)
+    await base_store.write_entity_batch(
+        [
+            entity("e1", name="Acme"),
+            entity("e2", name="acme").model_copy(update={"strict_key": "acme"}),
+        ],
+        [],
+    )
+
+    class LateAliasOnMergeRunner:
+        """Write a competing alias to each entity before the first merge applies."""
+
+        def __init__(self, wrapped: ScopedRunner) -> None:
+            self._wrapped = wrapped
+            self.scope = wrapped.scope
+            self._raced = False
+
+        async def run(self, spec: QuerySpec) -> Rows:
+            if spec.tag == "resolver_merge_apply" and not self._raced:
+                self._raced = True
+                await base_store.write_entity_batch([], [alias("e1", "Late alias one")])
+                await base_store.write_entity_batch([], [alias("e2", "Late alias two")])
+            return await self._wrapped.run(spec)
+
+    racing_store = GraphResolverStore(
+        LateAliasOnMergeRunner(runner), tenant_keyed=graph_backend.tenant_keyed
+    )
+    resolver = await make(racing_store)
+
+    report = await resolver.deduplicate()
+
+    assert report.pairs_merged == 0
+    assert report.pairs_rejected == 1
+    stored = await base_store.get_entities(["e1", "e2"])
+    assert all(item.status is EntityStatus.ACTIVE for item in stored)
+    assert any(item.revision > item.last_checked_version for item in stored)
+
+    second = await resolver.deduplicate()
+
+    assert second.pairs_merged == 1
+
+
+async def test_mention_recount_retries_after_a_concurrent_alias_write(
+    graph_backend: GraphBackend,
+):
+    """A mention write keeps its count and a newer revision after a write race."""
+    handle = await graph_backend.open_tenant()
+    runner = graph_backend.store.runner(handle)
+    base_store = GraphResolverStore(runner, tenant_keyed=graph_backend.tenant_keyed)
+    await base_store.write_entity_batch([entity("e1", name="Amber Maritime")], [])
+    await base_store.mark_deduplication_checked(await base_store.get_entities(["e1"]))
+
+    class LateAliasAfterCountRunner:
+        """Write a competing alias after the mention recount reads the entity."""
+
+        def __init__(self, wrapped: ScopedRunner) -> None:
+            self._wrapped = wrapped
+            self.scope = wrapped.scope
+            self._counted = False
+            self._raced = False
+
+        async def run(self, spec: QuerySpec) -> Rows:
+            result = await self._wrapped.run(spec)
+            if spec.tag == "resolver_mentions_count":
+                self._counted = True
+            elif spec.tag == "resolver_get_entities" and self._counted:
+                if not self._raced:
+                    self._raced = True
+                    await base_store.write_entity_batch([], [alias("e1", "Late alias")])
+            return result
+
+    racing_store = GraphResolverStore(
+        LateAliasAfterCountRunner(runner), tenant_keyed=graph_backend.tenant_keyed
+    )
+
+    await racing_store.write_mentions("ep1", [mention("e1", "m1")])
+
+    stored = (await base_store.get_entities(["e1"]))[0]
+    assert stored.mention_count == 1
+    assert stored.revision > stored.last_checked_version
+    assert [item.text for item in await base_store.aliases_of("e1")] == ["Late alias"]
 
 
 async def test_alias_batch_cannot_reassign_an_existing_alias(
