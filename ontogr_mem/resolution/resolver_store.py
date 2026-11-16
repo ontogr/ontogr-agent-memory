@@ -432,11 +432,10 @@ class ResolverStore(Protocol):
     async def apply_merge(self, plan: MergePlan) -> MergeRecord:
         """Apply one merge and return the stored record.
 
-        The rows are written in order, not in one transaction. The record is
-        written ``APPLYING`` first and keeps the rows of the merge, then the
-        entities, mentions, aliases and verdicts move, then the record is
-        written ``APPLIED``. A merge that was interrupted in between is
-        finished by `recover_merges`.
+        The entity rows, mentions, aliases, verdicts and the final record are
+        written together in one statement. The record keeps the rows of the
+        operation, so `recover_merges` can finish a record that was left
+        ``APPLYING``.
 
         The record's ``seq`` is stamped from `next_revision`. The write is
         refused when either entity is no longer active, and when the merge
@@ -457,11 +456,12 @@ class ResolverStore(Protocol):
     async def apply_unmerge(self, plan: UnmergePlan) -> MergeRecord:
         """Apply one unmerge and return the stored record.
 
-        The record is written ``APPLYING`` with the unmerge rows before the
-        rows move back. The record is then written ``REVERTED``. The saved rows
-        let `recover_merges` finish an interrupted unmerge. Each entity row in
-        the intent, including redirected rows, gets the operation sequence as
-        its revision. Checkpoint values remain unchanged. Alias moves and owner
+        The entity rows, mentions, aliases, verdicts and the final record are
+        written together in one statement. The record keeps the rows of the
+        operation, so `recover_merges` can finish a record that was left
+        ``APPLYING``. Each entity row in the intent, including redirected rows,
+        gets the operation sequence as its revision. Checkpoint values remain
+        unchanged. Alias moves and owner
         revision changes share one graph statement.
 
         Raises:

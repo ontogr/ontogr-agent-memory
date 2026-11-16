@@ -1,9 +1,12 @@
 """Merge, unmerge and reset-side behavior on a live graph tenant."""
 
+from collections.abc import Sequence
+
 import pytest
 
 from ontogr_mem.data_models import SystemClock
 from ontogr_mem.data_models.entities import (
+    Entity,
     EntityStatus,
     MergeRecord,
     MergeState,
@@ -12,6 +15,7 @@ from ontogr_mem.data_models.entities import (
 )
 from ontogr_mem.graphstore import QuerySpec
 from ontogr_mem.graphstore.cypher import TenantScope
+from ontogr_mem.graphstore.resolver.rows import entity_row
 from ontogr_mem.resolution.errors import (
     ConcurrentEntityWriteError,
     EntityHasFactsError,
@@ -358,6 +362,19 @@ async def test_recovery_replays_stamped_merge_and_unmerge_intents(
             )
         )
 
+    async def restore(rows: Sequence[Entity]) -> None:
+        """Put entity rows back to the state before the interrupted write."""
+        await runner.run(
+            QuerySpec(
+                "UNWIND $rows AS item "
+                f"MATCH (e:Entity {scope.pattern('id: item.id')}) "
+                "SET e += item.props",
+                {"rows": [entity_row(item) for item in rows]},
+                idempotent=True,
+                tag="test_restore_entity_rows",
+            )
+        )
+
     merge = await resolver.merge("e1", "e2", actor="user")
     merge_rows = merge_intent(merge.snapshot)
     assert merge_rows is not None
@@ -368,6 +385,7 @@ async def test_recovery_replays_stamped_merge_and_unmerge_intents(
     ] == [item.last_checked_version for item in checked]
 
     await interrupt(merge)
+    await restore(checked)
     recovered_merge = await store.recover_merges()
     assert [(item.state, item.seq) for item in recovered_merge] == [
         (MergeState.APPLIED, merge.seq)
@@ -377,6 +395,9 @@ async def test_recovery_replays_stamped_merge_and_unmerge_intents(
     assert [item.last_checked_version for item in after_merge_recovery] == [
         item.last_checked_version for item in checked
     ]
+    merged_absorbed = after_merge_recovery[1]
+    assert merged_absorbed.status is EntityStatus.MERGED
+    assert merged_absorbed.merged_into == "e1"
 
     unmerge = await resolver.unmerge(merge.merge_id, actor="user")
     unmerge_rows = merge_intent(unmerge.snapshot)
@@ -389,6 +410,7 @@ async def test_recovery_replays_stamped_merge_and_unmerge_intents(
     ] == [item.last_checked_version for item in checked]
 
     await interrupt(unmerge)
+    await restore(after_merge_recovery)
     recovered_unmerge = await store.recover_merges()
     assert [(item.state, item.seq) for item in recovered_unmerge] == [
         (MergeState.REVERTED, unmerge.seq)
@@ -401,6 +423,9 @@ async def test_recovery_replays_stamped_merge_and_unmerge_intents(
     assert [item.last_checked_version for item in after_unmerge_recovery] == [
         item.last_checked_version for item in checked
     ]
+    unmerged_absorbed = after_unmerge_recovery[1]
+    assert unmerged_absorbed.status is EntityStatus.ACTIVE
+    assert unmerged_absorbed.merged_into is None
     verdict = await store.live_verdict("e1", "e2")
     assert verdict is not None
     assert verdict.verdict is VerdictKind.DISTINCT

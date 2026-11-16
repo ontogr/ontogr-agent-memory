@@ -459,8 +459,11 @@ async def _apply(resolver: "EntityResolver", report: ConsolidationReport) -> Non
                     actor="resolver",
                     reason="deduplication: verified same",
                 )
-            except (MergeRefusedError, ConcurrentEntityWriteError):
+            except MergeRefusedError:
                 report.pairs_rejected += 1
+                continue
+            except ConcurrentEntityWriteError:
+                report.errors += 1
                 continue
             report.merges.append(record.merge_id)
             report.pairs_merged += 1

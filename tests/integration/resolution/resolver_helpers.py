@@ -44,7 +44,8 @@ async def make(
 ) -> EntityResolver:
     """Build a resolver on the given store with a deterministic embedder."""
     vectors = VectorStore(
-        InMemoryBackend(), EmbeddingGateway(embedder or MockEmbedder())
+        InMemoryBackend(),
+        EmbeddingGateway(embedder if embedder is not None else MockEmbedder()),
     )
     await vectors.ensure_ready()
     return EntityResolver(

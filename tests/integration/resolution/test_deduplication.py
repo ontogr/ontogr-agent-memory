@@ -411,7 +411,7 @@ async def test_stale_no_bump_save_cannot_restore_a_checkpoint(
 async def test_pass_continues_when_a_merge_loses_a_concurrent_write(
     graph_backend: GraphBackend,
 ):
-    """A merge that loses a write race is rejected and retried by a later pass."""
+    """A merge that loses a write race is counted as an error and retried later."""
     handle = await graph_backend.open_tenant()
     runner = graph_backend.store.runner(handle)
     base_store = GraphResolverStore(runner, tenant_keyed=graph_backend.tenant_keyed)
@@ -446,7 +446,8 @@ async def test_pass_continues_when_a_merge_loses_a_concurrent_write(
     report = await resolver.deduplicate()
 
     assert report.pairs_merged == 0
-    assert report.pairs_rejected == 1
+    assert report.pairs_rejected == 0
+    assert report.errors == 1
     stored = await base_store.get_entities(["e1", "e2"])
     assert all(item.status is EntityStatus.ACTIVE for item in stored)
     assert any(item.revision > item.last_checked_version for item in stored)
