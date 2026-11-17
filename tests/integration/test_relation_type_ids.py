@@ -26,7 +26,7 @@ from ontogr_mem.ontology.models import (
 from ontogr_mem.ontology.ontology_store import OntologyStore
 from tests.support.clock import FixedClock
 from tests.support.graph_backend import GraphBackend
-from tests.support.ontology import base, cs
+from tests.support.ontology import base, cs, load_catalog
 
 
 def fact(
@@ -89,7 +89,7 @@ class TestRelationTypeIds:
     async def test_dense_ids_map_to_stable_ids_across_deprecation(self, world):
         """A dense id is mapped through the projection that issued it."""
         manager = world.manager()
-        await manager.load_catalog(base())
+        await load_catalog(manager, base())
         await manager.apply(cs(await manager.catalog(), AddRelation(label="uses")))
         projection = await manager.extraction_view()
         assert projection.relation_ids == (0, 1)
@@ -121,7 +121,7 @@ class TestRelationTypeIds:
     async def test_typed_fact_records_the_projection_catalog_version(self, world):
         """A typed fact names the catalog version its dense ids came from."""
         manager = world.manager()
-        await manager.load_catalog(base())
+        await load_catalog(manager, base())
         projection = await manager.extraction_view()
 
         result = await stabilize_facts(manager, [fact()], projection)

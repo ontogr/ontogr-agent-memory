@@ -5,6 +5,7 @@ import asyncio
 import os
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 from pydantic import ValidationError
 
@@ -18,6 +19,8 @@ from ontogr_mem.llm import build_models
 from ontogr_mem.llm.failures import ModelNotConfiguredError
 from ontogr_mem.llm.roles import ModelRole
 from ontogr_mem.mcp_server.settings import McpSettings
+from ontogr_mem.ontology.errors import InvalidChange
+from ontogr_mem.service.errors import InvalidArgumentError
 from ontogr_mem.vectorstore.builtin import EmbedderUnavailableError
 
 
@@ -29,7 +32,7 @@ def _tenant_id_argument(value: str) -> str:
         raise argparse.ArgumentTypeError(str(error)) from error
 
 
-async def _chat(tenant: str) -> None:
+async def _chat(tenant: str, ontology: Path | None) -> None:
     """Keep the client open until chat and its drain have finished."""
     models = build_models()
     try:
@@ -42,7 +45,9 @@ async def _chat(tenant: str) -> None:
         ):
             if not models.configured(role):
                 raise ModelNotConfiguredError(f"no model configured for {role.value}")
-        async with Memory.open(tenant=tenant, models=models) as memory:
+        async with Memory.open(
+            tenant=tenant, models=models, ontology=ontology
+        ) as memory:
             await run_chat(memory, build_default_agent(memory))
     finally:
         await models.aclose()
@@ -62,11 +67,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     chat = commands.add_parser("chat", help="chat with persistent memory")
     chat.add_argument("--tenant", default="default", type=_tenant_id_argument)
+    chat.add_argument(
+        "--ontology",
+        type=Path,
+        help="Path to an ontology file (.yaml, .yml, .json or .ttl).",
+    )
     mcp_parser = commands.add_parser("mcp", help="serve memory over MCP")
     mcp_parser.add_argument("--transport", choices=("stdio", "http"), default=None)
     mcp_parser.add_argument("--host", default=None)
     mcp_parser.add_argument("--port", type=int, default=None)
     mcp_parser.add_argument("--tenant", default=None, type=_tenant_id_argument)
+    mcp_parser.add_argument(
+        "--ontology",
+        type=Path,
+        help="Path to an ontology file (.yaml, .yml, .json or .ttl).",
+    )
     args = parser.parse_args(argv)
     os.environ["PYDANTIC_AI_NO_BANNER"] = "1"
     status = 0
@@ -75,12 +90,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             # Flags default to None so an omitted flag keeps the environment value.
             overrides = {
                 name: value
-                for name in ("transport", "host", "port", "tenant")
+                for name in ("transport", "host", "port", "tenant", "ontology")
                 if (value := getattr(args, name)) is not None
             }
             asyncio.run(run_mcp(McpSettings(**overrides)))
         else:
-            asyncio.run(_chat(args.tenant))
+            asyncio.run(_chat(args.tenant, args.ontology))
     except KeyboardInterrupt:
         status = 130
     except MissingExtraError as error:
@@ -101,6 +116,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Invalid memory settings; check the named MEMORY_* variables.",
             file=sys.stderr,
         )
+        status = 1
+    except InvalidChange as error:
+        print(f"Invalid ontology: {error}", file=sys.stderr)
+        status = 1
+    except InvalidArgumentError as error:
+        print(str(error), file=sys.stderr)
         status = 1
     except AgentMemoryError:
         print(

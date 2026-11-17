@@ -46,7 +46,9 @@ async def run_mcp(settings: McpSettings) -> None:
         and settings.api_key is None
     ):
         log.warning("MCP HTTP is binding outside loopback without an API key.")
-    async with Memory.open(tenant=settings.tenant) as memory:
+    async with Memory.open(
+        tenant=settings.tenant, ontology=settings.ontology
+    ) as memory:
         server = build_server(memory, settings=settings)
         try:
             if settings.transport == "stdio":

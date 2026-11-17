@@ -7,7 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Memory.open(ontology=...)` accepts a YAML, JSON or Turtle file path, a list of
+  Pydantic classes or an `OntologyDeclaration`. The `chat` and `mcp` commands
+  accept `--ontology`, and MCP also reads `MEMORY_MCP_ONTOLOGY`.
+- A default ontology with ten entity types and 31 relation types.
+- Relation kinds (`single`, `many`, `judged`) and entity identity attributes.
+
 ### Changed
+
+- Relations use a kind in place of the `exclusive` flag. PyYAML and RDFLib are
+  core dependencies.
 
 - Deduplication selects entities by their own revision checkpoints. Incomplete
   candidate discovery or verification leaves them eligible, and merge or
@@ -26,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entity without a newer revision.
 
 ### Removed
+
+- The `DEFAULT_CATALOG` change set and `OntologyManager.load_catalog`.
 
 - Ontology modes (`strict`, `preferred` and `open`) and the `SetModes` change.
   In text and sourced writes, a relation that the ontology does not hold is

@@ -40,6 +40,8 @@ dependencies = [
   "pydantic-ai-slim[openai,anthropic]>=2.68.0",
   "pydantic-settings>=2.0",
   "python-dotenv>=1.0",
+  "pyyaml>=6",
+  "rdflib>=7",
 ]
 
 [project.scripts]
@@ -50,10 +52,8 @@ falkordb = ["falkordb>=1.2", "redis>=5.0.1"]
 neo4j = ["neo4j>=6"]
 pgvector = ["asyncpg>=0.30"]
 postgres = ["asyncpg>=0.30"]
-rdf = ["rdflib>=7"]
 gliner = ["gliner>=0.2", "torch"]
 spacy = ["spacy>=3.7"]
-yaml = ["pyyaml>=6"]
 otel = ["opentelemetry-api>=1.30"]
 fastembed = ["fastembed>=0.9.1"]
 fastembed-gpu = ["fastembed-gpu>=0.9.1"]

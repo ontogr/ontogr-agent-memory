@@ -21,7 +21,10 @@ from ontogr_mem.ontology.models import (
     Relation,
     Rename,
     SetDescription,
-    SetExclusive,
+    SetIdentityAttributes,
+    SetParent,
+    SetRelationKind,
+    SetSymmetric,
     Status,
 )
 from ontogr_mem.ontology.names import normalize
@@ -65,6 +68,7 @@ def diff(a: Ontology, b: Ontology) -> ChangeSet:
                     label=e.label,
                     description=e.description,
                     aliases=e.aliases,
+                    identity_attributes=e.identity_attributes,
                     parent=e.parent_id,
                     origin=e.origin,
                 )
@@ -77,7 +81,7 @@ def diff(a: Ontology, b: Ontology) -> ChangeSet:
                     description=r.description,
                     aliases=r.aliases,
                     symmetric=r.symmetric,
-                    exclusive=r.exclusive,
+                    kind=r.kind,
                     patterns=[PatternSpec(src=p.src, tgt=p.tgt) for p in r.patterns],
                     origin=r.origin,
                 )
@@ -122,7 +126,7 @@ def _diff_relations(
 ) -> None:
     """Emit the ops for the relation types that changed.
 
-    A relation's patterns and its exclusive flag are covered here; a relation the
+    A relation's patterns and its kind are covered here; a relation the
     older catalog does not have is new, and its deprecated patterns and attributes
     are retired.
     """
@@ -159,7 +163,7 @@ def _diff_existing(
     """Emit ops for a type that exists in both catalogs.
 
     Covers rename (the old label becomes an alias), new aliases, a changed description,
-    and a status or merge change. A relation's patterns and exclusive flag are covered
+    and a status or merge change. A relation's patterns and kind are covered
     by ``_diff_relation``.
     """
     have = {normalize(old.label), *(normalize(x) for x in old.aliases)}
@@ -175,6 +179,15 @@ def _diff_existing(
         ops.edits.append(
             SetDescription(kind=kind, target=old.type_id, description=new.description)
         )
+    if isinstance(old, Entity) and isinstance(new, Entity):
+        if new.parent_id != old.parent_id:
+            ops.edits.append(SetParent(target=old.type_id, parent=new.parent_id))
+        if new.identity_attributes != old.identity_attributes:
+            ops.edits.append(
+                SetIdentityAttributes(
+                    target=old.type_id, names=list(new.identity_attributes)
+                )
+            )
     if (old.status, old.merged_into) != (new.status, new.merged_into):
         _status(kind, new, ops.states, created=False)
 
@@ -182,8 +195,7 @@ def _diff_existing(
 def _diff_relation(old: Relation, new: Relation, ops: _Ops) -> None:
     """Emit the ops for a relation that exists in both catalogs.
 
-    Covers new, deprecated or reactivated patterns, and a change of the exclusive
-    flag.
+    Covers new, deprecated or reactivated patterns, and changes to kind and symmetry.
     """
     old_p = {(p.src, p.tgt): p for p in old.patterns}
     for p in new.patterns:
@@ -199,8 +211,10 @@ def _diff_relation(old: Relation, new: Relation, ops: _Ops) -> None:
                 if p.status is Status.ACTIVE
                 else DeprecatePattern(relation=old.type_id, pattern=spec)
             )
-    if new.exclusive != old.exclusive:
-        ops.edits.append(SetExclusive(target=old.type_id, exclusive=new.exclusive))
+    if new.kind != old.kind:
+        ops.edits.append(SetRelationKind(target=old.type_id, kind=new.kind))
+    if new.symmetric != old.symmetric:
+        ops.edits.append(SetSymmetric(target=old.type_id, symmetric=new.symmetric))
 
 
 def _by_label_when_new(a: Ontology, b: Ontology, ops: list[Op]) -> list[Op]:
@@ -246,8 +260,19 @@ def _by_label_when_new(a: Ontology, b: Ontology, ops: list[Op]) -> list[Op]:
                     "pattern": spec(op.pattern),
                 }
             )
-        elif isinstance(op, SetExclusive):
+        elif isinstance(op, SetRelationKind | SetSymmetric):
             fixed = op.model_copy(update={"target": fix(Kind.RELATION, op.target)})
+        elif isinstance(op, SetParent):
+            fixed = op.model_copy(
+                update={
+                    "target": fix(Kind.ENTITY, op.target),
+                    "parent": None
+                    if op.parent is None
+                    else fix(Kind.ENTITY, op.parent),
+                }
+            )
+        elif isinstance(op, SetIdentityAttributes):
+            fixed = op.model_copy(update={"target": fix(Kind.ENTITY, op.target)})
         elif isinstance(op, MergeInto):
             fixed = op.model_copy(
                 update={

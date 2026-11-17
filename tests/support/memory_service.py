@@ -87,8 +87,8 @@ async def memory_service_harness(
             types={
                 "Person": TypePolicy(mode=ResolutionMode.AUTO_KEY),
                 "Organization": TypePolicy(mode=ResolutionMode.AUTO_KEY),
-                "Place": TypePolicy(mode=ResolutionMode.AUTO_KEY),
-                "Thing": TypePolicy(mode=ResolutionMode.AUTO_KEY),
+                "Location": TypePolicy(mode=ResolutionMode.AUTO_KEY),
+                "Object": TypePolicy(mode=ResolutionMode.AUTO_KEY),
             }
         ),
         resolver_settings=ResolverSettings(),

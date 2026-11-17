@@ -11,6 +11,7 @@ from ontogr_mem.data_models.clock import Clock, SystemClock
 from ontogr_mem.graphstore.protocol import GraphStore
 from ontogr_mem.llm import RoleModels, build_models
 from ontogr_mem.observability import NoOpTracer, Tracer
+from ontogr_mem.ontology.declaration import OntologyDeclaration
 from ontogr_mem.relational_store import (
     MemoryOperationStore,
     OperationStore,
@@ -92,6 +93,8 @@ async def build_service(
     limiter: CallerRateLimiter,
     max_attempts: int = 3,
     tracer: Tracer | None = None,
+    ontology: OntologyDeclaration | None = None,
+    ontology_tenant: str | None = None,
     audit_log: AuditLog | None = None,
     confirm_tokens: ConfirmTokens | None = None,
     drop_graph: Callable[[str], Awaitable[None]] | None = None,
@@ -115,6 +118,8 @@ async def build_service(
         retrieval_settings: Retrieval configuration.
         limiter: Per-principal read and write limiter.
         models: Caller-owned process-wide model pool. The caller closes it.
+        ontology: Declaration applied when a tenant opens.
+        ontology_tenant: Limit the declaration to this tenant when supplied.
         max_attempts: Maximum attempts for each queued job.
         tracer: Optional tracer for service and embedding spans. PydanticAI model
             spans use caller-owned instrumentation.
@@ -145,7 +150,13 @@ async def build_service(
             retrieval_settings=retrieval_settings,
         )
 
-    tenants = TenantRuntimeCache(runtime_factory, state, authorizer)
+    tenants = TenantRuntimeCache(
+        runtime_factory,
+        state,
+        authorizer,
+        ontology=ontology,
+        ontology_tenant=ontology_tenant,
+    )
     workflow = EraseWorkflow(
         state,
         tenants.get_or_create,
@@ -187,6 +198,8 @@ async def open_service(
     limiter: CallerRateLimiter | None = None,
     max_attempts: int = 3,
     tracer: Tracer | None = None,
+    ontology: OntologyDeclaration | None = None,
+    ontology_tenant: str | None = None,
 ) -> AsyncGenerator[ServiceRuntime, None]:
     """Open, start, and own the service resources for one process lifetime.
 
@@ -206,6 +219,8 @@ async def open_service(
         resolver_settings: Entity resolution settings.
         retrieval_settings: Retrieval settings.
         limiter: Request limiter; defaults to the standard service limits.
+        ontology: Declaration applied when a tenant opens.
+        ontology_tenant: Limit the declaration to this tenant when supplied.
         max_attempts: Maximum attempts for queued jobs.
         tracer: Optional tracer for service and embedding spans. PydanticAI model
             spans use caller-owned instrumentation.
@@ -255,6 +270,8 @@ async def open_service(
             limiter=limiter or CallerRateLimiter(),
             max_attempts=max_attempts,
             tracer=tracer,
+            ontology=ontology,
+            ontology_tenant=ontology_tenant,
             audit_log=audit_log,
             confirm_tokens=ConfirmTokens(None, selected_clock),
             drop_graph=drop_graph,

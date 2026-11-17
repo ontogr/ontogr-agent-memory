@@ -10,7 +10,7 @@ MAX_NAME_LEN = 64
 _IDENT = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 
 RESERVED_LABELS = frozenset(
-    {"entity", "unknown", "episode", "chunk", "document", "fact", "statement"}
+    {"entity", "unknown", "episode", "chunk", "fact", "statement"}
 )
 """Structural labels the stores use, in lower case.
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from ontogr_mem.ontology.apply import apply_changeset, check_catalog
+from ontogr_mem.ontology.apply import apply_changeset
 from ontogr_mem.ontology.diff import diff
 from ontogr_mem.ontology.errors import InvalidChange, VersionConflict
 from ontogr_mem.ontology.models import (
@@ -17,9 +17,13 @@ from ontogr_mem.ontology.models import (
     Ontology,
     PatternSpec,
     Reactivate,
+    RelationKind,
     Rename,
     SetDescription,
-    SetExclusive,
+    SetIdentityAttributes,
+    SetParent,
+    SetRelationKind,
+    SetSymmetric,
     Status,
 )
 from tests.support.ontology import base, cs
@@ -104,7 +108,7 @@ def test_hierarchy_cycle_and_depth_are_refused():
     broken.entity(1).parent_id = 2
 
     with pytest.raises(InvalidChange, match="cycle"):
-        check_catalog(broken)
+        apply_changeset(broken, cs(broken))
     cur = a
     for i in range(7):
         cur = apply_changeset(
@@ -205,7 +209,7 @@ def test_a_merge_pointer_to_a_type_that_is_not_there_is_refused():
     worker.merged_into = 99
 
     with pytest.raises(InvalidChange, match="bad merge pointer"):
-        check_catalog(broken)
+        apply_changeset(broken, cs(broken))
 
 
 def test_relation_by_label_matches_normalized_aliases_but_not_deprecated_types():
@@ -258,10 +262,14 @@ def test_diff_replayed_on_the_old_catalog_gives_the_new_content():
                 patterns=[PatternSpec(src="Organization", tgt="Place")],
             ),
             Rename(kind=Kind.ENTITY, target="Organization", new_label="Company"),
+            SetParent(target="Employee", parent="Organization"),
+            SetIdentityAttributes(target="Person", names=["email", "external_id"]),
             AddAlias(kind=Kind.ENTITY, target="Person", alias="Human"),
             SetDescription(
                 kind=Kind.RELATION, target="works_at", description="Employment."
             ),
+            SetSymmetric(target="works_at", symmetric=True),
+            SetRelationKind(target="works_at", kind=RelationKind.SINGLE),
             AddPattern(
                 relation="works_at", pattern=PatternSpec(src="Employee", tgt="Company")
             ),
@@ -270,6 +278,32 @@ def test_diff_replayed_on_the_old_catalog_gives_the_new_content():
     c = apply_changeset(a, diff(a, b))
     assert c.content_hash == b.content_hash
     assert diff(b, b).ops == []
+
+
+def test_parent_can_change_and_be_cleared():
+    """Change a parent and then clear it."""
+    a = base()
+    b = apply_changeset(a, cs(a, SetParent(target="Employee", parent="Organization")))
+    assert b.entity(2).parent_id == 3
+    c = apply_changeset(b, cs(b, SetParent(target="Employee", parent=None)))
+    assert c.entity(2).parent_id is None
+
+
+def test_parent_change_refuses_unknown_and_cycles():
+    """Reject Unknown and cycles in a parent change."""
+    a = base()
+    with pytest.raises(InvalidChange, match="Unknown"):
+        apply_changeset(a, cs(a, SetParent(target="Employee", parent="Unknown")))
+    with pytest.raises(InvalidChange, match="cycle"):
+        apply_changeset(a, cs(a, SetParent(target="Person", parent="Employee")))
+
+
+@pytest.mark.parametrize("names", [["bad-name"], ["Email", "email"]])
+def test_identity_attributes_must_be_legal_and_unique(names):
+    """Reject invalid identity attribute names."""
+    a = base()
+    with pytest.raises(InvalidChange):
+        apply_changeset(a, cs(a, SetIdentityAttributes(target="Person", names=names)))
 
 
 _GOLD_EDGES = {
@@ -282,32 +316,83 @@ _GOLD_EDGES = {
 }
 
 
-def _excl(cat):
-    """Excl."""
-    return {r.label: r.exclusive for r in cat.relations}
+def _relation_kinds(cat):
+    return {r.label: r.kind for r in cat.relations}
 
 
-def test_exclusive_flag_registers_diffs_and_round_trips():
-    """Exclusive flag registers diffs and round trips."""
+def test_relation_kind_registers_diffs_and_round_trips():
+    """Replay and serialize changes to a relation kind."""
     g = Ontology.genesis()
     a = apply_changeset(
         g,
-        cs(g, *(AddRelation(label=k, exclusive=v) for k, v in _GOLD_EDGES.items())),
+        cs(
+            g,
+            *(
+                AddRelation(
+                    label=k, kind=RelationKind.SINGLE if v else RelationKind.MANY
+                )
+                for k, v in _GOLD_EDGES.items()
+            ),
+        ),
     )
-    assert {
-        r.label: r.exclusive for r in a.relations if r.label != "Unknown"
-    } == _GOLD_EDGES
-    b = apply_changeset(a, cs(a, SetExclusive(target="LIKES", exclusive=True)))
-    assert _excl(b)["LIKES"] and not _excl(a)["LIKES"]
+    assert {r.label: r.kind for r in a.relations if r.label != "Unknown"} == {
+        k: RelationKind.SINGLE if v else RelationKind.MANY
+        for k, v in _GOLD_EDGES.items()
+    }
+    b = apply_changeset(
+        a, cs(a, SetRelationKind(target="LIKES", kind=RelationKind.JUDGED))
+    )
+    assert _relation_kinds(b)["LIKES"] is RelationKind.JUDGED
     replay = apply_changeset(a, diff(a, b))
     assert replay.content_hash == b.content_hash
-    assert _excl(Ontology.model_validate_json(b.model_dump_json()))["LIKES"]
+    assert (
+        _relation_kinds(Ontology.model_validate_json(b.model_dump_json()))["LIKES"]
+        is RelationKind.JUDGED
+    )
 
 
-def test_set_exclusive_refuses_unknown_and_missing_relation():
-    """Set exclusive refuses unknown and missing relation."""
+def test_set_relation_kind_refuses_unknown_and_missing_relation():
+    """Reject a kind change for an absent relation."""
     a = base()
     with pytest.raises(InvalidChange):
-        apply_changeset(a, cs(a, SetExclusive(target="Unknown", exclusive=True)))
+        apply_changeset(
+            a, cs(a, SetRelationKind(target="Unknown", kind=RelationKind.SINGLE))
+        )
     with pytest.raises(InvalidChange):
-        apply_changeset(a, cs(a, SetExclusive(target="nope", exclusive=True)))
+        apply_changeset(
+            a, cs(a, SetRelationKind(target="nope", kind=RelationKind.SINGLE))
+        )
+
+
+def test_active_entities_cannot_be_reparented_to_retired_types():
+    """A new parent must be active after the change set applies."""
+    head = base()
+    with pytest.raises(InvalidChange, match="parent must be active"):
+        apply_changeset(
+            head,
+            cs(
+                head,
+                DeprecateType(kind=Kind.ENTITY, target="Organization"),
+                SetParent(target="Employee", parent="Organization"),
+                DeprecatePattern(
+                    relation="works_at",
+                    pattern=PatternSpec(src="Person", tgt="Organization"),
+                ),
+            ),
+        )
+
+
+def test_an_existing_retired_parent_does_not_block_unrelated_changes():
+    """A stored child under a retired parent can still be edited."""
+    head = base()
+    parent = next(entity for entity in head.entities if entity.label == "Person")
+    parent.status = Status.DEPRECATED
+    relation = next(
+        relation for relation in head.relations if relation.label == "works_at"
+    )
+    relation.patterns[0].status = Status.DEPRECATED
+    result = apply_changeset(head, cs(head, AddEntity(label="Team")))
+    assert result.version == head.version + 1
+    assert any(entity.label == "Team" for entity in result.entities)
+    child = next(entity for entity in result.entities if entity.label == "Employee")
+    assert (child.status, child.parent_id) == (Status.ACTIVE, parent.type_id)

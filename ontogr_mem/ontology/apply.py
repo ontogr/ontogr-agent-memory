@@ -30,7 +30,10 @@ from ontogr_mem.ontology.models import (
     Relation,
     Rename,
     SetDescription,
-    SetExclusive,
+    SetIdentityAttributes,
+    SetParent,
+    SetRelationKind,
+    SetSymmetric,
     Status,
 )
 from ontogr_mem.ontology.names import (
@@ -69,7 +72,7 @@ def apply_changeset(cat: Ontology, cs: ChangeSet) -> Ontology:
     index = _CatalogIndex(work)
     for op in cs.ops:
         _apply_op(work, op, index)
-    _check_indexed(work, index)
+    _check_indexed(work, index, previous=cat)
     out = work.model_copy(
         update={"version": cat.version + 1, "parent_version": cat.version}
     )
@@ -228,6 +231,7 @@ def _apply_add_entity(work: Ontology, op: AddEntity, index: _CatalogIndex) -> No
         label=op.label,
         description=op.description,
         aliases=list(op.aliases),
+        identity_attributes=list(op.identity_attributes),
         parent_id=parent,
         origin=op.origin,
     )
@@ -249,7 +253,7 @@ def _apply_add_relation(work: Ontology, op: AddRelation, index: _CatalogIndex) -
         description=op.description,
         aliases=list(op.aliases),
         symmetric=op.symmetric,
-        exclusive=op.exclusive,
+        kind=op.kind,
         patterns=pats,
         origin=op.origin,
     )
@@ -300,13 +304,36 @@ def _apply_set_description(
     t.description = op.description
 
 
-def _apply_set_exclusive(
-    work: Ontology, op: SetExclusive, index: _CatalogIndex
+def _apply_set_relation_kind(
+    work: Ontology, op: SetRelationKind, index: _CatalogIndex
 ) -> None:
-    """Set whether a subject holds at most one current value of a relation."""
-    t = _relation(work, op.target, index)
-    _no_unknown(work, Kind.RELATION, t)
-    t.exclusive = op.exclusive
+    _relation(work, op.target, index).kind = op.kind
+
+
+def _apply_set_symmetric(
+    work: Ontology, op: SetSymmetric, index: _CatalogIndex
+) -> None:
+    _relation(work, op.target, index).symmetric = op.symmetric
+
+
+def _apply_set_parent(work: Ontology, op: SetParent, index: _CatalogIndex) -> None:
+    entity = _entity(work, op.target, index)
+    _no_unknown(work, Kind.ENTITY, entity)
+    if op.parent is None:
+        entity.parent_id = None
+        return
+    parent = _entity(work, op.parent, index)
+    if parent.type_id == UNKNOWN_ID:
+        raise InvalidChange("Unknown cannot be a parent", item=entity.label)
+    entity.parent_id = parent.type_id
+
+
+def _apply_set_identity_attributes(
+    work: Ontology, op: SetIdentityAttributes, index: _CatalogIndex
+) -> None:
+    entity = _entity(work, op.target, index)
+    _no_unknown(work, Kind.ENTITY, entity)
+    entity.identity_attributes = list(op.names)
 
 
 def _apply_deprecate_type(
@@ -369,7 +396,10 @@ _HANDLERS: dict[type[Op], OpHandler] = {
     AddAlias: _apply_add_alias,
     Rename: _apply_rename,
     SetDescription: _apply_set_description,
-    SetExclusive: _apply_set_exclusive,
+    SetParent: _apply_set_parent,
+    SetIdentityAttributes: _apply_set_identity_attributes,
+    SetRelationKind: _apply_set_relation_kind,
+    SetSymmetric: _apply_set_symmetric,
     DeprecateType: _apply_deprecate_type,
     DeprecatePattern: _apply_deprecate_pattern,
     Reactivate: _apply_reactivate,
@@ -386,12 +416,15 @@ def _check(cat: Ontology) -> None:
     _check_indexed(cat, _CatalogIndex(cat))
 
 
-def _check_indexed(cat: Ontology, index: _CatalogIndex) -> None:
+def _check_indexed(
+    cat: Ontology, index: _CatalogIndex, *, previous: Ontology | None = None
+) -> None:
     """Check ``cat`` with an index that already reflects its current types."""
     _check_unknown(cat, index)
     for kind in (Kind.ENTITY, Kind.RELATION):
         _check_names(cat, kind)
-    _check_hierarchy(cat, index)
+    _check_hierarchy(cat, index, previous=previous)
+    _check_identity(cat)
     _check_patterns(cat, index)
     _check_merges(cat, index)
 
@@ -419,7 +452,7 @@ def _check_names(cat: Ontology, kind: Kind) -> None:
         is_unknown = kind is Kind.ENTITY and t.type_id == UNKNOWN_ID
         if not is_unknown:
             check_identifier(t.label, kind=kind.value)
-            if t.label.casefold() in RESERVED_LABELS:
+            if normalize(t.label) in RESERVED_LABELS:
                 raise InvalidChange("reserved label", item=t.label)
         for name in [t.label, *t.aliases]:
             key = normalize(name)
@@ -433,13 +466,30 @@ def _check_names(cat: Ontology, kind: Kind) -> None:
             seen[key] = t.type_id
 
 
-def _check_hierarchy(cat: Ontology, index: _CatalogIndex) -> None:
+def _check_hierarchy(
+    cat: Ontology, index: _CatalogIndex, *, previous: Ontology | None
+) -> None:
     """Every parent exists and is not Unknown, with no cycle and depth at most 8."""
     for e in cat.entities:
         if e.parent_id is None:
             continue
-        if e.parent_id == UNKNOWN_ID or index.entity(e.parent_id) is None:
+        parent = index.entity(e.parent_id)
+        if e.parent_id == UNKNOWN_ID or parent is None:
             raise InvalidChange("bad parent", item=e.label)
+        if e.status is Status.ACTIVE and parent.status is not Status.ACTIVE:
+            old_child = previous.entity(e.type_id) if previous is not None else None
+            old_parent = (
+                previous.entity(parent.type_id) if previous is not None else None
+            )
+            # An existing inactive parent must not block unrelated changes.
+            if (
+                old_child is None
+                or old_child.parent_id != parent.type_id
+                or old_child.status is not Status.ACTIVE
+                or old_parent is None
+                or old_parent.status is Status.ACTIVE
+            ):
+                raise InvalidChange("parent must be active", item=e.label)
         seen = {e.type_id}
         depth = 0
         cur: Entity | None = e
@@ -451,6 +501,20 @@ def _check_hierarchy(cat: Ontology, index: _CatalogIndex) -> None:
             cur = index.entity(cur.parent_id)
         if depth > MAX_DEPTH:
             raise InvalidChange(f"hierarchy deeper than {MAX_DEPTH}", item=e.label)
+
+
+def _check_identity(cat: Ontology) -> None:
+    """Identity attribute names are legal and unique within an entity type."""
+    for entity in cat.entities:
+        seen: set[str] = set()
+        for name in entity.identity_attributes:
+            check_identifier(name, kind="identity attribute")
+            key = normalize(name)
+            if key in seen:
+                raise InvalidChange(
+                    "duplicate identity attribute", item=f"{entity.label}.{name}"
+                )
+            seen.add(key)
 
 
 def _check_patterns(cat: Ontology, index: _CatalogIndex) -> None:
@@ -500,7 +564,3 @@ def _check_merges(cat: Ontology, index: _CatalogIndex) -> None:
                 or final.status is not Status.ACTIVE
             ):
                 raise InvalidChange("merge target is not active", item=t.label)
-
-
-check_catalog = _check
-"""Run every catalog check; used by ``OntologyManager.load_catalog``."""

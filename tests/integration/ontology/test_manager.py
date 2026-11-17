@@ -3,12 +3,12 @@
 import pytest
 
 from ontogr_mem.graphstore.ontology_store import GraphOntologyStore
-from ontogr_mem.ontology.errors import InvalidChange, VersionConflict
+from ontogr_mem.ontology.errors import VersionConflict
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import AddEntity, Ontology
 from tests.support.clock import FixedClock
 from tests.support.graph_backend import GraphBackend
-from tests.support.ontology import base, cs
+from tests.support.ontology import base, cs, load_catalog
 
 
 async def make_store(graph_backend: GraphBackend) -> GraphOntologyStore:
@@ -29,29 +29,12 @@ async def make_manager(
         FixedClock(),
     )
     if catalog is not None:
-        await manager.load_catalog(catalog)
+        await load_catalog(manager, catalog)
     return manager
 
 
 class TestOntologyManager:
     """Behavior of OntologyManager."""
-
-    async def test_load_catalog_only_into_version_zero(
-        self, graph_backend: GraphBackend
-    ):
-        """Load catalog only into version zero."""
-        manager = await make_manager(graph_backend, base())
-
-        head = await manager.catalog()
-        assert head.version == 1
-        assert {e.label for e in head.entities} == {
-            "Unknown",
-            "Person",
-            "Employee",
-            "Organization",
-        }
-        with pytest.raises(InvalidChange):
-            await manager.load_catalog(base())
 
     async def test_apply_with_a_stale_base_conflicts(self, graph_backend: GraphBackend):
         """Apply with a stale base conflicts."""

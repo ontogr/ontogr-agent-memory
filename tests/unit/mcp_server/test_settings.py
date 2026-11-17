@@ -1,5 +1,7 @@
 """Settings for the MCP server, read from MEMORY_MCP_ variables."""
 
+from pathlib import Path
+
 import pytest
 from pydantic import SecretStr, ValidationError
 
@@ -14,6 +16,7 @@ MCP_ENV_NAMES = (
     "MEMORY_MCP_API_KEY",
     "MEMORY_MCP_TOOLS",
     "MEMORY_MCP_SKILLS_EXTENSION",
+    "MEMORY_MCP_ONTOLOGY",
 )
 
 DEFAULT_TOOLS = (
@@ -48,6 +51,22 @@ class TestMcpSettings:
         assert settings.api_key is None
         assert settings.tools == DEFAULT_TOOLS
         assert settings.skills_extension is True
+
+    def test_reads_ontology_path_from_environment(self, monkeypatch):
+        """The ontology environment variable is parsed as a path."""
+        monkeypatch.setenv("MEMORY_MCP_ONTOLOGY", "/tmp/o.yaml")
+
+        settings = McpSettings(_env_file=None)
+
+        assert settings.ontology == Path("/tmp/o.yaml")
+
+    def test_empty_ontology_environment_value_is_none(self, monkeypatch):
+        """An empty ontology environment value means no configured path."""
+        monkeypatch.setenv("MEMORY_MCP_ONTOLOGY", "")
+
+        settings = McpSettings(_env_file=None)
+
+        assert settings.ontology is None
 
     @pytest.mark.parametrize("transport", ["stdio", "http"])
     def test_accepts_stdio_and_http_transports(self, monkeypatch, transport):

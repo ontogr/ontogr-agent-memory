@@ -20,7 +20,7 @@ from ontogr_mem.resolution.policy import ResolutionPolicy
 from ontogr_mem.retrieval.settings import RetrievalSettings
 from ontogr_mem.service.forget.plan import ForgetPlan, build_plan
 from ontogr_mem.service.forget.selector import ForgetSelector
-from ontogr_mem.service.relations import load_defaults
+from ontogr_mem.service.ontologies import apply_ontology
 from ontogr_mem.service.runtime import TenantRuntime, build_tenant_runtime
 from ontogr_mem.temporal import TemporalEngine
 from ontogr_mem.vectorstore import Embedder, VectorStore
@@ -63,7 +63,7 @@ async def make_erase_world(
         resolver_settings=ResolverSettings(),
         retrieval_settings=RetrievalSettings(),
     )
-    ontology = await load_defaults(runtime.ontology)
+    ontology = await apply_ontology(runtime.ontology, None)
     relation = ontology.relation_by_label("WORKS_AT")
     if relation is None:
         raise RuntimeError("default catalog does not define WORKS_AT")

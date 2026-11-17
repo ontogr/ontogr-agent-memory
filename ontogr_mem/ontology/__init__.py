@@ -1,19 +1,13 @@
-"""Per-tenant, versioned ontology with change sets.
+"""The ontology is declared by the host and applied when memory opens."""
 
-The ontology is a versioned model of the types a tenant knows: entity types,
-relation types and the patterns a relation may follow. A change set is the only way
-to change it, and ``apply_changeset`` is the only commit path::
-
-    from ontogr_mem.ontology import AddEntity, ChangeSet, apply_changeset
-
-    change_set = ChangeSet(base_version=head.version, ops=[AddEntity(label="Gadget")])
-    new = apply_changeset(head, change_set)
-
-``OntologyManager`` owns the ontology of a tenant and its history; ``validate``
-checks one episode's extraction against it.
-"""
-
-from ontogr_mem.ontology.apply import apply_changeset, check_catalog
+from ontogr_mem.ontology.apply import apply_changeset
+from ontogr_mem.ontology.declaration import (
+    EntityDeclaration,
+    OntologyDeclaration,
+    PatternDeclaration,
+    RelationDeclaration,
+)
+from ontogr_mem.ontology.default import default_ontology
 from ontogr_mem.ontology.errors import (
     DenseIdError,
     InvalidChange,
@@ -21,6 +15,7 @@ from ontogr_mem.ontology.errors import (
     OntologyError,
     VersionConflict,
 )
+from ontogr_mem.ontology.loader import OntologySource, load_ontology, loads_ontology
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import (
     AddAlias,
@@ -43,9 +38,13 @@ from ontogr_mem.ontology.models import (
     Reason,
     Ref,
     Relation,
+    RelationKind,
     Rename,
     SetDescription,
-    SetExclusive,
+    SetIdentityAttributes,
+    SetParent,
+    SetRelationKind,
+    SetSymmetric,
     Status,
 )
 from ontogr_mem.ontology.validate import (
@@ -70,6 +69,7 @@ __all__ = [
     "DeprecatePattern",
     "DeprecateType",
     "Entity",
+    "EntityDeclaration",
     "EntityItem",
     "EntityValidation",
     "ExtractedItems",
@@ -78,25 +78,35 @@ __all__ = [
     "MergeInto",
     "MissingVersionError",
     "Ontology",
+    "OntologyDeclaration",
     "OntologyError",
     "OntologyManager",
+    "OntologySource",
     "Op",
     "Origin",
     "Pattern",
+    "PatternDeclaration",
     "PatternSpec",
     "Reactivate",
     "Reason",
     "Ref",
     "Relation",
+    "RelationDeclaration",
     "RelationItem",
+    "RelationKind",
     "RelationValidation",
     "Rename",
     "SetDescription",
-    "SetExclusive",
+    "SetIdentityAttributes",
+    "SetParent",
+    "SetRelationKind",
+    "SetSymmetric",
     "Status",
     "ValidationReport",
     "VersionConflict",
     "apply_changeset",
-    "check_catalog",
+    "default_ontology",
+    "load_ontology",
+    "loads_ontology",
     "validate",
 ]

@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from ontogr_mem.client import Memory
 from ontogr_mem.llm import RoleModels
 from ontogr_mem.llm.prompt import fence
+from ontogr_mem.ontology.loader import OntologySource
 from ontogr_mem.relational_store.config import StateSettings
 from ontogr_mem.service.bootstrap import ServiceSettings
 from tests.support.embedder import MockEmbedder
@@ -122,10 +123,15 @@ def text_models(script: Script) -> RoleModels:
 
 
 @asynccontextmanager
-async def open_memory(tenant: str, models: RoleModels) -> AsyncGenerator[Memory]:
+async def open_memory(
+    tenant: str,
+    models: RoleModels,
+    ontology: OntologySource | None = None,
+) -> AsyncGenerator[Memory]:
     """Open a Memory client on FalkorDB with ephemeral state."""
     async with Memory.open(
         tenant=tenant,
+        ontology=ontology,
         service_settings=ServiceSettings(backend="falkordb", _env_file=None),
         state_settings=StateSettings(
             backend="memory", allow_ephemeral=True, _env_file=None

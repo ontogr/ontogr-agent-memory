@@ -8,6 +8,8 @@ from pydantic import BaseModel, ValidationError
 from ontogr_mem.cli import main
 from ontogr_mem.errors import AgentMemoryError, MissingExtraError
 from ontogr_mem.llm.failures import ModelNotConfiguredError
+from ontogr_mem.ontology.errors import InvalidChange
+from ontogr_mem.service.errors import InvalidArgumentError
 from ontogr_mem.vectorstore.builtin import EmbedderUnavailableError
 
 
@@ -58,6 +60,7 @@ class TestMain:
         [
             pytest.param(["--help"], "chat", id="top-level"),
             pytest.param(["chat", "--help"], "--tenant", id="chat"),
+            pytest.param(["chat", "--help"], "--ontology", id="chat-ontology"),
             pytest.param(["--help"], "mcp", id="top-level-names-mcp"),
         ],
     )
@@ -71,7 +74,9 @@ class TestMain:
         assert excinfo.value.code == 0
         assert expected_text in capsys.readouterr().out
 
-    @pytest.mark.parametrize("flag", ["--transport", "--host", "--port", "--tenant"])
+    @pytest.mark.parametrize(
+        "flag", ["--transport", "--host", "--port", "--tenant", "--ontology"]
+    )
     def test_mcp_help_names_each_flag(self, capsys, flag):
         """The mcp subcommand help lists its flags and exits with status zero."""
         with pytest.raises(SystemExit) as excinfo:
@@ -143,6 +148,16 @@ class TestMain:
                 AgentMemoryError("store rejected the write"),
                 ("Memory failed; check database, embedding and model settings.",),
                 id="memory-error",
+            ),
+            pytest.param(
+                InvalidChange("cannot read the ontology file"),
+                ("Invalid ontology: cannot read the ontology file",),
+                id="invalid-ontology",
+            ),
+            pytest.param(
+                InvalidArgumentError("the ontology does not apply: name collides"),
+                ("the ontology does not apply: name collides",),
+                id="stored-ontology-conflict",
             ),
         ],
     )

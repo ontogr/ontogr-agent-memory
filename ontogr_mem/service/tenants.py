@@ -3,13 +3,14 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 
+from ontogr_mem.ontology.declaration import OntologyDeclaration, check_declaration
 from ontogr_mem.relational_store.jobs.ports import StateStore
 from ontogr_mem.service.access.authz import Authorizer
 from ontogr_mem.service.errors import (
     ObjectNotFoundError,
 )
+from ontogr_mem.service.ontologies import apply_ontology
 from ontogr_mem.service.principal import ALL_TENANTS, Grant, Principal
-from ontogr_mem.service.relations import load_defaults
 from ontogr_mem.service.runtime import TenantRuntime
 from ontogr_mem.tenant_stores import TenantStores
 
@@ -25,11 +26,18 @@ class TenantRuntimeCache:
         factory: Callable[[str], Awaitable[TenantRuntime]],
         state: StateStore,
         authorizer: Authorizer,
+        ontology: OntologyDeclaration | None = None,
+        *,
+        ontology_tenant: str | None = None,
     ) -> None:
         """Bind runtime construction, durable tenant discovery, and grant checks."""
         self._factory = factory
         self._state = state
         self._authorizer = authorizer
+        if ontology is not None:
+            check_declaration(ontology)
+        self._ontology = ontology
+        self._ontology_tenant = ontology_tenant
         self._runtimes: dict[str, TenantRuntime] = {}
         self._known_tenants: set[str] = set()
         self._tenant_locks: dict[str, asyncio.Lock] = {}
@@ -63,7 +71,12 @@ class TenantRuntimeCache:
                 if tenant_id not in known:
                     raise ObjectNotFoundError("tenant or object not found")
             runtime = await self._factory(tenant_id)
-            ontology = await load_defaults(runtime.ontology)
+            declaration = (
+                self._ontology
+                if self._ontology_tenant is None or self._ontology_tenant == tenant_id
+                else None
+            )
+            ontology = await apply_ontology(runtime.ontology, declaration)
             runtime.refresh_relation_labels(ontology)
             self._runtimes[tenant_id] = runtime
             self._known_tenants.add(tenant_id)
