@@ -12,10 +12,8 @@ from ontogr_mem.data_models.facts import ExtractedFact
 class FactDropReason(StrEnum):
     """Reason code for a discarded fact, or for a cleared part of one.
 
-    Some entries mean the whole fact was dropped (`empty_text`,
-    `unknown_entity_ref`, `ungrounded`, `unknown_relation`,
-    `unknown_entity_type`). Others mean a part
-    of a kept fact was cleared and the fact stays.
+    Some entries mean the whole fact was dropped. Others mean a part of a kept
+    fact was cleared and the fact stays.
     """
 
     EMPTY_TEXT = "empty_text"
@@ -24,7 +22,6 @@ class FactDropReason(StrEnum):
     UNGROUNDED = "ungrounded"
     BAD_TYPE_ID = "bad_type_id"
     UNKNOWN_RELATION = "unknown_relation"
-    UNKNOWN_ENTITY_TYPE = "unknown_entity_type"
     WRONG_DIRECTION = "wrong_direction"
     SELF_RELATION = "self_relation"
     TYPES_UNAVAILABLE = "types_unavailable"

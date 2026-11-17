@@ -103,7 +103,6 @@ EXAMPLES = (
         valid_from=NOW,
         valid_to=NOW + timedelta(days=365),
         reference_time=NOW,
-        single_valued=True,
         speaker="alice",
         source_description="chat",
         session_id="s1",

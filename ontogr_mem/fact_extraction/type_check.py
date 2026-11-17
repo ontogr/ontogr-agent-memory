@@ -7,7 +7,7 @@ the model path and the record path. A problem clears the type, never the fact.
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from ontogr_mem.data_models import ExtractedEntity, TypeMode, TypeView
+from ontogr_mem.data_models import ExtractedEntity, TypeView
 from ontogr_mem.fact_extraction.models import FactDropReason
 
 
@@ -44,7 +44,7 @@ def check_relation_type(
         problem = (FactDropReason.SELF_RELATION, refs[0])
     elif not view.catalog.has_relation_id(type_id):
         problem = (FactDropReason.BAD_TYPE_ID, f"relation type {type_id}")
-    elif view.mode is not TypeMode.OPEN and not view.catalog.direction_ok(
+    elif not view.catalog.direction_ok(
         view.catalog.relation_types[type_id],
         entities[refs[0]].type_id,
         entities[refs[1]].type_id,

@@ -7,7 +7,6 @@ from ontogr_mem.data_models import (
     EntityType,
     RelationType,
     TypeCatalog,
-    TypeMode,
     TypeView,
 )
 
@@ -50,13 +49,13 @@ class TestTypeCatalog:
         assert not catalog.direction_ok(relation, 1, 0)
         assert catalog.direction_ok(relation, UNKNOWN_TYPE_ID, 0)
 
-    def test_view_version_joins_catalog_version_and_mode(self):
-        """View version joins catalog version and mode."""
+    def test_view_version_is_the_catalog_version(self):
+        """View version is the catalog version."""
         catalog = make_catalog()
 
-        view = TypeView(catalog, TypeMode.STRICT)
+        view = TypeView(catalog)
 
-        assert view.version == "b0afa31bcb938538:strict"
+        assert view.version == catalog.version
 
     def test_entity_and_relation_lookups_ignore_label_separators(self):
         """Lookups use canonical label normalization for both type kinds."""

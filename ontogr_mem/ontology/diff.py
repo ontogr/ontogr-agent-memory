@@ -4,13 +4,10 @@ from dataclasses import dataclass, field
 
 from ontogr_mem.ontology.models import (
     AddAlias,
-    AddAttribute,
     AddEntity,
     AddPattern,
     AddRelation,
-    AddTable,
     ChangeSet,
-    DeprecateAttribute,
     DeprecatePattern,
     DeprecateType,
     Entity,
@@ -25,7 +22,6 @@ from ontogr_mem.ontology.models import (
     Rename,
     SetDescription,
     SetExclusive,
-    SetModes,
     Status,
 )
 from ontogr_mem.ontology.names import normalize
@@ -36,7 +32,6 @@ class _Ops:
     """The ops one diff collects, grouped by what they change."""
 
     edits: list[Op] = field(default_factory=list)
-    attrs: list[Op] = field(default_factory=list)
     pats: list[Op] = field(default_factory=list)
     states: list[Op] = field(default_factory=list)
 
@@ -45,10 +40,10 @@ def diff(a: Ontology, b: Ontology) -> ChangeSet:
     """Return the ops that turn catalog ``a`` into catalog ``b``.
 
     Replaying the ops on ``a`` gives a catalog with the same content hash as ``b``.
-    Order matters: additions come first, then edits, attributes, patterns, status
-    changes, and finally modes and tables. A type that ``a`` lacks is referred to by
-    its label, because the replay assigns the id. ``diff`` assumes ``b`` descends from
-    ``a`` through change sets, so ids only grow.
+    Order matters: additions come first, then edits, patterns, and status changes. A
+    type that ``a`` lacks is referred to by its label, because the replay assigns the
+    id. ``diff`` assumes ``b`` descends from ``a`` through change sets, so ids only
+    grow.
 
     Args:
         a: The older catalog; the change set's base.
@@ -71,8 +66,6 @@ def diff(a: Ontology, b: Ontology) -> ChangeSet:
                     description=e.description,
                     aliases=e.aliases,
                     parent=e.parent_id,
-                    uri=e.uri,
-                    properties=e.properties,
                     origin=e.origin,
                 )
             )
@@ -85,34 +78,13 @@ def diff(a: Ontology, b: Ontology) -> ChangeSet:
                     aliases=r.aliases,
                     symmetric=r.symmetric,
                     exclusive=r.exclusive,
-                    uri=r.uri,
-                    properties=r.properties,
                     patterns=[PatternSpec(src=p.src, tgt=p.tgt) for p in r.patterns],
                     origin=r.origin,
                 )
             )
     _diff_entities(b.entity_types(), a_ent, ops)
     _diff_relations(b.relation_types(), a_rel, ops)
-    tail: list[Op] = []
-    adds_patterns = bool(ops.pats) or any(
-        isinstance(o, AddRelation) and o.patterns for o in adds
-    )
-    if adds_patterns or (a.entity_mode, a.relation_mode, a.unknown_endpoint_edges) != (
-        b.entity_mode,
-        b.relation_mode,
-        b.unknown_endpoint_edges,
-    ):
-        tail.append(
-            SetModes(
-                entity_mode=b.entity_mode,
-                relation_mode=b.relation_mode,
-                unknown_endpoint_edges=b.unknown_endpoint_edges,
-            )
-        )
-    tail.extend(AddTable(table=m) for m in b.tables if m not in a.tables)
-    replayed = _by_label_when_new(
-        a, b, [*adds, *ops.edits, *ops.attrs, *ops.pats, *ops.states, *tail]
-    )
+    replayed = _by_label_when_new(a, b, [*adds, *ops.edits, *ops.pats, *ops.states])
     return ChangeSet(
         base_version=a.version,
         ops=replayed,
@@ -135,7 +107,7 @@ def _diff_entities(new: list[Entity], old_map: dict[int, Entity], ops: _Ops) -> 
     """Emit the ops for the entity types that changed.
 
     A type the older catalog does not have is new: it gets a status op when it was
-    deprecated or merged, and its deprecated attributes are retired.
+    deprecated or merged.
     """
     for t in new:
         old = old_map.get(t.type_id)
@@ -179,11 +151,6 @@ def _diff_new(kind: Kind, t: Entity | Relation, ops: _Ops) -> None:
     """
     if t.status is Status.DEPRECATED or t.merged_into is not None:
         _status(kind, t, ops.states, created=True)
-    for at in t.properties:
-        if at.status is Status.DEPRECATED:
-            ops.attrs.append(
-                DeprecateAttribute(kind=kind, target=t.type_id, name=at.name)
-            )
 
 
 def _diff_existing(
@@ -192,8 +159,8 @@ def _diff_existing(
     """Emit ops for a type that exists in both catalogs.
 
     Covers rename (the old label becomes an alias), new aliases, a changed description,
-    new or deprecated attributes, and a status or merge change. A relation's patterns
-    and its exclusive flag are covered by ``_diff_relation``.
+    and a status or merge change. A relation's patterns and exclusive flag are covered
+    by ``_diff_relation``.
     """
     have = {normalize(old.label), *(normalize(x) for x in old.aliases)}
     if new.label != old.label:
@@ -208,19 +175,6 @@ def _diff_existing(
         ops.edits.append(
             SetDescription(kind=kind, target=old.type_id, description=new.description)
         )
-    old_attrs = {a.name: a for a in old.properties}
-    for at in new.properties:
-        prev = old_attrs.get(at.name)
-        if prev is None:
-            ops.attrs.append(AddAttribute(kind=kind, target=old.type_id, attribute=at))
-            if at.status is Status.DEPRECATED:
-                ops.attrs.append(
-                    DeprecateAttribute(kind=kind, target=old.type_id, name=at.name)
-                )
-        elif prev.status is Status.ACTIVE and at.status is Status.DEPRECATED:
-            ops.attrs.append(
-                DeprecateAttribute(kind=kind, target=old.type_id, name=at.name)
-            )
     if (old.status, old.merged_into) != (new.status, new.merged_into):
         _status(kind, new, ops.states, created=False)
 
@@ -303,13 +257,7 @@ def _by_label_when_new(a: Ontology, b: Ontology, ops: list[Op]) -> list[Op]:
             )
         elif isinstance(
             op,
-            AddAttribute
-            | DeprecateAttribute
-            | DeprecateType
-            | Reactivate
-            | Rename
-            | SetDescription
-            | AddAlias,
+            DeprecateType | Reactivate | Rename | SetDescription | AddAlias,
         ):
             fixed = op.model_copy(update={"target": fix(op.kind, op.target)})
         out.append(fixed)

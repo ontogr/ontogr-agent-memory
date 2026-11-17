@@ -39,9 +39,5 @@ class MissingVersionError(OntologyError):
     """A requested ontology version does not exist."""
 
 
-class ProposalDecidedError(OntologyError):
-    """A proposal that was accepted, rejected or superseded cannot be rewritten."""
-
-
 class DenseIdError(OntologyError):
     """A dense type id is outside the projection that issued it."""

@@ -10,7 +10,7 @@ from ontogr_mem.data_models.facts import (
     TimeBasis,
     TypedFact,
 )
-from ontogr_mem.data_models.type_catalog import TypeMode, TypeView
+from ontogr_mem.data_models.type_catalog import TypeView
 from ontogr_mem.fact_extraction.errors import FactExtractionError, UnknownKindError
 from ontogr_mem.fact_extraction.extractor import (
     FactExtractor,
@@ -63,7 +63,6 @@ __all__ = [
     "RoutingFactExtractor",
     "SkipReason",
     "TimeBasis",
-    "TypeMode",
     "TypeView",
     "TypedFact",
     "UnknownKindError",

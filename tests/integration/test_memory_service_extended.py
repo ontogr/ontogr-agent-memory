@@ -18,6 +18,7 @@ from ontogr_mem.service.contracts import (
 from ontogr_mem.service.errors import InvalidArgumentError, ObjectNotFoundError
 from ontogr_mem.service.principal import Grant
 from tests.support.graph_backend import GraphBackend
+from tests.support.jobs import wait_for_job
 from tests.support.memory_service import memory_service_harness
 
 
@@ -75,7 +76,7 @@ class TestMemoryServiceExtended:
         receipt = await harness.service.consolidate_memory(
             harness.principal, ConsolidateMemory(tenant="t1", wait_seconds=5)
         )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
 
         assert job.status.value == "done"
         assert job.result is not None

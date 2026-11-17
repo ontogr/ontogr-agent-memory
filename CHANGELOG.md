@@ -25,6 +25,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The default consolidation gate no longer reopens for a checked provisional
   entity without a newer revision.
 
+### Removed
+
+- Ontology modes (`strict`, `preferred` and `open`) and the `SetModes` change. A
+  relation that the ontology does not hold is dropped and counted, and an entity
+  type that it does not hold is kept with the Unknown type.
+- Ontology proposals, the drafting model role (`ONTOLOGY`) with its
+  `MEMORY_LLM_ONTOLOGY_*` and `MEMORY_ONTOLOGY_*` settings, the stored unmatched
+  rows, and `OntologyManager.stale_episodes`.
+- Declared type attributes, table mappings, type URIs and the memory entity
+  extractor.
+- The `single_valued` field of `AddMemory` and the creation of relations by
+  structured writes.
+
 ## [0.0.1](https://github.com/ontogr/ontogr-agent-memory/tree/v0.0.1) - 2026-10-27
 
 First release.

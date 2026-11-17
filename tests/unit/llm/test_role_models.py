@@ -137,7 +137,7 @@ async def test_roles_with_same_protocol_url_and_key_share_one_provider() -> None
         api_key="k",
         roles={
             "judge": {"output_mode": "native"},
-            "ontology": {"api_key": "other"},
+            "consolidation": {"api_key": "other"},
             "resolution": {"base_url": "http://y/v1"},
             "answer": {"model": "openai-responses:m"},
         },
@@ -146,7 +146,7 @@ async def test_roles_with_same_protocol_url_and_key_share_one_provider() -> None
     base = inner(models, ModelRole.ENTITY_EXTRACTION).client
     assert inner(models, ModelRole.FACT_EXTRACTION).client is base
     assert inner(models, ModelRole.JUDGE).client is base
-    assert inner(models, ModelRole.ONTOLOGY).client is not base
+    assert inner(models, ModelRole.CONSOLIDATION).client is not base
     assert inner(models, ModelRole.RESOLUTION).client is not base
     assert inner(models, ModelRole.ANSWER).client is not base
     assert len(models._clients) == 4
@@ -240,12 +240,12 @@ async def test_model_and_string_overrides() -> None:
         overrides={
             ModelRole.JUDGE: fn,
             ModelRole.ANSWER: "other",
-            ModelRole.ONTOLOGY: " ",
+            ModelRole.CONSOLIDATION: " ",
         },
     )
     assert inner(models, ModelRole.JUDGE) is fn
     assert inner(models, ModelRole.ANSWER).model_name == "other"
-    assert not models.configured(ModelRole.ONTOLOGY)
+    assert not models.configured(ModelRole.CONSOLIDATION)
     await models.aclose()
 
 

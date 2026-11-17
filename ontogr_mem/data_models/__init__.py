@@ -84,7 +84,6 @@ from ontogr_mem.data_models.type_catalog import (
     EntityType,
     RelationType,
     TypeCatalog,
-    TypeMode,
     TypeView,
 )
 from ontogr_mem.data_models.verdicts import (
@@ -146,7 +145,6 @@ __all__ = [
     "EntityType",
     "RelationType",
     "TypeCatalog",
-    "TypeMode",
     "TypeView",
     "Actor",
     "Clock",

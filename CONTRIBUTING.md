@@ -17,22 +17,8 @@ uv run pre-commit install
 
 1. Fork the repository and create a branch from `main`.
 2. Make the change and add or update tests where needed. Unit tests live under `tests/unit/`; integration tests live under `tests/integration/`.
-3. While you work, run a focused test by passing a test file or test name to pytest. For example:
-
-   ```bash
-   uv run pytest tests/unit/test_package.py -q
-   ```
-
-   A focused test gives faster feedback; it does not replace the full unit suite.
-4. Before you open a pull request, run the unit suite and non-mutating lint and type checks:
-
-   ```bash
-   make test
-   make lint-check
-   make lint-typing
-   ```
-
-   `make test` runs unit tests with coverage. `make lint-check` checks Ruff formatting and lint without changing files. `make lint-typing` runs `ty`. `make lint-all` runs auto-formatting and unsafe lint fixes, so it can change files. Use it only when you want those changes.
+3. While you work, run only targeted checks that CI cannot run. Do not run the full suite by default or repeat a passing check for commit or push. CI owns exhaustive coverage and the platform matrix.
+4. Rely on CI for the unit and integration suites, lint, type checks and platform matrix. If CI reports a failure, run the smallest targeted check CI cannot run to isolate it.
 5. Open a pull request. Use a [conventional commit](https://www.conventionalcommits.org/en/v1.0.0/) prefix in the title: `fix:`, `feat:`, `build:`, `chore:`, `ci:`, `docs:`, `style:`, `refactor:`, `perf:`, `test:`.
 
 ## Tests
