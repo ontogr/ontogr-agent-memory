@@ -18,6 +18,7 @@ from ontogr_mem.service.contracts import (
 from ontogr_mem.service.errors import ObjectNotFoundError
 from ontogr_mem.service.principal import Grant
 from tests.support.graph_backend import GraphBackend
+from tests.support.jobs import wait_for_job
 from tests.support.memory_service import memory_service_harness
 
 
@@ -46,6 +47,7 @@ class TestOperationSpans:
         )
         await harness.service.drain()
 
+        await wait_for_job(harness.service, harness.principal, receipt.job_id)
         job = await harness.state.get_job(receipt.job_id)
         progress = JobProgress(stage="index", done=1, total=1)
         await harness.state.set_job_progress(receipt.job_id, progress)
@@ -92,8 +94,7 @@ class TestOperationSpans:
             trace_id="bad id\nforged",
         )
 
-        job = await harness.state.get_job(receipt.job_id)
-        assert job is not None
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
         assert receipt.trace_id == job.trace_id
         assert len(job.trace_id) == 32
         assert all(character in "0123456789abcdef" for character in job.trace_id)
@@ -108,7 +109,7 @@ class TestOperationSpans:
         tracer = InMemoryTracer()
         harness = await memory_service_harness(graph_backend, tracer=tracer)
         marker = "PRIVATE-EPISODE-TEXT"
-        await harness.service.add_memory(
+        receipt = await harness.service.add_memory(
             harness.principal,
             AddMemory(
                 tenant="t1",
@@ -120,6 +121,7 @@ class TestOperationSpans:
                 wait_seconds=5,
             ),
         )
+        await wait_for_job(harness.service, harness.principal, receipt.job_id)
 
         await harness.service.search_memory(
             harness.principal,
@@ -202,8 +204,9 @@ class TestOperationSpans:
             ),
         )
 
-        assert receipt.error is None
         assert receipt.tenant == "t1"
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
+        assert job.error is None
         result = await harness.service.search_memory(
             harness.principal,
             SearchMemory(tenant="t1", query="Ana works at Acme"),

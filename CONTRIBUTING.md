@@ -24,15 +24,16 @@ uv run pre-commit install
    ```
 
    A focused test gives faster feedback; it does not replace the full unit suite.
-4. Before you open a pull request, run the unit suite and non-mutating lint and type checks:
+4. Before you open a pull request, run all the checks: the unit suite, the integration suite and the non-mutating lint and type checks:
 
    ```bash
    make test
+   make test-integration
    make lint-check
    make lint-typing
    ```
 
-   `make test` runs unit tests with coverage. `make lint-check` checks Ruff formatting and lint without changing files. `make lint-typing` runs `ty`. `make lint-all` runs auto-formatting and unsafe lint fixes, so it can change files. Use it only when you want those changes.
+   `make test` runs unit tests with coverage. `make test-integration` runs the integration tests; start the services they need first with `make services-up`. `make lint-check` checks Ruff formatting and lint without changing files. `make lint-typing` runs `ty`. `make lint-all` runs auto-formatting and unsafe lint fixes, so it can change files. Use it only when you want those changes.
 5. Open a pull request. Use a [conventional commit](https://www.conventionalcommits.org/en/v1.0.0/) prefix in the title: `fix:`, `feat:`, `build:`, `chore:`, `ci:`, `docs:`, `style:`, `refactor:`, `perf:`, `test:`.
 
 ## Tests

@@ -11,7 +11,6 @@ from ontogr_mem.entity_extraction.extractors.composite import CompositeExtractor
 from ontogr_mem.entity_extraction.extractors.fallback import FallbackExtractor
 from ontogr_mem.entity_extraction.extractors.gliner import GLiNERExtractor
 from ontogr_mem.entity_extraction.extractors.llm import LLMExtractor
-from ontogr_mem.entity_extraction.extractors.memory import MemoryEntityExtractor
 from ontogr_mem.entity_extraction.extractors.overlaps import resolve_overlaps
 from ontogr_mem.entity_extraction.extractors.record import (
     FieldEntity,
@@ -34,7 +33,6 @@ __all__ = [
     "FieldEntity",
     "GLiNERExtractor",
     "LLMExtractor",
-    "MemoryEntityExtractor",
     "RawSpan",
     "RecordMapper",
     "RecordMapping",

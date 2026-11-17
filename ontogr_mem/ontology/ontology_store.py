@@ -6,14 +6,11 @@ from typing import Protocol
 from ontogr_mem.ontology.models import (
     ChangeSet,
     Ontology,
-    Proposal,
-    ProposalStatus,
-    Unmatched,
 )
 
 
 class OntologyStore(Protocol):
-    """Stores one tenant's ontology versions, unmatched rows and proposals."""
+    """Stores one tenant's ontology versions."""
 
     async def get(self, version: int | None = None) -> Ontology:
         """Return a version of the ontology, or the head if `version` is None.
@@ -37,37 +34,4 @@ class OntologyStore(Protocol):
 
     async def history(self) -> Sequence[ChangeSet]:
         """Return every committed change set, oldest first."""
-        ...
-
-    async def replace_unmatched(
-        self, episode_id: str, rows: Sequence[Unmatched]
-    ) -> None:
-        """Replace the unmatched rows of one episode. Other episodes are untouched."""
-        ...
-
-    async def unmatched(self) -> Sequence[Unmatched]:
-        """Return every stored unmatched row."""
-        ...
-
-    async def save_proposal(self, proposal: Proposal) -> None:
-        """Store a proposal.
-
-        Raises:
-            ProposalDecidedError: If a decided proposal with the same id exists
-                and `proposal` is pending.
-        """
-        ...
-
-    async def get_proposal(self, proposal_id: str) -> Proposal | None:
-        """Return the proposal, or None."""
-        ...
-
-    async def proposals(
-        self, status: ProposalStatus | None = None
-    ) -> Sequence[Proposal]:
-        """Return the proposals with `status`, or all of them, ordered by id."""
-        ...
-
-    async def known_episode_ids(self) -> set[str]:
-        """Return the ids of the fully ingested episodes of the tenant."""
         ...

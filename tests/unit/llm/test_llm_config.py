@@ -100,7 +100,7 @@ def test_empty_object_replaces_global(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MEMORY_LLM_JUDGE_EXTRA_BODY", "{}")
     cfg = make()
     assert cfg.resolve(ModelRole.JUDGE).extra_body == {}
-    assert cfg.resolve(ModelRole.ONTOLOGY).extra_body == {"a": 1}
+    assert cfg.resolve(ModelRole.CONSOLIDATION).extra_body == {"a": 1}
 
 
 @pytest.mark.parametrize(

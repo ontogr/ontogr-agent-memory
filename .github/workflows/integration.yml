@@ -72,6 +72,24 @@ jobs:
             paths: tests/integration/access tests/integration/observability
             services: ""
             timeout: 10
+          # Neighbourhood traversal tests.
+          - name: service-neighbourhood
+            paths: tests/integration/test_neighbourhood.py
+            services: falkordb neo4j
+            workers: "0"
+            timeout: 15
+          # Retrieval and ablation tests.
+          - name: service-retrieval
+            paths: tests/integration/retrieval tests/integration/test_retrieval_ablation.py
+            services: falkordb neo4j
+            workers: "0"
+            timeout: 15
+          # Client, resolution, and core memory service tests.
+          - name: service-client-resolution
+            paths: tests/integration/client tests/integration/resolution tests/integration/test_memory_service.py
+            services: falkordb neo4j
+            workers: "0"
+            timeout: 15
           # Everything the entries above do not claim: the service and pipeline
           # tests at the top of tests/integration, and any module added later.
           - name: service
@@ -85,6 +103,12 @@ jobs:
               --ignore=tests/integration/access
               --ignore=tests/integration/llm
               --ignore=tests/integration/observability
+              --ignore=tests/integration/test_neighbourhood.py
+              --ignore=tests/integration/retrieval
+              --ignore=tests/integration/test_retrieval_ablation.py
+              --ignore=tests/integration/client
+              --ignore=tests/integration/resolution
+              --ignore=tests/integration/test_memory_service.py
             services: falkordb neo4j
             workers: "0"
             timeout: 30

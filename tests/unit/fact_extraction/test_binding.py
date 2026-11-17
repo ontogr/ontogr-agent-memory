@@ -6,7 +6,7 @@ import pytest
 
 from ontogr_mem.data_models import Kind, Method
 from ontogr_mem.data_models.facts import FactKind, TimeBasis
-from ontogr_mem.fact_extraction import FactDropReason, TypeMode, TypeView
+from ontogr_mem.fact_extraction import FactDropReason, TypeView
 from ontogr_mem.fact_extraction.binding import bind
 from ontogr_mem.fact_extraction.parsing import SchemaError, parse_facts
 from tests.support.facts import ACME, ANA, PG, fact, make_episode, reply
@@ -87,37 +87,23 @@ class TestBinding:
         assert bound.facts == []
         assert reasons(bound) == [FactDropReason.EMPTY_TEXT]
 
-    @pytest.mark.parametrize("mode", list(TypeMode))
-    def test_valid_type_is_kept_in_every_mode(self, catalog, mode: TypeMode) -> None:
-        """A valid dense id is kept whatever the mode."""
-        bound = bind_facts(fact(relation_type_id=0), view=TypeView(catalog, mode))
+    def test_valid_type_is_kept(self, catalog) -> None:
+        """A valid dense id is kept."""
+        bound = bind_facts(fact(relation_type_id=0), view=TypeView(catalog))
         assert bound.facts[0].relation_type_id == 0
         assert bound.dropped == []
 
-    @pytest.mark.parametrize("mode", [TypeMode.STRICT, TypeMode.PREFERRED])
-    def test_wrong_direction_clears_the_type_but_keeps_the_fact(
-        self, catalog, mode: TypeMode
-    ) -> None:
+    def test_wrong_direction_clears_the_type_but_keeps_the_fact(self, catalog) -> None:
         """A direction problem clears the type and keeps the claim."""
         bound = bind_facts(
             fact(
                 entity_refs=["e1", "e0"], relation_type_id=0, evidence_quote="Postgres"
             ),
-            view=TypeView(catalog, mode),
+            view=TypeView(catalog),
         )
         (f,) = bound.facts
         assert f.relation_type_id is None
         assert reasons(bound) == [FactDropReason.WRONG_DIRECTION]
-
-    def test_open_mode_does_not_enforce_direction(self, catalog) -> None:
-        """Open mode treats patterns as advisory."""
-        bound = bind_facts(
-            fact(
-                entity_refs=["e1", "e0"], relation_type_id=0, evidence_quote="Postgres"
-            ),
-            view=TypeView(catalog, TypeMode.OPEN),
-        )
-        assert bound.facts[0].relation_type_id == 0
 
     @pytest.mark.parametrize(
         ("refs", "type_id", "reason"),
@@ -128,13 +114,13 @@ class TestBinding:
             (["e0", "e0"], 0, FactDropReason.SELF_RELATION),
         ],
     )
-    def test_strict_mode_keeps_the_fact_and_records_why(
+    def test_wrong_direction_records_a_drop_reason(
         self, catalog, refs: list[str], type_id: int, reason: FactDropReason
     ) -> None:
         """An unusable type is cleared, not fatal."""
         bound = bind_facts(
             fact(entity_refs=refs, relation_type_id=type_id),
-            view=TypeView(catalog, TypeMode.STRICT),
+            view=TypeView(catalog),
         )
         assert len(bound.facts) == 1
         assert bound.facts[0].relation_type_id is None

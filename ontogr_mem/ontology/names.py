@@ -18,34 +18,6 @@ Users cannot declare a type with one of these labels. Only the catalog itself ow
 ``Unknown`` (entity type id 0).
 """
 
-RESERVED_ATTRIBUTES = frozenset(
-    {
-        "uuid",
-        "name",
-        "labels",
-        "created_at",
-        "name_embedding",
-        "summary",
-        "attributes",
-        "id",
-        "type_id",
-        "label",
-        "entity_id",
-        "episode_id",
-        "embedding",
-        "valid_from",
-        "valid_to",
-        "recorded_at",
-        "expired_at",
-        "description",
-    }
-)
-"""Attribute names that the graph rows or this repo already use.
-
-The union of Graphiti's ``EntityNode`` field names, the names FalkorDB's SDK keeps for
-itself, and this repo's id and time fields. An attribute may not reuse any of them.
-"""
-
 
 def normalize(text: str) -> str:
     """Fold text for matching: lower case, with spaces and underscores removed."""
@@ -53,7 +25,7 @@ def normalize(text: str) -> str:
 
 
 def check_identifier(name: str, *, kind: str) -> None:
-    """Raise ``InvalidChange`` unless ``name`` is a legal type or attribute name.
+    """Raise ``InvalidChange`` unless ``name`` is a legal type name.
 
     A legal name starts with a letter, holds letters, digits and single underscores, and
     is at most ``MAX_NAME_LEN`` characters. ``kind`` only labels the error message.

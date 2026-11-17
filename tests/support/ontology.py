@@ -12,11 +12,9 @@ from ontogr_mem.ontology.apply import apply_changeset
 from ontogr_mem.ontology.models import (
     AddEntity,
     AddRelation,
-    Attribute,
     ChangeSet,
     Ontology,
     PatternSpec,
-    ValueType,
 )
 from ontogr_mem.ontology.ontology_store import OntologyStore
 from tests.support.episodes import make_episode
@@ -38,15 +36,7 @@ def base() -> Ontology:
         g,
         cs(
             g,
-            AddEntity(
-                label="Person",
-                description="A human being.",
-                properties=[
-                    Attribute(name="age", value_type=ValueType.INTEGER),
-                    Attribute(name="nickname", max_length=5),
-                    Attribute(name="email", required=True),
-                ],
-            ),
+            AddEntity(label="Person", description="A human being."),
             AddEntity(label="Employee", parent="Person"),
             AddEntity(label="Organization", aliases=["Org"]),
             AddRelation(

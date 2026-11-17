@@ -137,8 +137,9 @@ class ServiceJobs:
         """Authorize and queue a structured, text, or message memory write.
 
         A text or message write requires the entity and fact extraction models to
-        be configured. A positive ``wait_seconds`` waits up to that long for the
-        job to finish.
+        be configured. A positive ``wait_seconds`` waits up to that long for a
+        terminal state and returns the latest status. The job keeps running if
+        it is still queued or running when the wait ends.
         """
         self._deps.limiter.check(principal.id, "write")
         tenant_id = request.tenant or principal.default_tenant

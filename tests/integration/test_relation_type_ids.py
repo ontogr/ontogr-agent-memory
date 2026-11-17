@@ -1,4 +1,4 @@
-"""End-to-end: fact relations follow the ontology mode on every store."""
+"""End-to-end: dense relation ids map to stable ids across catalog changes."""
 
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
@@ -19,23 +19,14 @@ from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import (
     AddRelation,
     DeprecateType,
-    Mode,
-    Origin,
-    SetModes,
-    UnmatchedKind,
 )
 from ontogr_mem.ontology.models import (
     Kind as OntologyKind,
 )
-from ontogr_mem.ontology.models import (
-    Status as TypeStatus,
-)
 from ontogr_mem.ontology.ontology_store import OntologyStore
-from ontogr_mem.ontology.settings import OntologySettings
 from tests.support.clock import FixedClock
 from tests.support.graph_backend import GraphBackend
 from tests.support.ontology import base, cs
-from tests.support.scripted_model import scripted_role_models
 
 
 def fact(
@@ -78,12 +69,7 @@ class World:
 
     def manager(self) -> OntologyManager:
         """Build a manager over this store."""
-        return OntologyManager(
-            self.store,
-            scripted_role_models(),
-            OntologySettings(min_support=3),
-            FixedClock(),
-        )
+        return OntologyManager(self.store, FixedClock())
 
 
 @pytest.fixture
@@ -97,79 +83,8 @@ async def world(graph_backend: GraphBackend) -> AsyncGenerator[World]:
     )
 
 
-async def manager_with_mode(world: World, mode: Mode) -> OntologyManager:
-    """Load the base catalog and set the relation mode."""
-    manager = world.manager()
-    await manager.load_catalog(base())
-    await manager.apply(cs(await manager.catalog(), SetModes(relation_mode=mode)))
-    return manager
-
-
-class TestRelationTypesFollowMode:
-    """An unknown relation label is handled by the ontology mode."""
-
-    async def test_strict_drops_and_records_nothing(self, world):
-        """The fact is dropped and counted; nothing is stored or registered."""
-        manager = await manager_with_mode(world, Mode.STRICT)
-        before = await manager.catalog()
-        view = await manager.extraction_view()
-        label_fact = fact(relation_label="mentors")
-
-        result = await stabilize_facts(manager, [label_fact], view)
-
-        assert result.typed == ()
-        assert result.dropped == (label_fact,)
-        assert result.counts == {"unknown_relation": 1}
-        assert await manager.unmatched() == []
-        assert await manager.catalog() == before
-
-    async def test_preferred_drops_the_fact_and_replaces_review_rows(self, world):
-        """The label is recorded per episode; a rerun replaces the episode's rows."""
-        manager = await manager_with_mode(world, Mode.PREFERRED)
-        view = await manager.extraction_view()
-        mentors_fact = fact(fact_id="f1", relation_label="mentors")
-
-        first = await stabilize_facts(manager, [mentors_fact], view)
-
-        assert first.typed == ()
-        assert first.dropped == (mentors_fact,)
-        assert first.counts == {"unknown_relation": 1}
-        assert [
-            (row.kind, row.raw_label, row.episode_id)
-            for row in await manager.unmatched()
-        ] == [(UnmatchedKind.RELATION_TYPE, "mentors", "ep1")]
-
-        await stabilize_facts(
-            manager, [fact(fact_id="f2", relation_label="guides")], view
-        )
-
-        assert [row.raw_label for row in await manager.unmatched()] == ["guides"]
-
-    async def test_open_registers_the_label_and_reuses_it(self, world):
-        """The first label registers a type; a later fact reuses its id."""
-        manager = await manager_with_mode(world, Mode.OPEN)
-        view = await manager.extraction_view()
-
-        first = await stabilize_facts(
-            manager, [fact(fact_id="f1", relation_label="mentors")], view
-        )
-
-        (typed,) = first.typed
-        catalog = await manager.catalog()
-        (mentors,) = [r for r in catalog.relations if r.label == "mentors"]
-        assert typed.relation_type == mentors.type_id
-        assert mentors.origin is Origin.AUTO_ACCEPTED
-        assert mentors.status is TypeStatus.ACTIVE
-        assert mentors.patterns == []
-
-        second_view = await manager.extraction_view()
-        second = await stabilize_facts(
-            manager, [fact(fact_id="f2", relation_label="mentors")], second_view
-        )
-
-        assert second.typed[0].relation_type == mentors.type_id
-        labels = [r.label for r in (await manager.catalog()).relations]
-        assert labels.count("mentors") == 1
+class TestRelationTypeIds:
+    """Stable relation ids and the catalog version carried by typed facts."""
 
     async def test_dense_ids_map_to_stable_ids_across_deprecation(self, world):
         """A dense id is mapped through the projection that issued it."""
@@ -205,7 +120,8 @@ class TestRelationTypesFollowMode:
 
     async def test_typed_fact_records_the_projection_catalog_version(self, world):
         """A typed fact names the catalog version its dense ids came from."""
-        manager = await manager_with_mode(world, Mode.PREFERRED)
+        manager = world.manager()
+        await manager.load_catalog(base())
         projection = await manager.extraction_view()
 
         result = await stabilize_facts(manager, [fact()], projection)

@@ -4,7 +4,6 @@ import hashlib
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from enum import StrEnum
 from typing import Any
 
 from ontogr_mem.data_models.text import normalize_label
@@ -132,33 +131,13 @@ class TypeCatalog:
         return not allowed or type_id == UNKNOWN_TYPE_ID or type_id in allowed
 
 
-class TypeMode(StrEnum):
-    """How the prompt and the direction check treat ``relation_type_id``.
-
-    A problem with a proposed type never drops the fact: the type is cleared
-    and the reason recorded, in every mode.
-
-    * ``strict``: the prompt says the id must be one of the listed types and
-      directions are checked.
-    * ``preferred``: the prompt says to prefer a listed type; directions are
-      checked.
-    * ``open``: ids are range-checked but the catalog's direction patterns are
-      advisory and not enforced.
-    """
-
-    STRICT = "strict"
-    PREFERRED = "preferred"
-    OPEN = "open"
-
-
 @dataclass(frozen=True, slots=True)
 class TypeView:
-    """A catalog plus the mode."""
+    """A catalog view for extraction."""
 
     catalog: TypeCatalog
-    mode: TypeMode = TypeMode.PREFERRED
 
     @property
     def version(self) -> str:
-        """Catalog version plus mode; part of the per-episode status key."""
-        return f"{self.catalog.version}:{self.mode.value}"
+        """Return the catalog version."""
+        return self.catalog.version

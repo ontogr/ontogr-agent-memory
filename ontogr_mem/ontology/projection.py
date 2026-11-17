@@ -12,11 +12,10 @@ from ontogr_mem.data_models.type_catalog import (
     EntityType,
     RelationType,
     TypeCatalog,
-    TypeMode,
     TypeView,
 )
 from ontogr_mem.ontology.errors import DenseIdError
-from ontogr_mem.ontology.models import UNKNOWN_ID, Kind, Mode, Ontology, Status
+from ontogr_mem.ontology.models import UNKNOWN_ID, Kind, Ontology, Status
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,16 +57,13 @@ class Projection:
         return self.relation_ids[dense_id]
 
 
-_MODE = {Mode.STRICT: TypeMode.STRICT, Mode.PREFERRED: TypeMode.PREFERRED}
-
-
 def project(cat: Ontology, actor_type_label: str = "Person") -> Projection:
     """Project a catalog onto the dense-id view that extraction reads.
 
     Only active types are included, and Unknown is left out because the view
     represents it as id -1. Each relation's ordered patterns become source and target
     sets, expanded with descendant types. This is looser than ``validate``: a crossed
-    pair can pass the direction check. The mode is taken from ``relation_mode``.
+    pair can pass the direction check.
 
     Args:
         cat: The catalog to project.
@@ -116,7 +112,7 @@ def project(cat: Ontology, actor_type_label: str = "Person") -> Projection:
         actor_type_label=actor_type_label,
     )
     return Projection(
-        view=TypeView(old, _MODE.get(cat.relation_mode, TypeMode.OPEN)),
+        view=TypeView(old),
         catalog_version=cat.version,
         content_hash=cat.content_hash,
         entity_ids=tuple(e.type_id for e in ents),

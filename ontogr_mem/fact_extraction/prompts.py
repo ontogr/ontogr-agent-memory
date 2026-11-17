@@ -12,7 +12,7 @@ import json
 from collections.abc import Sequence
 from typing import Any
 
-from ontogr_mem.data_models import Episode, ExtractedEntity, TypeMode, TypeView
+from ontogr_mem.data_models import Episode, ExtractedEntity, TypeView
 from ontogr_mem.fact_extraction.text import language_of, text_of
 from ontogr_mem.llm.prompt import fence
 
@@ -117,13 +117,8 @@ def build_prompt(
         fence("entities", _json(entities)),
     ]
     if view is not None:
-        wording = (
-            "must be one of these ids"
-            if view.mode is TypeMode.STRICT
-            else "should be one of these ids"
-        )
         parts.append(
-            f"Relation types are {view.mode.value}: relation_type_id {wording}, "
+            "Relation types are strict: relation_type_id must be one of these ids, "
             "between two refs in the listed direction."
         )
         parts.append(fence("relation_types", _json(view.catalog.relation_types_json())))

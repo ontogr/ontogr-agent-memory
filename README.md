@@ -1,7 +1,7 @@
 <h1 align="center"><a href="https://github.com/ontogr/ontogr-agent-memory">OntoGr Agent Memory</a></h1>
 
 <h3 align="center">Durable, traceable memory for AI agents.</h3>
-<h4 align="center"><a href="https://github.com/ontogr/ontogr-agent-memory#features">Features</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#quickstart">Quickstart</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#core-concepts">Concepts</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#how-data-flows">Data flow</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#service-api">Service API</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#configuration">Configuration</a> · <a href="https://github.com/ontogr/ontogr-agent-memory/blob/main/CONTEXT.md">Vocabulary</a> · <a href="https://github.com/ontogr/ontogr-agent-memory/blob/main/CHANGELOG.md">Changelog</a></h4>
+<h4 align="center"><a href="https://github.com/ontogr/ontogr-agent-memory#features">Features</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#quickstart">Quickstart</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#core-concepts">Concepts</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#how-data-flows">Data flow</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#service-api">Service API</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#configuration">Configuration</a> · <a href="https://github.com/ontogr/ontogr-agent-memory/blob/main/CHANGELOG.md">Changelog</a></h4>
 
 <div align="center">
 
@@ -73,7 +73,6 @@ Entity extraction and fact extraction are separate passes over the same episode.
 - an LLM extractor with a numbered type catalog
 - GLiNER and spaCy extractors
 - a record mapper for structured rows and events
-- a memory extractor that adds descriptions and attributes
 - a composite extractor that combines results
 - a fallback extractor that runs a cheap pass first and escalates to a model only when triggers fire
 
@@ -96,22 +95,19 @@ A language model can state things that the text never says. Fact extraction chec
 
 *Each tenant decides which entity types and relation types are allowed.*
 
-Free-form labels drift, so one relation can appear under many names and its facts cannot be compared. A catalog gives each type a stable id, and a change to the catalog goes through review.
+Free-form labels drift, so one relation can appear under many names and its facts cannot be compared. A catalog gives each type a stable id.
 
-Each tenant has a catalog of entity types and relation types, plus attributes and aliases. Type ids are stable integers. A type can be deprecated or merged, but old ids remain resolvable. A catalog change is a change set applied by one pure function and committed with a compare-and-swap against the current head, so a stale head fails instead of overwriting another change.
+Each tenant has a catalog of entity types and relation types, plus aliases. Type ids are stable integers. A type can be deprecated or merged, but old ids remain resolvable. A catalog change is a change set applied by one pure function and committed with a compare-and-swap against the current head, so a stale head fails instead of overwriting another change.
 
-Unknown type labels are handled by mode:
+A label that the catalog does not hold is handled by kind:
 
-| Mode | Behavior |
+| Kind | Behavior |
 | --- | --- |
-| `strict` | The item is dropped and counted. |
-| `preferred` | The item is dropped, and an unmatched row is recorded for review. |
-| `open` | The label is registered immediately. |
+| Entity type | The entity is kept with the Unknown type. |
+| Relation type | The fact is dropped and counted. |
 
 - **Patterns are enforced:** Relation types can declare source and target patterns. The patterns appear in the prompt, and the code also enforces them.
-- **People approve proposals:** A model can draft proposals from labels that appear in enough distinct episodes. A person accepts or rejects each proposal, and a proposal is never applied automatically.
-- **Changes report their reach:** After a catalog change, the ontology reports which episodes may produce a different result so the caller can queue them for extraction again.
-- **A default catalog exists:** A new tenant can start from a default catalog of common types for entities and relations.
+- **A default catalog exists:** A new tenant starts from a default catalog of common types for entities and relations.
 
 #### Entity resolution
 
@@ -482,9 +478,9 @@ The server registers these tools:
 
 `MEMORY_MCP_TOOLS` can only remove tools. It cannot enable `add_memory` or any administrative operation. The server has no hard delete, clear, export or ontology tool. `forget_memory` closes a fact's validity and keeps its history. It does not erase the source.
 
-Writes are queued. The receipt names a job, so call `get_job` until its status is terminal. A finished `write_facts` result has `fact_ids` and `dropped`. Each `dropped` entry has an `index`, a `reason` and a `detail`. The `index` is the zero-based position in the submitted facts. The reasons are `missing_field`, `ungrounded`, `ambiguous_entity_ref`, `unknown_relation`, `unknown_entity_type`, `wrong_direction`, `self_relation`, the time reasons (for example `time_order`) and `duplicate_merged`. The source Episode is kept even when every fact is dropped.
+Writes are queued. The receipt names a job, so call `get_job` until its status is terminal. A finished `write_facts` result has `fact_ids` and `dropped`. Each `dropped` entry has an `index`, a `reason` and a `detail`. The `index` is the zero-based position in the submitted facts. The reasons are `missing_field`, `ungrounded`, `ambiguous_entity_ref`, `unknown_relation`, `wrong_direction`, `self_relation`, the time reasons (for example `time_order`) and `duplicate_merged`. The source Episode is kept even when every fact is dropped.
 
-The tenant's ontology modes decide what happens to an unknown relation or entity type, and each kind has its own mode. A tenant that loaded the default catalog is strict for relations and preferred for entity types. In strict mode the fact is dropped and nothing is recorded. In preferred mode a relation label is recorded for review and the fact is dropped, while an unknown entity type is recorded for review and the entity is kept with an Unknown type. In open mode the label is registered and the fact is stored. Set the relation mode to preferred to collect review rows for unknown relations.
+The tenant's ontology decides what happens to an unknown relation or entity type. An unknown relation is dropped and nothing is recorded. An unknown entity type is kept with the Unknown type, and a relation that declares source and target types is dropped when an endpoint has the Unknown type.
 
 The package ships two skills, `memory-write` and `memory-recall`. Call `get_skill` with either name to read its text. A host that supports the experimental skills extension also lists them. A host does not need that extension.
 
@@ -670,7 +666,7 @@ The relation store refuses its in-memory backend unless you set `MEMORY_STATE_AL
 | Slot | One subject and relation type, plus the object when the relation can have many values. |
 | Fact | What the system currently believes about a relation, with a validity window. |
 | Fact version | An immutable version of a fact. A change writes a new version and closes the old one. |
-| Ontology | The entity types, relation types, attributes, and aliases a tenant allows. |
+| Ontology | The entity types, relation types, and aliases a tenant allows. |
 | Consolidation | The scheduled maintenance run over one tenant's memory. |
 | Principal | The caller, with an id, grants per tenant, a default tenant, and an optional parent. |
 | Grant | One permission on one tenant: read, write, forget, share, export, or admin. |
@@ -695,7 +691,7 @@ First, ingestion stores a source item as an episode. Second, entity extraction f
 ### A write
 
 1. The service checks the caller's rate limit, opens an operation row in the relation store, and checks the write grant for the tenant. Each access decision is appended to the audit log.
-2. The service stores the request as a job in the relation store and returns a receipt with the job id. A repeated idempotency key returns the original job, and `wait_seconds` makes the call wait for the job to finish.
+2. The service stores the request as a job in the relation store and returns a receipt with the job id. A repeated idempotency key returns the original job. A positive `wait_seconds` makes the call wait up to that long for a terminal state, and the receipt shows the latest status when the wait ends.
 3. The tenant's job lane runs the job. A lane runs one job at a time for its tenant, and lanes for different tenants run in parallel. The job records each attempt.
 4. Ingestion writes the episode with its source and actor to the graph, and records the content hash last.
 5. For a text or message write, extraction finds entities, and resolution links them to canonical entities in the graph. Resolution also writes the entity name vectors. A structured fact skips extraction.
@@ -776,7 +772,7 @@ A read does not create a job. A search that finds nothing reports an `indexing` 
 
 ### Jobs
 
-Writes return a `WriteReceipt` with a job id and status. A positive `wait_seconds` waits for completion. Jobs run in serial lanes per tenant, and different tenants run in parallel. Each write accepts an optional idempotency key, and a repeated key returns the original job instead of creating duplicate work. A job records attempts, progress, result, error, and trace id, and the runner retries up to a configured maximum.
+Writes return a `WriteReceipt` with a job id and status. A positive `wait_seconds` waits up to that long for a terminal state, and the receipt shows the status at that moment, so read `get_job` for the final result. Jobs run in serial lanes per tenant, and different tenants run in parallel. Each write accepts an optional idempotency key, and a repeated key returns the original job instead of creating duplicate work. A job records attempts, progress, result, error, and trace id, and the runner retries up to a configured maximum.
 
 AddMemory writes accept a `role`, which defaults to `user`, and a `speaker`. The speaker is both the actor id and display name. If it is omitted, the service uses the caller id as the actor id and leaves the display name empty. Episode listings and retrieved episode passages include the actor id, display name, and role.
 
@@ -829,11 +825,10 @@ Model calls use typed agents and role-based configuration. Each role resolves it
 
 The model pool serves these consumers:
 
-- `ENTITY_EXTRACTION` handles entity extraction and memory entity enrichment.
+- `ENTITY_EXTRACTION` handles entity extraction.
 - `FACT_EXTRACTION` handles fact extraction.
 - `RESOLUTION` handles entity-resolution verification.
 - `JUDGE` handles temporal pair judgments.
-- `ONTOLOGY` handles ontology proposal drafting.
 - `CONSOLIDATION` handles community summaries, entity descriptions, and reflection.
 
 The `ANSWER` role supplies the model of the default chat agent and of agents that read it from the client. No service pipeline uses it. The model layer has no gate, response cache, model-price table, or input-token cap. Graph stores and the embedding gateway retain their own resilience behavior.
@@ -946,7 +941,6 @@ Settings classes use `pydantic-settings`. They read the `.env` file in the curre
 | `MEMORY_TEMPORAL_` | Temporal retries, batch size, and episode pending time. |
 | `MEMORY_JUDGE_` | Conflict judge threshold and token budget. |
 | `MEMORY_CONSOLIDATION_` | Consolidation leases, feedback, scoring, communities, and retention. |
-| `MEMORY_ONTOLOGY_` | Proposal support, commit retries, and prompt version. |
 | `MEMORY_ENTITY_EXTRACTION_` | Entity extractor concurrency, context, and thresholds. |
 | `MEMORY_FACT_EXTRACTION_` | Fact extractor concurrency, context, and version. |
 | `MEMORY_LLM_` | Global and per-role model settings. See [Named model roles](#named-model-roles). |
@@ -958,7 +952,7 @@ Nested settings join their names with `__`, for example `MEMORY_FALKORDB_RESILIE
 
 ### Named model roles
 
-Each model-backed consumer selects a `ModelRole` from the shared pool. The consumers use `ENTITY_EXTRACTION` for entity extraction and memory entity enrichment, `FACT_EXTRACTION` for fact extraction, `RESOLUTION` for entity-resolution verification, `JUDGE` for temporal pair judgments, `ONTOLOGY` for proposal drafting, and `CONSOLIDATION` for community summaries, entity descriptions, and reflection. The `ANSWER` role is used by the default chat agent, not by a service pipeline. A role-specific setting replaces the global value for that field. Unset role fields inherit the global value.
+Each model-backed consumer selects a `ModelRole` from the shared pool. The consumers use `ENTITY_EXTRACTION` for entity extraction, `FACT_EXTRACTION` for fact extraction, `RESOLUTION` for entity-resolution verification, `JUDGE` for temporal pair judgments, and `CONSOLIDATION` for community summaries, entity descriptions, and reflection. The `ANSWER` role is used by the default chat agent, not by a service pipeline. A role-specific setting replaces the global value for that field. Unset role fields inherit the global value.
 
 The global fields are:
 
@@ -974,7 +968,7 @@ The global fields are:
 | `extra_body` | `MEMORY_LLM_EXTRA_BODY` | Unset | JSON object added to the body of each provider request. |
 | `max_concurrency` | `MEMORY_LLM_MAX_CONCURRENCY` | `4` | Calls allowed at once across all roles in one model pool. This field is global only. |
 
-Each role has the same fields with a role prefix. Replace `<ROLE>` with one of `ENTITY_EXTRACTION`, `FACT_EXTRACTION`, `RESOLUTION`, `JUDGE`, `CONSOLIDATION`, `ONTOLOGY` or `ANSWER`, and replace `<FIELD>` with one of the field names in the table below. For example, `MEMORY_LLM_FACT_EXTRACTION_EXTRA_BODY` sets the request body extras for fact extraction.
+Each role has the same fields with a role prefix. Replace `<ROLE>` with one of `ENTITY_EXTRACTION`, `FACT_EXTRACTION`, `RESOLUTION`, `JUDGE`, `CONSOLIDATION` or `ANSWER`, and replace `<FIELD>` with one of the field names in the table below. For example, `MEMORY_LLM_FACT_EXTRACTION_EXTRA_BODY` sets the request body extras for fact extraction.
 
 | Field | Environment variable | When unset |
 | --- | --- | --- |
@@ -992,7 +986,7 @@ When no output cap is set, each role uses the following default `max_output_toke
 | Role | Default `max_output_tokens` |
 | --- | --- |
 | `FACT_EXTRACTION` | 16384 |
-| `ENTITY_EXTRACTION`, `RESOLUTION`, `JUDGE`, `CONSOLIDATION`, `ONTOLOGY` | 2048 |
+| `ENTITY_EXTRACTION`, `RESOLUTION`, `JUDGE`, `CONSOLIDATION` | 2048 |
 | `ANSWER` | No cap is sent |
 
 A blank value counts as unset. A blank per-role variable does not replace the global value. A per-role `extra_body` replaces the global object as a whole. The two objects are not merged.

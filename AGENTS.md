@@ -60,7 +60,6 @@ tests/
   unit/                 # unit tests, no network
   integration/          # integration tests with real external services
 thoughts/               # shared plans, decisions and research notes, do not edit unless asked
-CONTEXT.md              # project vocabulary; keep terms consistent with it
 ```
 
 ## Critical rules
@@ -356,6 +355,7 @@ Google style governs docstring structure and formatting; `writing-plain` governs
   propose improvements unless asked.
 - Check `thoughts/shared/plans/` before starting non-trivial implementation work.
 - Define the narrowest useful verification check before running broad commands.
+- Never default to the full suite or repeat a passing check for commit or push. CI owns exhaustive coverage and the platform matrix. Only run targeted checks that the CI will not be able to run.
 
 ## Task completion guidelines
 

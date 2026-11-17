@@ -45,13 +45,8 @@ from ontogr_mem.fact_extraction.text import text_of
 from ontogr_mem.ingestion import IngestionPipeline, seal
 from ontogr_mem.llm import ModelFailure, ModelRole
 from ontogr_mem.ontology.extraction_items import stabilize_facts
-from ontogr_mem.ontology.models import UNKNOWN_ID, Mode, Ontology, Reason, Relation
-from ontogr_mem.ontology.validate import (
-    Context,
-    EntityItem,
-    ExtractedItems,
-    RelationItem,
-)
+from ontogr_mem.ontology.models import UNKNOWN_ID, Ontology, Reason, Relation
+from ontogr_mem.ontology.validate import EntityItem, ExtractedItems, RelationItem
 from ontogr_mem.request_context import current_context
 from ontogr_mem.service.connectors import draft_registry
 from ontogr_mem.service.contracts import (
@@ -68,7 +63,6 @@ from ontogr_mem.service.errors import (
     ObjectNotFoundError,
 )
 from ontogr_mem.service.formatting import default_statement
-from ontogr_mem.service.relations import ensure_relation
 from ontogr_mem.service.runtime import TenantRuntime
 from ontogr_mem.service.sourced_facts import (
     BindInput,
@@ -84,7 +78,7 @@ from ontogr_mem.vectorstore.episode_vectors import write_episode_vectors
 
 _LLM_HINT = "Configure both extraction roles, or use write_facts with source text."
 _MIN_VALIDITY = timedelta(seconds=1)
-# Strict mode drops a relation whose endpoint types do not fit its patterns.
+# A relation whose endpoint types do not fit its patterns is dropped.
 _PATTERN_REASONS = frozenset({Reason.PATTERN_MISMATCH, Reason.DIRECTION_SWAPPED})
 
 
@@ -145,17 +139,8 @@ async def add_memory(
     typed = await stabilize_facts(
         tenant.ontology, facts, await tenant.ontology.extraction_view()
     )
-    if request.kind is MemoryKind.FACT:
-        for fact in typed.dropped:
-            if fact.relation_type_id is not None or not fact.relation_label:
-                raise InvalidArgumentError("one or more extracted facts were refused")
-            dropped.append(
-                {
-                    "index": 0,
-                    "reason": "unknown_relation",
-                    "detail": "relation recorded for review; fact not stored",
-                }
-            )
+    if request.kind is MemoryKind.FACT and typed.dropped:
+        raise InvalidArgumentError("one or more extracted facts were refused")
     ontology = await tenant.ontology.catalog()
     tenant.refresh_relation_labels(ontology)
     report = await tenant.engine(ontology, tenant.resolver.store).ingest(
@@ -185,24 +170,16 @@ async def _prepare_fact(
     if request.subject is None or request.relation is None or request.object is None:
         raise InvalidArgumentError("kind=fact needs subject, relation and object")
     ontology = await tenant.ontology.catalog()
-    relation: Relation | None = None
-    if (
-        ontology.relation_by_label(request.relation) is not None
-        or ontology.relation_mode is not Mode.PREFERRED
-    ):
-        relation = await ensure_relation(
-            tenant.ontology, request.relation, single_valued=request.single_valued
+    relation = ontology.relation_by_label(request.relation)
+    if relation is None:
+        raise InvalidArgumentError(
+            f"relation label is not in the ontology: {request.relation}"
         )
-        ontology = await tenant.ontology.catalog()
     tenant.refresh_relation_labels(ontology)
     projection = await tenant.ontology.extraction_view()
-    if relation is None:
-        subject_type, object_type = UNKNOWN_TYPE_ID, UNKNOWN_TYPE_ID
-        relation_type = None
-    else:
-        subject_type, object_type = _endpoint_types(ontology, relation, projection.view)
-        relation_type = projection.relation_ids.index(relation.type_id)
-    relation_label = request.relation if relation is None else relation.label
+    subject_type, object_type = _endpoint_types(ontology, relation, projection.view)
+    relation_type = projection.relation_ids.index(relation.type_id)
+    relation_label = relation.label
     occurred_at = request.reference_time or job.created_at
     statement = request.statement or default_statement(
         request.subject, relation_label, request.object
@@ -245,7 +222,7 @@ async def _prepare_fact(
         text=statement,
         entity_refs=("s", "o"),
         relation_type_id=relation_type,
-        relation_label=request.relation if relation is None else None,
+        relation_label=None,
         fact_kind=FactKind.STATE,
         polarity=Polarity.AFFIRMED,
         modality=Modality.ACTUAL,
@@ -343,14 +320,12 @@ async def _prepare_sourced_facts(  # noqa: PLR0912, PLR0915
     drops: list[Drop] = list(grounded.drops)
     bound_facts: list[ExtractedFact] = []
     if grounded.facts:
-        # One call keeps the entity and relation review rows together.
-        report = await tenant.ontology.process_extraction(
+        report = await tenant.ontology.validate_extraction(
             ExtractedItems(
                 entities=tuple(
                     EntityItem(
                         local_id=endpoint.ref,
                         raw_type=endpoint.type_label,
-                        quote=endpoint.name,
                     )
                     for endpoint in grounded.endpoints
                 ),
@@ -359,12 +334,10 @@ async def _prepare_sourced_facts(  # noqa: PLR0912, PLR0915
                         source=item.subject_ref,
                         target=item.object_ref,
                         raw_label=item.fact.relation,
-                        quote=item.fact.evidence_quote,
                     )
                     for item in grounded.facts
                 ),
-            ),
-            Context(episode.id),
+            )
         )
         ontology = await tenant.ontology.catalog()
         tenant.refresh_relation_labels(ontology)
@@ -375,25 +348,10 @@ async def _prepare_sourced_facts(  # noqa: PLR0912, PLR0915
                 grounded.endpoints, report.entities, strict=True
             )
         }
-        relation_detail = (
-            "relation recorded for review; fact not stored"
-            if ontology.relation_mode is Mode.PREFERRED
-            else "relation is not in the ontology"
-        )
         survivors: list[tuple[BindInput, int]] = []
         for item, verdict in zip(grounded.facts, report.relations, strict=True):
             subject = endpoint_verdicts[item.subject_ref]
             target = endpoint_verdicts[item.object_ref]
-            # A relation is dropped with its endpoint, so name the endpoint first.
-            if not (subject.kept and target.kept):
-                drops.append(
-                    Drop(
-                        item.index,
-                        FactDropReason.UNKNOWN_ENTITY_TYPE,
-                        "entity type is not in the ontology",
-                    )
-                )
-                continue
             if not verdict.kept and _PATTERN_REASONS & set(verdict.reasons):
                 drops.append(
                     Drop(
@@ -408,9 +366,12 @@ async def _prepare_sourced_facts(  # noqa: PLR0912, PLR0915
                 or verdict.type_id is None
                 or verdict.type_id not in projection.relation_ids
             ):
-                drops.append(
-                    Drop(item.index, FactDropReason.UNKNOWN_RELATION, relation_detail)
+                detail = (
+                    "an endpoint type is not in the ontology"
+                    if Reason.UNKNOWN_ENDPOINT in verdict.reasons
+                    else "relation is not in the ontology"
                 )
+                drops.append(Drop(item.index, FactDropReason.UNKNOWN_RELATION, detail))
                 continue
             relation = ontology.relation(verdict.type_id)
             subject_id = _known_type(subject.type_id)

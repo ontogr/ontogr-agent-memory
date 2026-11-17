@@ -26,7 +26,6 @@ from ontogr_mem.ontology.extraction_items import stabilize_facts
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import AddEntity, AddRelation, PatternSpec
 from ontogr_mem.ontology.ontology_store import OntologyStore
-from ontogr_mem.ontology.settings import OntologySettings
 from ontogr_mem.resolution import EntityResolver
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionMode, ResolutionPolicy, TypePolicy
@@ -63,7 +62,6 @@ from tests.support.embedder import RecordingEmbedder
 from tests.support.episodes import make_episode as episode_at
 from tests.support.facts import fact, fact_models, reply
 from tests.support.ontology import base, cs
-from tests.support.scripted_model import scripted_role_models
 
 
 NOW = datetime(2026, 10, 23, 12, 0, tzinfo=UTC)
@@ -129,8 +127,6 @@ async def build_world(backend: RetrievalBackend) -> RetrievalWorld:
     )
     manager = OntologyManager(
         backend.ontology_store,
-        scripted_role_models(),
-        OntologySettings(min_support=3),
         FixedClock(),
     )
     catalog = base()

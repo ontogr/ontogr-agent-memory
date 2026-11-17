@@ -35,7 +35,7 @@ Example arguments for `write_facts`:
 }
 ```
 
-The example labels are valid only if this server's ontology accepts them. A preferred unknown relation is recorded for review and its fact is dropped. That review record does not mean the fact was stored. Do not change labels repeatedly to bypass a refusal.
+The example labels are valid only if this server's ontology accepts them. A fact whose relation is not in the ontology is dropped and appears in dropped. Do not change labels repeatedly to bypass a refusal.
 
 ## Check the outcome
 

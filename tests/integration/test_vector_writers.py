@@ -23,7 +23,6 @@ from ontogr_mem.ingestion import ChatMessage, IngestionPipeline, default_registr
 from ontogr_mem.llm import LLMConfig, build_models
 from ontogr_mem.ontology.extraction_items import stabilize_facts
 from ontogr_mem.ontology.manager import OntologyManager
-from ontogr_mem.ontology.settings import OntologySettings
 from ontogr_mem.resolution import EntityResolver, ResolutionPolicy
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionMode, TypePolicy
@@ -51,7 +50,6 @@ from tests.support.extraction import entity_models
 from tests.support.facts import fact, fact_models, reply
 from tests.support.graph_backend import GraphBackend
 from tests.support.ontology import base
-from tests.support.scripted_model import scripted_role_models
 from tests.support.vectors import HALF, OPPOSITE, ORTHOGONAL, A
 
 
@@ -156,8 +154,6 @@ async def _stack(backend: GraphBackend) -> WriterStack:
     )
     manager = OntologyManager(
         GraphOntologyStore(graph, handle, tenant_keyed=keyed),
-        scripted_role_models(),
-        OntologySettings(min_support=3),
         fixed_clock,
     )
     await manager.load_catalog(base())

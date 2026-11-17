@@ -11,7 +11,6 @@ from ontogr_mem.data_models.clock import Clock
 from ontogr_mem.llm import RoleModels
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import Ontology
-from ontogr_mem.ontology.settings import OntologySettings
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionPolicy
 from ontogr_mem.resolution.resolver import EntityResolver
@@ -89,7 +88,6 @@ def build_tenant_runtime(
     policy: ResolutionPolicy,
     resolver_settings: ResolverSettings,
     retrieval_settings: RetrievalSettings,
-    ontology_settings: OntologySettings | None = None,
 ) -> TenantRuntime:
     """Wire the memory components around one tenant's stores."""
     writer = VectorWriter(stores.vectors)
@@ -102,12 +100,7 @@ def build_tenant_runtime(
         clock,
         models=models,
     )
-    ontology = OntologyManager(
-        stores.ontology_store,
-        models,
-        ontology_settings or OntologySettings(),
-        clock,
-    )
+    ontology = OntologyManager(stores.ontology_store, clock)
     labels: dict[int, str] = {}
     retriever = Retriever(
         vectors=stores.vectors,

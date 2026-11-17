@@ -157,10 +157,6 @@ class AddMemory(WriteRequest):
     reference_time: UtcDatetime | None = Field(
         default=None, description="When the event happened. Defaults to now."
     )
-    single_valued: bool | None = Field(
-        default=None,
-        description="kind=fact: true when a new object replaces the old.",
-    )
     facts: list[HostFact] | None = Field(
         default=None,
         max_length=MAX_HOST_FACTS,
@@ -228,7 +224,6 @@ class AddMemory(WriteRequest):
                     self.statement,
                     self.valid_from,
                     self.valid_to,
-                    self.single_valued,
                 )
             ):
                 msg = "kind=sourced_facts uses facts, not triple fields"

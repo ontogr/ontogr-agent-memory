@@ -7,30 +7,20 @@ from ontogr_mem.ontology.diff import diff
 from ontogr_mem.ontology.errors import InvalidChange, VersionConflict
 from ontogr_mem.ontology.models import (
     AddAlias,
-    AddAttribute,
     AddEntity,
     AddPattern,
     AddRelation,
-    AddTable,
-    Attribute,
-    Channel,
-    DeprecateAttribute,
     DeprecatePattern,
     DeprecateType,
     Kind,
     MergeInto,
-    Mode,
     Ontology,
-    Owner,
     PatternSpec,
     Reactivate,
     Rename,
     SetDescription,
     SetExclusive,
-    SetModes,
     Status,
-    TableMapping,
-    ValueType,
 )
 from tests.support.ontology import base, cs
 
@@ -91,58 +81,6 @@ def test_names_colliding_after_normalization_are_refused():
         apply_changeset(
             a, cs(a, AddAlias(kind=Kind.ENTITY, target="Organization", alias="PERSON"))
         )
-
-
-def test_reserved_attribute_name_is_refused():
-    """Reserved attribute name is refused."""
-    a = base()
-    with pytest.raises(InvalidChange, match="reserved attribute"):
-        apply_changeset(
-            a,
-            cs(
-                a,
-                AddAttribute(
-                    kind=Kind.ENTITY, target="Person", attribute=Attribute(name="uuid")
-                ),
-            ),
-        )
-
-
-def test_retyping_an_attribute_is_refused_and_the_same_one_is_a_no_op():
-    """Retyping an attribute is refused and the same one is a no op."""
-    a = base()
-    same = Attribute(name="age", value_type=ValueType.INTEGER)
-    b = apply_changeset(
-        a, cs(a, AddAttribute(kind=Kind.ENTITY, target="Person", attribute=same))
-    )
-    assert b.content_hash == a.content_hash
-    with pytest.raises(InvalidChange, match="different definition"):
-        apply_changeset(
-            a,
-            cs(
-                a,
-                AddAttribute(
-                    kind=Kind.ENTITY,
-                    target="Person",
-                    attribute=Attribute(name="age", value_type=ValueType.STRING),
-                ),
-            ),
-        )
-
-
-def test_additive_attribute_on_an_existing_type_is_allowed():
-    """Additive attribute on an existing type is allowed."""
-    a = base()
-    b = apply_changeset(
-        a,
-        cs(
-            a,
-            AddAttribute(
-                kind=Kind.ENTITY, target="Person", attribute=Attribute(name="city")
-            ),
-        ),
-    )
-    assert [p.name for p in b.entity(1).properties][-1] == "city"
 
 
 def test_unknown_cannot_be_edited_or_removed():
@@ -214,18 +152,6 @@ def test_active_pattern_cannot_end_at_a_deprecated_type():
         ),
     )
     assert b.entity(3).status is Status.DEPRECATED
-
-
-def test_strict_over_an_empty_kind_is_refused():
-    """Strict over an empty kind is refused."""
-    g = Ontology.genesis()
-    with pytest.raises(InvalidChange, match="no active types"):
-        apply_changeset(g, cs(g, SetModes(entity_mode=Mode.STRICT)))
-    a = base()
-    assert (
-        apply_changeset(a, cs(a, SetModes(entity_mode=Mode.STRICT))).entity_mode
-        is Mode.STRICT
-    )
 
 
 def test_deprecated_type_is_kept_and_can_be_reactivated():
@@ -318,65 +244,6 @@ def test_apply_changeset_rejects_a_merge_that_follows_a_dangling_pointer():
         )
 
 
-def test_table_mapping_rules():
-    """Table mapping rules."""
-    a = base()
-    tbl = Attribute(name="hr_id", owner=Owner.TABLE)
-    b = apply_changeset(
-        a,
-        cs(
-            a,
-            AddAttribute(kind=Kind.ENTITY, target="Person", attribute=tbl),
-            channel=Channel.TABLE,
-        ),
-    )
-    assert (
-        b.entity(1).properties[-1].structured
-        and not b.entity(1).properties[-1].extractable
-    )
-    m = TableMapping(source="hr.people", entity_id=1, columns={"id": "hr_id"})
-    c = apply_changeset(b, cs(b, AddTable(table=m)))
-    with pytest.raises(InvalidChange, match="mapping names"):
-        apply_changeset(c, cs(c, DeprecateType(kind=Kind.ENTITY, target="Person")))
-    with pytest.raises(InvalidChange, match="table mapping uses"):
-        apply_changeset(
-            c,
-            cs(c, DeprecateAttribute(kind=Kind.ENTITY, target="Person", name="hr_id")),
-        )
-    with pytest.raises(InvalidChange, match="share a source"):
-        apply_changeset(
-            c, cs(c, AddTable(table=m.model_copy(update={"columns": {"x": "hr_id"}})))
-        )
-    with pytest.raises(InvalidChange, match="not table-owned"):
-        apply_changeset(
-            b,
-            cs(
-                b,
-                AddTable(
-                    table=TableMapping(source="t", entity_id=1, columns={"c": "age"})
-                ),
-            ),
-        )
-
-
-def test_a_proposal_cannot_add_table_owned_attributes():
-    """A proposal cannot add table owned attributes."""
-    a = base()
-    with pytest.raises(InvalidChange, match="proposal cannot add table-owned"):
-        apply_changeset(
-            a,
-            cs(
-                a,
-                AddAttribute(
-                    kind=Kind.ENTITY,
-                    target="Person",
-                    attribute=Attribute(name="x", owner=Owner.TABLE),
-                ),
-                channel=Channel.PROPOSAL,
-            ),
-        )
-
-
 def test_diff_replayed_on_the_old_catalog_gives_the_new_content():
     """Diff replayed on the old catalog gives the new content."""
     a = base()
@@ -384,11 +251,7 @@ def test_diff_replayed_on_the_old_catalog_gives_the_new_content():
         a,
         cs(
             a,
-            AddEntity(
-                label="Place",
-                description="A location.",
-                properties=[Attribute(name="lat", value_type=ValueType.FLOAT)],
-            ),
+            AddEntity(label="Place", description="A location."),
             AddRelation(
                 label="located_in",
                 symmetric=False,
@@ -399,14 +262,9 @@ def test_diff_replayed_on_the_old_catalog_gives_the_new_content():
             SetDescription(
                 kind=Kind.RELATION, target="works_at", description="Employment."
             ),
-            AddAttribute(
-                kind=Kind.ENTITY, target="Person", attribute=Attribute(name="city")
-            ),
-            DeprecateAttribute(kind=Kind.ENTITY, target="Person", name="nickname"),
             AddPattern(
                 relation="works_at", pattern=PatternSpec(src="Employee", tgt="Company")
             ),
-            SetModes(relation_mode=Mode.STRICT),
         ),
     )
     c = apply_changeset(a, diff(a, b))

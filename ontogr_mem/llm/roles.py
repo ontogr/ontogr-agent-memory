@@ -11,5 +11,4 @@ class ModelRole(StrEnum):
     RESOLUTION = "resolution"
     JUDGE = "judge"
     CONSOLIDATION = "consolidation"
-    ONTOLOGY = "ontology"
     ANSWER = "answer"

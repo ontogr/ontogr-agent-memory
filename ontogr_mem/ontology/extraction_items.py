@@ -4,48 +4,18 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
-from ontogr_mem.data_models import UNKNOWN_TYPE_ID, ExtractedEntity, TypeView
 from ontogr_mem.data_models.facts import ExtractedFact, TypedFact
 from ontogr_mem.ontology.errors import DenseIdError
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import UNKNOWN_LABEL
 from ontogr_mem.ontology.projection import Projection
-from ontogr_mem.ontology.validate import (
-    Context,
-    EntityItem,
-    ExtractedItems,
-    RelationItem,
-)
+from ontogr_mem.ontology.validate import EntityItem, ExtractedItems, RelationItem
 
 
 # Reason codes for facts whose relation could not be stabilized. They match the
 # fact extraction codes without making ontology depend on fact_extraction.
 _UNKNOWN_RELATION = "unknown_relation"
 _BAD_TYPE_ID = "bad_type_id"
-
-
-def items_from_entities(
-    entities: Sequence[ExtractedEntity], view: TypeView
-) -> ExtractedItems:
-    """Build validation input from one episode's extracted entities.
-
-    A typed entity is sent under the label of its dense type id in `view`, which is
-    the view the extractor used. An Unknown entity is sent under the type name the
-    model gave, or "Unknown" when it gave none. The ontology mode then decides what
-    happens to a name the catalog does not know.
-
-    Args:
-        entities: The entities of one episode.
-        view: The view the entities were extracted with.
-    """
-    items = []
-    for entity in entities:
-        if entity.type_id == UNKNOWN_TYPE_ID:
-            label = entity.type_label or UNKNOWN_LABEL
-        else:
-            label = view.catalog.entity_label(entity.type_id)
-        items.append(EntityItem(entity.local_id, raw_type=label, quote=entity.name))
-    return ExtractedItems(entities=tuple(items))
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,15 +61,15 @@ async def stabilize_facts(
     facts: Sequence[ExtractedFact],
     view: Projection,
 ) -> StabilizeResult:
-    """Map each fact's relation to a stable type id under the ontology mode.
+    """Map each fact's relation to a stable type id.
 
-    A dense id is mapped through `view`. A free-text label is resolved by the
-    manager in one validation pass per episode. A label without a stable type
-    is dropped in strict and preferred mode, and preferred mode also records it
-    as an unmatched row for review. Open mode registers the label instead.
+    A dense id is mapped through `view`. A free-text label is checked by the
+    manager in one validation pass per episode. Its endpoints are checked as
+    Unknown, so a label that names a relation with patterns is dropped. A label
+    without a stable type is dropped and counted.
 
     Args:
-        manager: The ontology manager that resolves labels and records rows.
+        manager: The ontology manager that checks labels.
         facts: The extracted facts, in their original order.
         view: The projection the facts' dense ids came from.
 
@@ -126,7 +96,7 @@ async def stabilize_facts(
         else:
             outcomes[index] = _typed(fact, stable, view)
 
-    for episode_id, group in label_links.items():
+    for group in label_links.values():
         refs = list(dict.fromkeys(ref for _, fact in group for ref in fact.entity_refs))
         entities = tuple(
             EntityItem(local_id=ref, raw_type=UNKNOWN_LABEL) for ref in refs
@@ -136,13 +106,11 @@ async def stabilize_facts(
                 source=fact.entity_refs[0],
                 target=fact.entity_refs[1],
                 raw_label=fact.relation_label,
-                quote=fact.evidence_quote,
             )
             for _, fact in group
         )
-        report = await manager.process_extraction(
-            ExtractedItems(entities=entities, relations=relations),
-            Context(episode_id),
+        report = await manager.validate_extraction(
+            ExtractedItems(entities=entities, relations=relations)
         )
         for (index, fact), verdict in zip(group, report.relations, strict=True):
             if not verdict.kept or verdict.type_id is None:

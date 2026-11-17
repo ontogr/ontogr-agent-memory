@@ -81,7 +81,6 @@ class TestSourcedFactContracts:
             ("statement", "Ana works at Acme."),
             ("valid_from", NOW),
             ("valid_to", NOW + timedelta(days=1)),
-            ("single_valued", False),
         ],
     )
     def test_triple_field_on_sourced_facts_fails(self, field, value):

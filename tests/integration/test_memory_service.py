@@ -12,10 +12,7 @@ import ontogr_mem.service.writes as memory_writes
 from ontogr_mem.data_models import Role
 from ontogr_mem.data_models.clock import Clock
 from ontogr_mem.llm import ModelRole, RoleModels
-from ontogr_mem.ontology.diff import diff
 from ontogr_mem.ontology.manager import OntologyManager
-from ontogr_mem.ontology.models import Mode, Status, UnmatchedKind
-from ontogr_mem.ontology.settings import OntologySettings
 from ontogr_mem.service.contracts import (
     AddMemory,
     GetEntity,
@@ -37,6 +34,7 @@ from ontogr_mem.vectorstore import VectorWriter, write_episode_vectors
 from tests.support.embedder import MockEmbedder
 from tests.support.episodes import make_episode
 from tests.support.graph_backend import GraphBackend
+from tests.support.jobs import wait_for_job
 from tests.support.memory_service import memory_service_harness
 from tests.support.scripted_model import (
     ScriptedCall,
@@ -193,24 +191,7 @@ def _memory_models() -> RoleModels:
 
 def _ontology_manager(stores: TenantStores, clock: Clock) -> OntologyManager:
     """Return an ontology manager over one tenant's stores for inspection."""
-    return OntologyManager(
-        stores.ontology_store, scripted_role_models(), OntologySettings(), clock
-    )
-
-
-async def _set_modes(
-    manager: OntologyManager, *, entity_mode: Mode, relation_mode: Mode
-) -> None:
-    """Set the entity and relation enforcement modes of a tenant ontology."""
-    catalog = await manager.catalog()
-    await manager.apply(
-        diff(
-            catalog,
-            catalog.model_copy(
-                update={"entity_mode": entity_mode, "relation_mode": relation_mode}
-            ),
-        )
-    )
+    return OntologyManager(stores.ontology_store, clock)
 
 
 class TestMemoryService:
@@ -281,7 +262,7 @@ class TestMemoryService:
                 idempotency_key="fact-one",
             ),
         )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
 
         assert job.status.value == "done"
         assert job.result is not None and len(job.result["fact_ids"]) == 1
@@ -302,7 +283,7 @@ class TestMemoryService:
         harness = await memory_service_harness(
             graph_backend,
         )
-        await harness.service.add_memory(
+        receipt = await harness.service.add_memory(
             harness.principal,
             AddMemory(
                 tenant="t1",
@@ -313,6 +294,7 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
+        await wait_for_job(harness.service, harness.principal, receipt.job_id)
 
         result = await harness.service.search_memory(
             harness.principal,
@@ -417,7 +399,7 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
 
         assert job.status.value == "done"
 
@@ -440,7 +422,7 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
 
         assert job.status.value == "failed"
         assert job.error is not None
@@ -470,7 +452,7 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
 
         assert job.status.value == "failed"
         assert job.error is not None
@@ -498,7 +480,9 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        original_job = await harness.service.get_job(harness.principal, original.job_id)
+        original_job = await wait_for_job(
+            harness.service, harness.principal, original.job_id
+        )
         assert original_job.result is not None
         fact_id = original_job.result["fact_ids"][0]
 
@@ -513,7 +497,7 @@ class TestMemoryService:
             ),
         )
 
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
         entity = await harness.service.get_entity(
             harness.principal, GetEntity(tenant="t1", name="Ana")
         )
@@ -545,7 +529,7 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
         assert job.result is not None
         fact_id = job.result["fact_ids"][0]
 
@@ -604,7 +588,7 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
         assert job.result is not None
         fact_id = job.result["fact_ids"][0]
 
@@ -618,10 +602,11 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        assert receipt.status.value == "failed"
-        assert receipt.error is not None
-        assert receipt.error.code.value == "conflict"
-        assert receipt.error.message == "fact is closed, not active"
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
+        assert job.status.value == "failed"
+        assert job.error is not None
+        assert job.error.code.value == "conflict"
+        assert job.error.message == "fact is closed, not active"
 
     async def test_episode_pages_do_not_repeat_episodes(
         self, graph_backend: GraphBackend
@@ -677,7 +662,7 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
         assert job.result is not None
         fact_id = job.result["fact_ids"][0]
 
@@ -692,7 +677,7 @@ class TestMemoryService:
             ),
         )
 
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
         assert job.status.value == "failed"
         assert job.error is not None
         assert job.error.code.value == "invalid_argument"
@@ -720,16 +705,6 @@ class TestMemoryService:
             ),
         )
         stores = await graph_backend.stores_for("t1")
-        manager = OntologyManager(
-            stores.ontology_store,
-            scripted_role_models(),
-            OntologySettings(),
-            harness.clock,
-        )
-        catalog = await manager.catalog()
-        await manager.apply(
-            diff(catalog, catalog.model_copy(update={"relation_mode": Mode.STRICT}))
-        )
         original_write = memory_writes.write_episode_vectors
         vector_attempts = 0
 
@@ -755,10 +730,9 @@ class TestMemoryService:
         )
 
         receipt = await harness.service.add_memory(harness.principal, request)
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
 
-        assert receipt.status.value == "done", job.error
-        assert receipt.result == job.result
+        assert job.status.value == "done"
         assert job.result is not None
         assert job.result["ontology_refused"] == 1
         assert job.result["skipped"] == {"not_state": 1}
@@ -846,16 +820,7 @@ class TestMemoryService:
             ),
         )
         stores = await graph_backend.stores_for("t1")
-        manager = OntologyManager(
-            stores.ontology_store,
-            scripted_role_models(),
-            OntologySettings(),
-            harness.clock,
-        )
-        catalog = await manager.catalog()
-        await manager.apply(
-            diff(catalog, catalog.model_copy(update={"relation_mode": Mode.STRICT}))
-        )
+        manager = OntologyManager(stores.ontology_store, harness.clock)
 
         receipt = await harness.service.add_memory(
             harness.principal,
@@ -869,12 +834,16 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        assert receipt.status.value == "done"
-        assert receipt.result is not None
-        assert receipt.result["ontology_refused"] == 1
-        assert receipt.result["skipped"] == {}
-        assert len(receipt.result["fact_ids"]) == 1
-        assert first_receipt.result is not None
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
+        first_job = await wait_for_job(
+            harness.service, harness.principal, first_receipt.job_id
+        )
+        assert job.status.value == "done"
+        assert job.result is not None
+        assert job.result["ontology_refused"] == 1
+        assert job.result["skipped"] == {}
+        assert len(job.result["fact_ids"]) == 1
+        assert first_job.result is not None
         catalog = await manager.catalog()
         assert catalog.relation_by_label("DIRECTS") is None
         episodes = await harness.service.list_episodes(
@@ -890,8 +859,8 @@ class TestMemoryService:
             for episode in episodes.episodes
         }
         assert actor_values == {
-            first_receipt.result["episode_id"]: ("speaker-1", "speaker-1", "user"),
-            receipt.result["episode_id"]: ("speaker-1", "speaker-1", "assistant"),
+            first_job.result["episode_id"]: ("speaker-1", "speaker-1", "user"),
+            job.result["episode_id"]: ("speaker-1", "speaker-1", "assistant"),
         }
 
         rejected = await harness.service.add_memory(
@@ -905,133 +874,20 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        assert rejected.status.value == "failed"
-        assert rejected.result is None
+        rejected_job = await wait_for_job(
+            harness.service, harness.principal, rejected.job_id
+        )
+        assert rejected_job.status.value == "failed"
+        assert rejected_job.result is None
 
-    async def test_preferred_unknown_structured_relation_is_recorded_and_dropped(
+    async def test_sourced_unknown_labels_are_dropped_and_not_registered(
         self, graph_backend: GraphBackend
     ):
-        """A structured fact with an undeclared relation is dropped for review."""
+        """Unknown relation and endpoint type labels drop facts and register nothing."""
         harness = await memory_service_harness(graph_backend)
         stores = await graph_backend.stores_for("t1")
         manager = _ontology_manager(stores, harness.clock)
         await load_defaults(manager)
-        await _set_modes(
-            manager, entity_mode=Mode.PREFERRED, relation_mode=Mode.PREFERRED
-        )
-
-        receipt = await harness.service.add_memory(
-            harness.principal,
-            AddMemory(
-                tenant="t1",
-                kind=MemoryKind.FACT,
-                subject="Ana",
-                relation="MENTORS",
-                object="Bo",
-                wait_seconds=5,
-            ),
-        )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
-
-        assert job.status.value == "done"
-        assert job.result is not None
-        assert job.result.get("dropped") == [
-            {
-                "index": 0,
-                "reason": "unknown_relation",
-                "detail": "relation recorded for review; fact not stored",
-            }
-        ]
-        assert job.result["fact_ids"] == []
-        episodes = await harness.service.list_episodes(
-            harness.principal, ListEpisodes(tenant="t1")
-        )
-        assert [episode.episode_id for episode in episodes.episodes] == [
-            job.result["episode_id"]
-        ]
-        search = await harness.service.search_memory(
-            harness.principal,
-            SearchMemory(tenant="t1", query="Ana mentors Bo"),
-        )
-        assert search.facts == []
-        stores = await graph_backend.stores_for("t1")
-        manager = _ontology_manager(stores, harness.clock)
-        assert (await manager.catalog()).relation_by_label("MENTORS") is None
-        assert [
-            (row.kind, row.raw_label, row.episode_id)
-            for row in await manager.unmatched()
-        ] == [(UnmatchedKind.RELATION_TYPE, "MENTORS", job.result["episode_id"])]
-
-    async def test_sourced_preferred_records_unknown_relation_and_entity_type(
-        self, graph_backend: GraphBackend
-    ):
-        """Preferred mode records both unknown labels and drops the relation fact."""
-        harness = await memory_service_harness(graph_backend)
-        stores = await graph_backend.stores_for("t1")
-        manager = _ontology_manager(stores, harness.clock)
-        await load_defaults(manager)
-        await _set_modes(
-            manager, entity_mode=Mode.PREFERRED, relation_mode=Mode.PREFERRED
-        )
-        source = "Ana mentors Bo at Acme."
-
-        receipt = await harness.service.add_memory(
-            harness.principal,
-            AddMemory(
-                tenant="t1",
-                kind=MemoryKind.SOURCED_FACTS,
-                content=source,
-                facts=[
-                    HostFact(
-                        subject="Ana",
-                        subject_type="Person",
-                        relation="MENTORS",
-                        object="Bo",
-                        object_type="Person",
-                        evidence_quote="Ana mentors Bo",
-                    ),
-                    HostFact(
-                        subject="Ana",
-                        subject_type="Person",
-                        relation="WORKS_AT",
-                        object="Acme",
-                        object_type="Spaceship",
-                        evidence_quote="Ana mentors Bo at Acme",
-                    ),
-                ],
-                wait_seconds=5,
-            ),
-        )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
-
-        assert job.status.value == "done"
-        assert job.result is not None
-        dropped = [
-            (item["index"], item["reason"]) for item in job.result.get("dropped", [])
-        ]
-        assert (0, "unknown_relation") in dropped
-        episode_id = job.result["episode_id"]
-        stores = await graph_backend.stores_for("t1")
-        manager = _ontology_manager(stores, harness.clock)
-        review_rows = {
-            (row.kind, row.raw_label, row.episode_id)
-            for row in await manager.unmatched()
-        }
-        assert (UnmatchedKind.RELATION_TYPE, "MENTORS", episode_id) in review_rows
-        assert (UnmatchedKind.ENTITY_TYPE, "Spaceship", episode_id) in review_rows
-        episode = await stores.episodes.get_episode(episode_id)
-        assert episode is not None
-        assert episode.content == source
-
-    async def test_sourced_strict_drops_unknown_labels_and_records_nothing(
-        self, graph_backend: GraphBackend
-    ):
-        """Strict mode drops unknown labels without recording or registering them."""
-        harness = await memory_service_harness(graph_backend)
-        stores = await graph_backend.stores_for("t1")
-        manager = _ontology_manager(stores, harness.clock)
-        await load_defaults(manager)
-        await _set_modes(manager, entity_mode=Mode.STRICT, relation_mode=Mode.STRICT)
         before = await manager.catalog()
 
         receipt = await harness.service.add_memory(
@@ -1061,61 +917,54 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
 
         assert job.status.value == "done"
         assert job.result is not None
         assert [
             (item["index"], item["reason"]) for item in job.result.get("dropped", [])
-        ] == [(0, "unknown_relation"), (1, "unknown_entity_type")]
+        ] == [(0, "unknown_relation"), (1, "unknown_relation")]
+        assert [item["detail"] for item in job.result["dropped"]] == [
+            "relation is not in the ontology",
+            "an endpoint type is not in the ontology",
+        ]
         assert job.result["fact_ids"] == []
-        assert await manager.unmatched() == []
         assert await manager.catalog() == before
 
-    async def test_sourced_open_registers_unknown_labels_and_stores_fact(
+    async def test_sourced_known_endpoint_types_with_wrong_pattern_are_dropped(
         self, graph_backend: GraphBackend
     ):
-        """Open mode registers unknown labels and stores the fact that uses them."""
+        """Drop sourced facts with known endpoint types outside relation patterns."""
         harness = await memory_service_harness(graph_backend)
         stores = await graph_backend.stores_for("t1")
         manager = _ontology_manager(stores, harness.clock)
         await load_defaults(manager)
-        await _set_modes(manager, entity_mode=Mode.OPEN, relation_mode=Mode.OPEN)
 
         receipt = await harness.service.add_memory(
             harness.principal,
             AddMemory(
                 tenant="t1",
                 kind=MemoryKind.SOURCED_FACTS,
-                content="Ana mentors Bo.",
+                content="Acme employs Ana.",
                 facts=[
                     HostFact(
-                        subject="Ana",
-                        subject_type="Mentor",
-                        relation="MENTORS",
-                        object="Bo",
+                        subject="Acme",
+                        subject_type="Organization",
+                        relation="WORKS_AT",
+                        object="Ana",
                         object_type="Person",
-                        evidence_quote="Ana mentors Bo",
-                        statement="Ana mentors Bo",
-                    )
+                        evidence_quote="Acme employs Ana",
+                    ),
                 ],
                 wait_seconds=5,
             ),
         )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
 
         assert job.status.value == "done"
         assert job.result is not None
-        assert job.result.get("dropped") == []
-        assert len(job.result["fact_ids"]) == 1
-        search = await harness.service.search_memory(
-            harness.principal,
-            SearchMemory(tenant="t1", query="Ana mentors Bo"),
-        )
-        assert [fact.statement for fact in search.facts] == ["Ana mentors Bo"]
-        catalog = await manager.catalog()
-        assert catalog.relation_by_label("MENTORS") is not None
-        assert any(
-            entity.label == "Mentor" and entity.status is Status.ACTIVE
-            for entity in catalog.entities
-        )
+        assert [
+            (item["index"], item["reason"], item["detail"])
+            for item in job.result.get("dropped", [])
+        ] == [(0, "wrong_direction", "endpoint types do not fit the relation")]
+        assert job.result["fact_ids"] == []

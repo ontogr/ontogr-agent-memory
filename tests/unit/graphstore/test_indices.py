@@ -73,8 +73,6 @@ class TestSchemaPart:
             "OntologyHead",
             "OntologySnapshot",
             "OntologyChangeSet",
-            "OntologyUnmatched",
-            "OntologyProposal",
         )
 
     def test_temporal_schema_includes_its_episode_and_entity_dependencies(self):

@@ -1,15 +1,6 @@
-"""Graph schema declarations for ontology storage."""
+"""Graph schema for ontology versions."""
 
 SCHEMA_NAME = "ontology"
-LABELS = (
-    "OntologyHead",
-    "OntologySnapshot",
-    "OntologyChangeSet",
-    "OntologyUnmatched",
-    "OntologyProposal",
-)
-RANGES = (
-    ("OntologyUnmatched", "episode_id", False),
-    ("OntologyProposal", "status", False),
-)
+LABELS = ("OntologyHead", "OntologySnapshot", "OntologyChangeSet")
+RANGES: tuple[tuple[str, str, bool], ...] = ()
 REQUIRES = ("episodes",)
