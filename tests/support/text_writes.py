@@ -103,10 +103,12 @@ def _fact_item(prompt: str, fact: ScriptedFact) -> dict[str, object]:
 
 def text_models(script: Script) -> RoleModels:
     """Return a model pool whose extraction answers follow ``script``."""
-    fenced = {
-        _block(fence("episode_text", text), "episode_text"): value
-        for text, value in script.items()
-    }
+    fenced: dict[str, tuple[Sequence[ScriptedEntity], Sequence[ScriptedFact]]] = {}
+    for text, value in script.items():
+        key = _block(fence("episode_text", text), "episode_text")
+        if key in fenced:
+            raise AssertionError(f"two scripted episode texts share one prompt: {key}")
+        fenced[key] = value
 
     def answer(call: ScriptedCall) -> object:
         prompt = call.prompt
