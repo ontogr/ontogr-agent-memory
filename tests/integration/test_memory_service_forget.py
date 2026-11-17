@@ -101,7 +101,8 @@ class TestMemoryServiceForget:
                 wait_seconds=5,
             ),
         )
-        await wait_for_job(harness.service, write_principal, receipt.job_id)
+        job = await wait_for_job(harness.service, write_principal, receipt.job_id)
+        assert job.status.value == "done", job.error
         preview = await harness.service.preview_clear_tenant(admin, "t1")
 
         result = await harness.service.clear_tenant(
@@ -147,7 +148,8 @@ class TestMemoryServiceForget:
                 wait_seconds=5,
             ),
         )
-        await wait_for_job(harness.service, admin, receipt.job_id)
+        job = await wait_for_job(harness.service, admin, receipt.job_id)
+        assert job.status.value == "done", job.error
         preview = await harness.service.preview_clear_tenant(admin, "t1")
         receipt = await harness.service.add_memory(
             admin,
@@ -160,7 +162,8 @@ class TestMemoryServiceForget:
                 wait_seconds=5,
             ),
         )
-        await wait_for_job(harness.service, admin, receipt.job_id)
+        job = await wait_for_job(harness.service, admin, receipt.job_id)
+        assert job.status.value == "done", job.error
 
         with pytest.raises(ConfirmationRequiredError):
             await harness.service.clear_tenant(

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 from ontogr_mem.client import Memory
 from ontogr_mem.llm import RoleModels
+from ontogr_mem.llm.prompt import fence
 from ontogr_mem.relational_store.config import StateSettings
 from ontogr_mem.service.bootstrap import ServiceSettings
 from tests.support.embedder import MockEmbedder
@@ -102,10 +103,14 @@ def _fact_item(prompt: str, fact: ScriptedFact) -> dict[str, object]:
 
 def text_models(script: Script) -> RoleModels:
     """Return a model pool whose extraction answers follow ``script``."""
+    fenced = {
+        _block(fence("episode_text", text), "episode_text"): value
+        for text, value in script.items()
+    }
 
     def answer(call: ScriptedCall) -> object:
         prompt = call.prompt
-        entities, facts = script[_block(prompt, "episode_text")]
+        entities, facts = fenced[_block(prompt, "episode_text")]
         if "Task: list the entities" in prompt:
             return {"entities": [_entity_item(prompt, entity) for entity in entities]}
         return {"facts": [_fact_item(prompt, fact) for fact in facts]}
