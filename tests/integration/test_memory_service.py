@@ -27,8 +27,8 @@ from ontogr_mem.service.errors import (
     LLMUnavailableError,
     ObjectNotFoundError,
 )
+from ontogr_mem.service.ontologies import apply_ontology
 from ontogr_mem.service.principal import Grant
-from ontogr_mem.service.relations import load_defaults
 from ontogr_mem.tenant_stores import TenantStores
 from ontogr_mem.vectorstore import VectorWriter, write_episode_vectors
 from tests.support.embedder import MockEmbedder
@@ -65,7 +65,7 @@ def _memory_models() -> RoleModels:
                 "entities": [
                     {
                         "name": name,
-                        "type_id": type_ids["thing" if name == "Hydra" else "person"],
+                        "type_id": type_ids["object" if name == "Hydra" else "person"],
                         "confidence": 1.0,
                     }
                     for name in names
@@ -887,7 +887,7 @@ class TestMemoryService:
         harness = await memory_service_harness(graph_backend)
         stores = await graph_backend.stores_for("t1")
         manager = _ontology_manager(stores, harness.clock)
-        await load_defaults(manager)
+        await apply_ontology(manager, None)
         before = await manager.catalog()
 
         receipt = await harness.service.add_memory(
@@ -938,7 +938,7 @@ class TestMemoryService:
         harness = await memory_service_harness(graph_backend)
         stores = await graph_backend.stores_for("t1")
         manager = _ontology_manager(stores, harness.clock)
-        await load_defaults(manager)
+        await apply_ontology(manager, None)
 
         receipt = await harness.service.add_memory(
             harness.principal,

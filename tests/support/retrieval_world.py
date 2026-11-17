@@ -61,7 +61,7 @@ from tests.support.clock import FixedClock
 from tests.support.embedder import RecordingEmbedder
 from tests.support.episodes import make_episode as episode_at
 from tests.support.facts import fact, fact_models, reply
-from tests.support.ontology import base, cs
+from tests.support.ontology import base, cs, load_catalog
 
 
 NOW = datetime(2026, 10, 23, 12, 0, tzinfo=UTC)
@@ -146,7 +146,7 @@ async def build_world(backend: RetrievalBackend) -> RetrievalWorld:
             patterns=[PatternSpec(src="Person", tgt="Organization")],
         ),
     )
-    await manager.load_catalog(apply_changeset(catalog, changes))
+    await load_catalog(manager, apply_changeset(catalog, changes))
     projection = await manager.extraction_view()
     view = projection.view
     entity_types = {

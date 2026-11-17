@@ -3,6 +3,7 @@
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import pytest
 from fastmcp import FastMCP
@@ -58,10 +59,12 @@ class Harness:
         self.transport_calls: list[dict] = []
         self.failure: Exception | None = None
         self.tenants: list[str] = []
+        self.ontologies: list[Path | None] = []
 
-    def open_memory(self, *, tenant: str):
+    def open_memory(self, *, tenant: str, ontology=None):
         """Stand in for Memory.open with a memory over a recording service."""
         self.tenants.append(tenant)
+        self.ontologies.append(ontology)
 
         @asynccontextmanager
         async def opened():
@@ -126,6 +129,12 @@ class TestRunMcp:
         await run_mcp(_settings(tenant="acme"))
 
         assert harness.tenants == ["acme"]
+
+    async def test_the_ontology_setting_reaches_memory_open(self, harness):
+        """The configured ontology path is passed to Memory.open."""
+        await run_mcp(_settings(ontology=Path("o.yaml")))
+
+        assert harness.ontologies == [Path("o.yaml")]
 
     async def test_transport_failure_propagates_after_drain(self, harness):
         """A failing transport raises out of the runner and still drains."""
@@ -256,6 +265,12 @@ class TestMcpCommand:
             9100,
             "acme",
         )
+
+    def test_the_ontology_flag_reaches_the_settings(self, seen):
+        """The ontology path flag sets the MCP ontology setting."""
+        main(["mcp", "--ontology", "o.yaml"])
+
+        assert seen[0].ontology == Path("o.yaml")
 
     def test_omitted_flag_keeps_the_environment_value(self, seen, monkeypatch):
         """A flag that is not given does not override the environment."""

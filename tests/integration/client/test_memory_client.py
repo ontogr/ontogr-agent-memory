@@ -195,7 +195,7 @@ def _hydra_answer(call: ScriptedCall) -> object:
     if "Task: list the entities" in prompt:
         entity_types = json.loads(_prompt_block(prompt, "entity_types"))
         type_id = next(
-            item["id"] for item in entity_types if item["label"].casefold() == "thing"
+            item["id"] for item in entity_types if item["label"].casefold() == "object"
         )
         return {"entities": [{"name": "Hydra", "type_id": type_id, "confidence": 1.0}]}
 
@@ -1417,7 +1417,7 @@ class TestWriteFacts:
                         HostFact(
                             subject="Voyager",
                             subject_type="Spaceship",
-                            relation="RELATED_TO",
+                            relation="USES",
                             object="Acme",
                             object_type="Organization",
                             evidence_quote="Voyager is related to Acme",

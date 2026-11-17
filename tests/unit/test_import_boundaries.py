@@ -17,7 +17,6 @@ BLOCKED_EXTRAS = (
     "rdflib",
     "gliner",
     "spacy",
-    "yaml",
     "fastembed",
     "fastmcp",
 )
@@ -29,6 +28,7 @@ OPTIONAL_SUBPACKAGES = (
     "ontogr_mem.vectorstore.graph",
     "ontogr_mem.vectorstore.pgvector",
     "ontogr_mem.mcp_server",
+    "ontogr_mem.ontology.formats.turtle",
 )
 
 GRAPHSTORE_KERNEL_MODULES = (

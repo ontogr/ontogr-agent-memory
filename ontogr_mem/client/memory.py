@@ -9,6 +9,7 @@ from ontogr_mem.data_models import Role
 from ontogr_mem.data_models.tenant import validate_tenant_id
 from ontogr_mem.llm.config import LLMConfig
 from ontogr_mem.llm.models import RoleModels, build_models
+from ontogr_mem.ontology.loader import OntologySource, load_ontology
 from ontogr_mem.relational_store.config import StateSettings
 from ontogr_mem.service.bootstrap import ServiceSettings, open_service
 from ontogr_mem.service.contracts import (
@@ -87,6 +88,7 @@ class Memory:
         models: RoleModels | None = None,
         embedder: Embedder | None = None,
         state_settings: StateSettings | None = None,
+        ontology: OntologySource | None = None,
     ) -> AbstractAsyncContextManager["Memory"]:
         """Open a started memory service and close resources created here.
 
@@ -97,12 +99,16 @@ class Memory:
             models: Borrowed Model roles. Their owner closes them.
             embedder: Borrowed embedder, or select a built-in provider.
             state_settings: State store settings, or load the environment.
+            ontology: Path to a YAML, JSON or Turtle file, a list of Pydantic
+                classes, or an OntologyDeclaration. When omitted, a new tenant
+                gets the default and an existing tenant keeps its ontology.
 
         Returns:
             An async context manager yielding the bound Memory client.
 
         Raises:
             InvalidTenantError: If the Tenant id is invalid.
+            InvalidChange: If the ontology cannot be loaded.
             EmbedderUnavailableError: If no embedding provider can open.
 
         Context exit stops jobs without draining. Settings read .env from the
@@ -112,6 +118,7 @@ class Memory:
         @asynccontextmanager
         async def managed() -> AsyncGenerator[Memory]:
             selected_tenant = validate_tenant_id(tenant)
+            declaration = None if ontology is None else load_ontology(ontology)
             async with AsyncExitStack() as resources:
                 selected_models = models
                 if selected_models is None:
@@ -128,6 +135,7 @@ class Memory:
                         state_settings=state_settings,
                         models=selected_models,
                         embedder=selected_embedder,
+                        ontology=declaration,
                     )
                 )
                 yield cls(

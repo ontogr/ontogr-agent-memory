@@ -3,13 +3,18 @@
 from collections.abc import Sequence
 
 from ontogr_mem.data_models import Clock
-from ontogr_mem.ontology.apply import apply_changeset, check_catalog
+from ontogr_mem.ontology.apply import apply_changeset
+from ontogr_mem.ontology.declaration import OntologyDeclaration, check_declaration
+from ontogr_mem.ontology.declare import build_target
 from ontogr_mem.ontology.diff import diff
-from ontogr_mem.ontology.errors import InvalidChange
+from ontogr_mem.ontology.errors import VersionConflict
 from ontogr_mem.ontology.models import ChangeSet, Channel, Ontology
 from ontogr_mem.ontology.ontology_store import OntologyStore
 from ontogr_mem.ontology.projection import Projection, project
 from ontogr_mem.ontology.validate import ExtractedItems, ValidationReport, validate
+
+
+_DECLARE_ATTEMPTS = 3
 
 
 class OntologyManager:
@@ -51,38 +56,45 @@ class OntologyManager:
         await self._store.commit(new, stamped)
         return new
 
-    async def load_catalog(self, catalog: Ontology) -> Ontology:
-        """Load a whole user-built catalog into a tenant still at version 0.
+    async def declare(
+        self, declaration: OntologyDeclaration, *, only_if_empty: bool = False
+    ) -> Ontology:
+        """Apply a declaration and return the head, retrying up to three times.
 
-        Types are matched by label, never by the ids in `catalog`.
+        Args:
+            declaration: Desired ontology.
+            only_if_empty: Keep any ontology that already has a committed version.
 
         Raises:
-            InvalidChange: If the tenant already has a catalog or `catalog` breaks
-                a rule.
+            InvalidChange: The declaration does not apply to the stored ontology.
+            VersionConflict: Another writer won every attempt.
         """
+        check_declaration(declaration)
+        for _ in range(_DECLARE_ATTEMPTS - 1):
+            try:
+                return await self._declare_once(declaration, only_if_empty)
+            except VersionConflict:
+                continue
+        return await self._declare_once(declaration, only_if_empty)
+
+    async def _declare_once(
+        self, declaration: OntologyDeclaration, only_if_empty: bool
+    ) -> Ontology:
         head = await self._store.get()
-        if head.version != 0:
-            raise InvalidChange(
-                "tenant already has a catalog",
-                hint="load_catalog is for a new tenant; use apply",
+        if only_if_empty and head.version != 0:
+            return head
+        change_set = diff(head, build_target(head, declaration))
+        if not change_set.ops:
+            return head
+        return await self.apply(
+            change_set.model_copy(
+                update={
+                    "actor": "declare",
+                    "reason": "declare ontology",
+                    "channel": Channel.IMPORT,
+                }
             )
-        check_catalog(catalog)
-        shaped = catalog.model_copy(
-            update={
-                "entities": sorted(
-                    catalog.entities,
-                    key=lambda e: (len(catalog.ancestors(e.type_id)), e.type_id),
-                )
-            }
         )
-        change_set = diff(head, shaped).model_copy(
-            update={
-                "actor": "load",
-                "reason": "load catalog",
-                "channel": Channel.IMPORT,
-            }
-        )
-        return await self.apply(change_set)
 
     async def validate_extraction(self, items: ExtractedItems) -> ValidationReport:
         """Check one episode's extraction against the head of the ontology."""

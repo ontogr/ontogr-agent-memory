@@ -38,6 +38,14 @@ class Origin(StrEnum):
     IMPORTED = "imported"
 
 
+class RelationKind(StrEnum):
+    """How the values of a relation relate to one another."""
+
+    SINGLE = "single"
+    MANY = "many"
+    JUDGED = "judged"
+
+
 class Frozen(BaseModel):
     """Base: unknown fields are errors."""
 
@@ -59,6 +67,7 @@ class Entity(Frozen):
     label: str
     description: str = ""
     aliases: list[str] = Field(default_factory=list)
+    identity_attributes: list[str] = Field(default_factory=list)
     parent_id: int | None = None
     status: Status = Status.ACTIVE
     merged_into: int | None = None
@@ -73,7 +82,7 @@ class Relation(Frozen):
     description: str = ""
     aliases: list[str] = Field(default_factory=list)
     symmetric: bool = False
-    exclusive: bool = False
+    kind: RelationKind = RelationKind.MANY
     patterns: list[Pattern] = Field(default_factory=list)
     status: Status = Status.ACTIVE
     merged_into: int | None = None
@@ -229,6 +238,7 @@ class AddEntity(Frozen):
     label: str
     description: str = ""
     aliases: list[str] = Field(default_factory=list)
+    identity_attributes: list[str] = Field(default_factory=list)
     parent: Ref | None = None
     origin: Origin = Origin.DECLARED
 
@@ -241,7 +251,7 @@ class AddRelation(Frozen):
     description: str = ""
     aliases: list[str] = Field(default_factory=list)
     symmetric: bool = False
-    exclusive: bool = False
+    kind: RelationKind = RelationKind.MANY
     patterns: list[PatternSpec] = Field(default_factory=list)
     origin: Origin = Origin.DECLARED
 
@@ -281,12 +291,36 @@ class SetDescription(Frozen):
     description: str
 
 
-class SetExclusive(Frozen):
-    """Set whether a subject holds at most one current value of a relation."""
+class SetParent(Frozen):
+    """Set or clear the parent of an entity type."""
 
-    op: Literal["set_exclusive"] = "set_exclusive"
+    op: Literal["set_parent"] = "set_parent"
     target: Ref
-    exclusive: bool
+    parent: Ref | None
+
+
+class SetIdentityAttributes(Frozen):
+    """Replace the identity attribute names of an entity type."""
+
+    op: Literal["set_identity_attributes"] = "set_identity_attributes"
+    target: Ref
+    names: list[str]
+
+
+class SetRelationKind(Frozen):
+    """Set how the values of a relation relate to one another."""
+
+    op: Literal["set_relation_kind"] = "set_relation_kind"
+    target: Ref
+    kind: RelationKind
+
+
+class SetSymmetric(Frozen):
+    """Set whether a relation reads the same in both directions."""
+
+    op: Literal["set_symmetric"] = "set_symmetric"
+    target: Ref
+    symmetric: bool
 
 
 class DeprecateType(Frozen):
@@ -329,7 +363,10 @@ Op = Annotated[
     | AddAlias
     | Rename
     | SetDescription
-    | SetExclusive
+    | SetParent
+    | SetIdentityAttributes
+    | SetRelationKind
+    | SetSymmetric
     | DeprecateType
     | DeprecatePattern
     | Reactivate

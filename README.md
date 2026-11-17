@@ -107,7 +107,40 @@ A label that the catalog does not hold is handled by kind:
 | Relation type | The fact is dropped and counted. |
 
 - **Patterns are enforced:** Relation types can declare source and target patterns. The patterns appear in the prompt, and the code also enforces them.
-- **A default catalog exists:** A new tenant starts from a default catalog of common types for entities and relations.
+- **Default ontology.** A new tenant starts with ten entity types and 31 relation types from `ontogr_mem/ontology/default.yaml`.
+
+##### Declare an ontology
+
+Pass a YAML, JSON or Turtle file as a `pathlib.Path` when you open memory. You can also pass a list of Pydantic classes or an `OntologyDeclaration`.
+
+```python
+from pathlib import Path
+
+from ontogr_mem.client import Memory
+
+async with Memory.open(ontology=Path("ontology.yaml")) as memory:
+    ...
+```
+
+```yaml
+entities:
+  - label: Person
+    description: An individual human.
+  - label: Employer
+    description: A company that employs people.
+relations:
+  - label: EMPLOYS
+    kind: single
+    patterns:
+      - {source: Employer, target: Person}
+```
+
+- A declaration replaces the default. Include every type the tenant should use.
+- On first access, memory commits one ontology version if the declaration changes the stored ontology. Reopening with the same declaration commits nothing.
+- A type keeps its id when the label stays the same. Use `renamed_from` to rename a type, `merged_into` to redirect a type and `deprecated: true` to retire it. Omitted types are deprecated. Existing aliases are kept.
+- `single` keeps one value per subject, and `many` allows multiple values. `judged` marks relations for model-based comparison.
+- With no declaration, existing tenants keep their ontology and new tenants get the default.
+- Both `ontogr-mem chat` and `ontogr-mem mcp` accept `--ontology ontology.yaml`. MCP also reads `MEMORY_MCP_ONTOLOGY`.
 
 #### Entity resolution
 
@@ -486,7 +519,7 @@ The package ships two skills, `memory-write` and `memory-recall`. Call `get_skil
 
 The default HTTP setup is safe for a single machine only. A bind outside loopback without a key logs a warning and still starts. Compose publishes the port on host loopback, and the network is not authentication.
 
-Set the server with these `MEMORY_MCP_*` variables. The CLI flags `--transport`, `--host`, `--port` and `--tenant` override the environment. No flag sets the key.
+Set the server with these `MEMORY_MCP_*` variables. The CLI flags `--transport`, `--host`, `--port`, `--tenant` and `--ontology` override the environment. No flag sets the key.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -494,6 +527,7 @@ Set the server with these `MEMORY_MCP_*` variables. The CLI flags `--transport`,
 | `MEMORY_MCP_HOST` | `127.0.0.1` | Interface the HTTP transport binds to. |
 | `MEMORY_MCP_PORT` | `8000` | Port the HTTP transport binds to. |
 | `MEMORY_MCP_TENANT` | `default` | Tenant the server reads and writes. |
+| `MEMORY_MCP_ONTOLOGY` | Unset | Path to an ontology file. When unset, the tenant uses its stored or default ontology. |
 | `MEMORY_MCP_API_KEY` | Unset | Bearer key for HTTP clients. A blank value counts as unset. |
 | `MEMORY_MCP_TOOLS` | All tools | Comma list of tools to register. An empty value removes every tool. An unknown name is an error. |
 | `MEMORY_MCP_SKILLS_EXTENSION` | `true` | Whether the server advertises the skills extension. |

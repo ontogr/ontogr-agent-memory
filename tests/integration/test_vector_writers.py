@@ -49,7 +49,7 @@ from tests.support.episodes import T0
 from tests.support.extraction import entity_models
 from tests.support.facts import fact, fact_models, reply
 from tests.support.graph_backend import GraphBackend
-from tests.support.ontology import base
+from tests.support.ontology import base, load_catalog
 from tests.support.vectors import HALF, OPPOSITE, ORTHOGONAL, A
 
 
@@ -156,7 +156,7 @@ async def _stack(backend: GraphBackend) -> WriterStack:
         GraphOntologyStore(graph, handle, tenant_keyed=keyed),
         fixed_clock,
     )
-    await manager.load_catalog(base())
+    await load_catalog(manager, base())
     return WriterStack(
         graph,
         handle,

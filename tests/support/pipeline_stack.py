@@ -29,7 +29,7 @@ from tests.support.clock import FixedClock
 from tests.support.embedder import MockEmbedder
 from tests.support.episodes import graph_harness
 from tests.support.facts import fact, fact_models, reply
-from tests.support.ontology import base, cs
+from tests.support.ontology import base, cs, load_catalog
 from tests.support.scripted_model import ScriptedCall
 
 
@@ -182,7 +182,7 @@ async def temporal_stack(store, handle, keyed: bool) -> TemporalStack:
         GraphOntologyStore(store, handle, tenant_keyed=keyed),
         FixedClock(),
     )
-    await manager.load_catalog(base())
+    await load_catalog(manager, base())
     await manager.apply(
         cs(
             await manager.catalog(),

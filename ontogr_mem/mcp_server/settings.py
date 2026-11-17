@@ -1,5 +1,6 @@
 """Settings for one MCP server process."""
 
+from pathlib import Path
 from typing import Annotated, Literal
 
 from pydantic import Field, SecretStr, field_validator
@@ -35,6 +36,8 @@ class McpSettings(BaseSettings):
             MEMORY_MCP_TOOLS as a comma separated list.
         skills_extension: Whether the server advertises the skills extension.
             Env: MEMORY_MCP_SKILLS_EXTENSION.
+        ontology: Path to the ontology file used by the server. Env:
+            MEMORY_MCP_ONTOLOGY.
     """
 
     model_config = SettingsConfigDict(
@@ -48,6 +51,7 @@ class McpSettings(BaseSettings):
     api_key: SecretStr | None = None
     tools: Annotated[tuple[str, ...], NoDecode] = ALL_TOOLS
     skills_extension: bool = True
+    ontology: Path | None = None
 
     @field_validator("tenant")
     @classmethod
@@ -66,6 +70,14 @@ class McpSettings(BaseSettings):
         """
         text = value.get_secret_value() if isinstance(value, SecretStr) else value
         if isinstance(text, str) and not text.strip():
+            return None
+        return value
+
+    @field_validator("ontology", mode="before")
+    @classmethod
+    def _empty_ontology(cls, value: object) -> object:
+        """Map a blank ontology path to None."""
+        if isinstance(value, str) and not value.strip():
             return None
         return value
 

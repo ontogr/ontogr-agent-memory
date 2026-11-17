@@ -5,7 +5,8 @@ import pytest
 from ontogr_mem.graphstore.ontology_store import GraphOntologyStore
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import ChangeSet, DeprecateType, Kind
-from ontogr_mem.service.relations import load_defaults, relation_policy
+from ontogr_mem.service.ontologies import apply_ontology
+from ontogr_mem.service.relations import relation_policy
 from tests.support.clock import FixedClock
 from tests.support.graph_backend import GraphBackend
 
@@ -22,19 +23,22 @@ async def manager(graph_backend: GraphBackend) -> OntologyManager:
     )
 
 
-async def test_defaults_load_once_and_exclusive_relations_follow_the_ontology(manager):
+async def test_defaults_load_once_and_single_relations_follow_the_ontology(manager):
     """Defaults are idempotent and relation rules follow the current head."""
-    await load_defaults(manager)
+    await apply_ontology(manager, None)
     head = await manager.catalog()
-    await load_defaults(manager)
+    await apply_ontology(manager, None)
     assert (await manager.catalog()).version == head.version
 
     catalog = await manager.catalog()
     works_at = next(r for r in catalog.relations if r.label == "WORKS_AT")
-    knows = next(r for r in catalog.relations if r.label == "KNOWS")
     policy = relation_policy(catalog)
-    assert policy.rules(works_at.type_id).cardinality.value == "one"
-    assert policy.rules(knows.type_id).cardinality.value == "many"
+    for label in ("WORKS_AT", "LIVES_IN", "MARRIED_TO", "LOCATED_IN"):
+        relation = next(item for item in catalog.relations if item.label == label)
+        assert policy.rules(relation.type_id).cardinality.value == "one"
+    for label in ("PREFERS", "USES"):
+        relation = next(item for item in catalog.relations if item.label == label)
+        assert policy.rules(relation.type_id).cardinality.value == "many"
 
     head = await manager.catalog()
     await manager.apply(

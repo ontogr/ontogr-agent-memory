@@ -9,6 +9,8 @@ from ontogr_mem.graphstore.protocol import GraphStore
 from ontogr_mem.graphstore.types import GraphHandle
 from ontogr_mem.ingestion import EpisodeStore
 from ontogr_mem.ontology.apply import apply_changeset
+from ontogr_mem.ontology.diff import diff
+from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import (
     AddEntity,
     AddRelation,
@@ -82,3 +84,9 @@ def graph_ontology_harness(
     return OntologyHarness(
         GraphOntologyStore(store, handle, tenant_keyed=tenant_keyed), add_episode
     )
+
+
+async def load_catalog(manager: OntologyManager, catalog: Ontology) -> Ontology:
+    """Apply the difference between the stored and supplied ontologies."""
+    head = await manager.catalog()
+    return await manager.apply(diff(head, catalog))

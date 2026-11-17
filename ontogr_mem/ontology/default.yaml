@@ -1,0 +1,245 @@
+# Default ontology for agent memory. The entity types follow the set that Graphiti
+# ships for its MCP server, and the relation vocabulary follows the shape of the
+# one in the FalkorDB GraphRAG SDK. The descriptions are written for this project.
+# A host that declares its own ontology replaces this one.
+entities:
+- label: Person
+  description: 'An individual human named or described in the text. Example: Ana, the user,
+    Dr. Rao. Not a company or a team (use Organization).'
+  aliases:
+  - Individual
+- label: Organization
+  description: 'A company, institution, team or other formal group. Example: Acme, a hospital,
+    the data team. Not the place where it is based (use Location) and not one person.'
+  aliases:
+  - Org
+  - Company
+- label: Location
+  description: 'A physical or virtual place where things happen or exist. Example: Berlin,
+    Building A, a website. Not an organization based there and not an event held there.'
+  aliases:
+  - Place
+- label: Event
+  description: 'A time-bound activity or occurrence with a start and an end. Example: a meeting
+    on Friday, a trip to Rome. Not a habit or a preference.'
+- label: Preference
+  description: 'Something a person wants, likes, dislikes, chooses or rejects. Use this type
+    before the others when the text expresses a choice or an opinion. Example: window seats,
+    vegetarian food, dark mode. Not the person who holds it.'
+- label: Requirement
+  description: 'A specific need, feature or constraint that must be met. Example: single sign-on
+    is required, replies in under 200 ms. Not a general wish (use Preference) and not a series
+    of steps (use Procedure).'
+- label: Procedure
+  description: 'A series of steps, or a standing instruction, for what to do in a situation.
+    Example: restart the service, then clear the cache; always confirm before deleting. Not
+    a single fact about a state.'
+- label: Topic
+  description: 'A subject of conversation, an interest or a field of knowledge. Use it only
+    when no other type fits. Example: machine learning, gardening. Not a document, an event
+    or an organization.'
+- label: Object
+  description: 'A physical item, tool, device or possession. Use it only when no other type
+    fits. Example: a laptop, a bicycle. Not a document, a place or an organization.'
+- label: Document
+  description: 'Written or recorded content such as a book, article, report, email or video.
+    Example: the Q3 report, a podcast episode. Not the person or organization that made it.'
+relations:
+- label: WORKS_AT
+  description: 'A person works for an organization. Example: Ana works at Acme.'
+  kind: single
+  aliases:
+  - EMPLOYED_BY
+  - WORKS_FOR
+  patterns:
+  - source: Person
+    target: Organization
+- label: LIVES_IN
+  description: 'A person lives in a place. Example: Ana lives in Berlin.'
+  kind: single
+  aliases:
+  - RESIDES_IN
+  patterns:
+  - source: Person
+    target: Location
+- label: MARRIED_TO
+  description: 'Two people are married to each other. Example: Ana is married to Ben.'
+  kind: single
+  symmetric: true
+  aliases:
+  - SPOUSE_OF
+  patterns:
+  - source: Person
+    target: Person
+- label: LOCATED_IN
+  description: 'An organization or an object is located in a place. Example: Acme is located
+    in Berlin.'
+  kind: single
+  aliases:
+  - LOCATED_AT
+  patterns:
+  - source: Organization
+    target: Location
+  - source: Object
+    target: Location
+- label: PREFERS
+  description: 'A person prefers, likes or chooses something. Example: Ana prefers window
+    seats.'
+  kind: judged
+  aliases:
+  - LIKES
+- label: USES
+  description: 'A person or an organization uses a tool, product or method. Example: the team
+    uses Postgres.'
+  kind: judged
+- label: MEMBER_OF
+  description: 'A person belongs to an organization or group. Example: Ana is a member of
+    the chess club.'
+  kind: many
+  aliases:
+  - BELONGS_TO
+  patterns:
+  - source: Person
+    target: Organization
+- label: FOUNDED
+  description: 'A person founded an organization. Example: Ben founded Acme.'
+  kind: many
+  patterns:
+  - source: Person
+    target: Organization
+- label: OWNS
+  description: 'A person or an organization owns something. Example: Acme owns a warehouse.'
+  kind: many
+  aliases:
+  - OWNER_OF
+- label: SUBSIDIARY_OF
+  description: 'An organization is controlled by a parent organization. Example: Beta is a
+    subsidiary of Acme.'
+  kind: many
+  patterns:
+  - source: Organization
+    target: Organization
+- label: PART_OF
+  description: 'One thing is a part of a larger thing. Example: the engine is part of the
+    car.'
+  kind: many
+- label: CONTAINS
+  description: 'One thing holds or includes another. Example: the report contains a summary.'
+  kind: many
+- label: OCCURRED_IN
+  description: 'An event took place in a location. Example: the meeting occurred in Room 4.'
+  kind: many
+  patterns:
+  - source: Event
+    target: Location
+- label: PARTICIPATED_IN
+  description: 'A person or an organization took part in an event. Example: Ana attended the
+    conference.'
+  kind: many
+  aliases:
+  - ATTENDED
+  patterns:
+  - source: Person
+    target: Event
+  - source: Organization
+    target: Event
+- label: CREATED
+  description: 'A person or an organization made something. Example: Acme created the app.'
+  kind: many
+- label: AUTHORED
+  description: 'A person wrote a document. Example: Ana wrote the Q3 report.'
+  kind: many
+  aliases:
+  - WROTE
+  patterns:
+  - source: Person
+    target: Document
+- label: DEVELOPED_BY
+  description: 'A product or method was developed by a person or an organization. Example:
+    the tool was developed by Acme.'
+  kind: many
+- label: BASED_ON
+  description: 'One thing derives from another. Example: the plan is based on the audit.'
+  kind: many
+- label: BORN_IN
+  description: 'A person was born in a place. Example: Ana was born in Lima.'
+  kind: many
+  patterns:
+  - source: Person
+    target: Location
+- label: KNOWS
+  description: 'Two people know each other. Example: Ana knows Ben.'
+  kind: many
+  symmetric: true
+  patterns:
+  - source: Person
+    target: Person
+- label: FRIEND_OF
+  description: 'Two people are friends. Example: Ana is a friend of Ben.'
+  kind: many
+  symmetric: true
+  patterns:
+  - source: Person
+    target: Person
+- label: COLLEAGUE_OF
+  description: 'Two people work together. Example: Ana is a colleague of Ben.'
+  kind: many
+  symmetric: true
+  patterns:
+  - source: Person
+    target: Person
+- label: CHILD_OF
+  description: 'A person is the child of another person. Example: Ana is the child of Ben.'
+  kind: many
+  patterns:
+  - source: Person
+    target: Person
+- label: SIBLING_OF
+  description: 'Two people are siblings. Example: Ana is a sibling of Ben.'
+  kind: many
+  symmetric: true
+  patterns:
+  - source: Person
+    target: Person
+- label: STUDENT_OF
+  description: 'A person studies under a teacher or at an organization. Example: Ana is a
+    student of Dr. Rao.'
+  kind: many
+  patterns:
+  - source: Person
+    target: Person
+  - source: Person
+    target: Organization
+- label: FOLLOWS
+  description: 'A person follows a procedure. Example: Ana follows the release checklist.'
+  kind: many
+  patterns:
+  - source: Person
+    target: Procedure
+- label: REQUIRES
+  description: 'One thing needs another. Example: the feature requires single sign-on.'
+  kind: many
+- label: INTERESTED_IN
+  description: 'A person is interested in a topic. Example: Ana is interested in gardening.'
+  kind: many
+  patterns:
+  - source: Person
+    target: Topic
+- label: REPORTS_TO
+  description: 'A person reports to another person. Example: Ana reports to Ben.'
+  kind: many
+  patterns:
+  - source: Person
+    target: Person
+- label: VISITED
+  description: 'A person went to a place. Example: Ana visited Rome.'
+  kind: many
+  patterns:
+  - source: Person
+    target: Location
+- label: ABOUT
+  description: 'A document is about a topic. Example: the article is about machine learning.'
+  kind: many
+  patterns:
+  - source: Document
+    target: Topic
