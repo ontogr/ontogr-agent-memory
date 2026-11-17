@@ -162,7 +162,9 @@ class Memory:
             thread: Optional Episode thread metadata.
             reference_time: Event time with a timezone, or use submission time.
             idempotency_key: Reuse to identify the same request.
-            wait_seconds: Wait up to 60 seconds for a terminal job state.
+            wait_seconds: Seconds to wait, up to 60, for a terminal job state.
+                The receipt shows the job status when the wait ends, which can
+                still be queued or running.
 
         Returns:
             A receipt that may still be queued or running. Check error on failure.
@@ -207,10 +209,13 @@ class Memory:
             valid_from: Validity start with a timezone, or submission time.
             valid_to: Optional validity end, after the start.
             idempotency_key: Reuse to identify the same request.
-            wait_seconds: Wait up to 60 seconds for a terminal job state.
+            wait_seconds: Seconds to wait, up to 60, for a terminal job state.
+                The receipt shows the job status when the wait ends, which can
+                still be queued or running.
 
         Returns:
-            The queued or completed write receipt, including any job error.
+            A receipt that may still be queued or running. Use get_job for the
+            final result and error.
         """
         request = validate_request(
             AddMemory,
@@ -251,10 +256,13 @@ class Memory:
                 request carries at most 1000 facts.
             role: Role of the source's author.
             idempotency_key: Reuse for a retry of this same write.
-            wait_seconds: Maximum time to wait for the job before returning.
+            wait_seconds: Seconds to wait, up to 60, for a terminal job state.
+                The receipt shows the job status when the wait ends, which can
+                still be queued or running.
 
         Returns:
-            The write receipt and, when finished, its result.
+            A receipt that may still be queued or running. Use get_job for the
+            final result and error.
         """
         request = validate_request(
             AddMemory,

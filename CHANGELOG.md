@@ -27,9 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- Ontology modes (`strict`, `preferred` and `open`) and the `SetModes` change. A
-  relation that the ontology does not hold is dropped and counted, and an entity
-  type that it does not hold is kept with the Unknown type.
+- Ontology modes (`strict`, `preferred` and `open`) and the `SetModes` change.
+  In text and sourced writes, a relation that the ontology does not hold is
+  dropped and counted, and an entity type that it does not hold is kept with the
+  Unknown type. A structured fact with a relation that the ontology does not hold
+  is refused.
 - Ontology proposals, the drafting model role (`ONTOLOGY`) with its
   `MEMORY_LLM_ONTOLOGY_*` and `MEMORY_ONTOLOGY_*` settings, the stored unmatched
   rows, and `OntologyManager.stale_episodes`.

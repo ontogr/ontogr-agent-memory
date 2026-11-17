@@ -691,7 +691,7 @@ First, ingestion stores a source item as an episode. Second, entity extraction f
 ### A write
 
 1. The service checks the caller's rate limit, opens an operation row in the relation store, and checks the write grant for the tenant. Each access decision is appended to the audit log.
-2. The service stores the request as a job in the relation store and returns a receipt with the job id. A repeated idempotency key returns the original job, and `wait_seconds` makes the call wait for the job to finish.
+2. The service stores the request as a job in the relation store and returns a receipt with the job id. A repeated idempotency key returns the original job. A positive `wait_seconds` makes the call wait up to that long for a terminal state, and the receipt shows the latest status when the wait ends.
 3. The tenant's job lane runs the job. A lane runs one job at a time for its tenant, and lanes for different tenants run in parallel. The job records each attempt.
 4. Ingestion writes the episode with its source and actor to the graph, and records the content hash last.
 5. For a text or message write, extraction finds entities, and resolution links them to canonical entities in the graph. Resolution also writes the entity name vectors. A structured fact skips extraction.
@@ -772,7 +772,7 @@ A read does not create a job. A search that finds nothing reports an `indexing` 
 
 ### Jobs
 
-Writes return a `WriteReceipt` with a job id and status. A positive `wait_seconds` waits for completion. Jobs run in serial lanes per tenant, and different tenants run in parallel. Each write accepts an optional idempotency key, and a repeated key returns the original job instead of creating duplicate work. A job records attempts, progress, result, error, and trace id, and the runner retries up to a configured maximum.
+Writes return a `WriteReceipt` with a job id and status. A positive `wait_seconds` waits up to that long for a terminal state, and the receipt shows the status at that moment, so read `get_job` for the final result. Jobs run in serial lanes per tenant, and different tenants run in parallel. Each write accepts an optional idempotency key, and a repeated key returns the original job instead of creating duplicate work. A job records attempts, progress, result, error, and trace id, and the runner retries up to a configured maximum.
 
 AddMemory writes accept a `role`, which defaults to `user`, and a `speaker`. The speaker is both the actor id and display name. If it is omitted, the service uses the caller id as the actor id and leaves the display name empty. Episode listings and retrieved episode passages include the actor id, display name, and role.
 
