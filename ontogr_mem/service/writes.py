@@ -366,13 +366,12 @@ async def _prepare_sourced_facts(  # noqa: PLR0912, PLR0915
                 or verdict.type_id is None
                 or verdict.type_id not in projection.relation_ids
             ):
-                drops.append(
-                    Drop(
-                        item.index,
-                        FactDropReason.UNKNOWN_RELATION,
-                        "relation is not in the ontology",
-                    )
+                detail = (
+                    "an endpoint type is not in the ontology"
+                    if Reason.UNKNOWN_ENDPOINT in verdict.reasons
+                    else "relation is not in the ontology"
                 )
+                drops.append(Drop(item.index, FactDropReason.UNKNOWN_RELATION, detail))
                 continue
             relation = ontology.relation(verdict.type_id)
             subject_id = _known_type(subject.type_id)
