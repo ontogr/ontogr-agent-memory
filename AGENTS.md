@@ -60,7 +60,6 @@ tests/
   unit/                 # unit tests, no network
   integration/          # integration tests with real external services
 thoughts/               # shared plans, decisions and research notes, do not edit unless asked
-CONTEXT.md              # project vocabulary; keep terms consistent with it
 ```
 
 ## Critical rules

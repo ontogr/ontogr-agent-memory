@@ -1,7 +1,7 @@
 <h1 align="center"><a href="https://github.com/ontogr/ontogr-agent-memory">OntoGr Agent Memory</a></h1>
 
 <h3 align="center">Durable, traceable memory for AI agents.</h3>
-<h4 align="center"><a href="https://github.com/ontogr/ontogr-agent-memory#features">Features</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#quickstart">Quickstart</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#core-concepts">Concepts</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#how-data-flows">Data flow</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#service-api">Service API</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#configuration">Configuration</a> · <a href="https://github.com/ontogr/ontogr-agent-memory/blob/main/CONTEXT.md">Vocabulary</a> · <a href="https://github.com/ontogr/ontogr-agent-memory/blob/main/CHANGELOG.md">Changelog</a></h4>
+<h4 align="center"><a href="https://github.com/ontogr/ontogr-agent-memory#features">Features</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#quickstart">Quickstart</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#core-concepts">Concepts</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#how-data-flows">Data flow</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#service-api">Service API</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#configuration">Configuration</a> · <a href="https://github.com/ontogr/ontogr-agent-memory/blob/main/CHANGELOG.md">Changelog</a></h4>
 
 <div align="center">
 
