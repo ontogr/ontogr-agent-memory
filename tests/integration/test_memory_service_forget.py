@@ -14,6 +14,7 @@ from ontogr_mem.service.errors import ConfirmationRequiredError, ObjectNotFoundE
 from ontogr_mem.service.forget.selector import ForgetSelector
 from ontogr_mem.service.principal import Grant
 from tests.support.graph_backend import GraphBackend
+from tests.support.jobs import wait_for_job
 from tests.support.memory_service import memory_service_harness
 
 
@@ -38,7 +39,7 @@ class TestMemoryServiceForget:
                 wait_seconds=5,
             ),
         )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
         assert job.result is not None
         fact_id = job.result["fact_ids"][0]
         selector = ForgetSelector(fact_id=fact_id)
@@ -100,6 +101,7 @@ class TestMemoryServiceForget:
                 wait_seconds=5,
             ),
         )
+        await wait_for_job(harness.service, write_principal, receipt.job_id)
         preview = await harness.service.preview_clear_tenant(admin, "t1")
 
         result = await harness.service.clear_tenant(
@@ -134,7 +136,7 @@ class TestMemoryServiceForget:
         admin = harness.principal.model_copy(
             update={"grants": {"t1": frozenset({Grant.ADMIN})}}
         )
-        await harness.service.add_memory(
+        receipt = await harness.service.add_memory(
             admin,
             AddMemory(
                 tenant="t1",
@@ -145,8 +147,9 @@ class TestMemoryServiceForget:
                 wait_seconds=5,
             ),
         )
+        await wait_for_job(harness.service, admin, receipt.job_id)
         preview = await harness.service.preview_clear_tenant(admin, "t1")
-        await harness.service.add_memory(
+        receipt = await harness.service.add_memory(
             admin,
             AddMemory(
                 tenant="t1",
@@ -157,6 +160,7 @@ class TestMemoryServiceForget:
                 wait_seconds=5,
             ),
         )
+        await wait_for_job(harness.service, admin, receipt.job_id)
 
         with pytest.raises(ConfirmationRequiredError):
             await harness.service.clear_tenant(

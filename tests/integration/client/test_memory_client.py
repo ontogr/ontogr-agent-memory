@@ -350,6 +350,11 @@ class TestMemoryClient:
                 assert first.idempotent_replay is False
                 assert second.job_id == first.job_id
                 assert second.idempotent_replay is True
+                await memory.drain()
+                first_job = await memory.get_job(first.job_id)
+                second_job = await memory.get_job(second.job_id)
+                assert first_job.status is second_job.status
+                assert first_job.result == second_job.result
 
                 with pytest.raises(ConflictError):
                     await memory.write_fact(
@@ -415,6 +420,7 @@ class TestMemoryClient:
                     valid_to=datetime(2024, 6, 1, tzinfo=UTC),
                     wait_seconds=10,
                 )
+                await memory.drain()
 
                 during = await memory.search(
                     "Where does Ana work?",
@@ -565,6 +571,7 @@ class TestMemoryClient:
                     "Acme",
                     wait_seconds=10,
                 )
+                await memory.drain()
                 job = await memory.get_job(receipt.job_id)
                 assert job.status is JobState.DONE
                 assert job.error is None
@@ -627,9 +634,6 @@ class TestMemoryClient:
                 tenant, models=scripted_role_models(model)
             ) as memory:
                 receipt = await memory.write_text("I own Hydra.", wait_seconds=10)
-                assert receipt.status is JobState.FAILED
-                assert receipt.error is not None
-
                 await memory.drain()
 
                 job = await memory.get_job(receipt.job_id)
@@ -710,11 +714,11 @@ class TestMemoryClient:
                 result = await memory.forget(fact_id=fact_id, reason="Left Acme.")
                 assert result.dry_run is False
                 assert result.receipt is not None
-                assert result.receipt.error is None
 
                 await memory.drain()
                 job = await memory.get_job(result.receipt.job_id)
                 assert job.status is JobState.DONE
+                assert job.error is None
 
                 current = await memory.search("Where does Ana work?")
                 assert fact_id not in [fact.fact_id for fact in current.facts]
@@ -826,6 +830,7 @@ class TestMemoryClient:
                 receipt = await memory.write_fact(
                     "Ana", "works_at", "Acme", wait_seconds=10
                 )
+                await memory.drain()
                 job = await memory.get_job(receipt.job_id)
                 assert job.status is JobState.DONE
                 context = await memory.search("Where does Ana work?")
@@ -854,12 +859,14 @@ class TestMemoryClient:
             with pytest.raises(BodyFailureError, match="body failed"):
                 async with open_memory(tenant) as memory:
                     await memory.write_fact("Ana", "works_at", "Acme", wait_seconds=10)
+                    await memory.drain()
                     raise BodyFailureError("body failed")
 
             async with open_memory(tenant) as memory:
                 receipt = await memory.write_fact(
                     "Ana", "works_at", "Beta", wait_seconds=10
                 )
+                await memory.drain()
                 job = await memory.get_job(receipt.job_id)
                 assert job.status is JobState.DONE
                 assert job.error is None

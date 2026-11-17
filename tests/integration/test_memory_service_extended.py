@@ -43,7 +43,7 @@ class TestMemoryServiceExtended:
                 wait_seconds=5,
             ),
         )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
         assert job.result is not None
         fact_id = job.result["fact_ids"][0]
         entity = await harness.service.get_entity(
@@ -106,7 +106,7 @@ class TestMemoryServiceExtended:
                 wait_seconds=5,
             ),
         )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
         assert job.result is not None
         fact_id = job.result["fact_ids"][0]
         entity_view = await harness.service.get_entity(
@@ -196,7 +196,7 @@ class TestMemoryServiceExtended:
         harness = await memory_service_harness(
             graph_backend,
         )
-        await harness.service.add_memory(
+        receipt = await harness.service.add_memory(
             harness.principal,
             AddMemory(
                 tenant="t1",
@@ -207,6 +207,7 @@ class TestMemoryServiceExtended:
                 wait_seconds=5,
             ),
         )
+        await wait_for_job(harness.service, harness.principal, receipt.job_id)
 
         with pytest.raises(InvalidArgumentError):
             await harness.service.search_memory(
@@ -226,7 +227,7 @@ class TestMemoryServiceExtended:
         harness = await memory_service_harness(
             graph_backend, keywords=TimeoutKeywords()
         )
-        await harness.service.add_memory(
+        receipt = await harness.service.add_memory(
             harness.principal,
             AddMemory(
                 tenant="t1",
@@ -237,6 +238,7 @@ class TestMemoryServiceExtended:
                 wait_seconds=5,
             ),
         )
+        await wait_for_job(harness.service, harness.principal, receipt.job_id)
 
         with pytest.raises(KeywordTimeoutError):
             await harness.service.graph(
@@ -250,7 +252,7 @@ class TestMemoryServiceExtended:
         harness = await memory_service_harness(
             graph_backend,
         )
-        await harness.service.add_memory(
+        receipt = await harness.service.add_memory(
             harness.principal,
             AddMemory(
                 tenant="t1",
@@ -261,6 +263,7 @@ class TestMemoryServiceExtended:
                 wait_seconds=5,
             ),
         )
+        await wait_for_job(harness.service, harness.principal, receipt.job_id)
 
         with pytest.raises(InvalidArgumentError):
             await harness.service.graph(

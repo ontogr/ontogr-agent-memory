@@ -283,7 +283,7 @@ class TestMemoryService:
         harness = await memory_service_harness(
             graph_backend,
         )
-        await harness.service.add_memory(
+        receipt = await harness.service.add_memory(
             harness.principal,
             AddMemory(
                 tenant="t1",
@@ -294,6 +294,7 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
+        await wait_for_job(harness.service, harness.principal, receipt.job_id)
 
         result = await harness.service.search_memory(
             harness.principal,
@@ -347,10 +348,11 @@ class TestMemoryService:
         )
 
         with pytest.raises(LLMUnavailableError):
-            await harness.service.add_memory(
+            receipt = await harness.service.add_memory(
                 harness.principal,
                 AddMemory(tenant="t1", kind=MemoryKind.TEXT, content="Ana works here."),
             )
+            await wait_for_job(harness.service, harness.principal, receipt.job_id)
 
         assert await harness.state.tenant_ids() == []
 
@@ -421,7 +423,7 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
 
         assert job.status.value == "failed"
         assert job.error is not None
@@ -451,7 +453,7 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
 
         assert job.status.value == "failed"
         assert job.error is not None
@@ -528,7 +530,7 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
         assert job.result is not None
         fact_id = job.result["fact_ids"][0]
 
@@ -587,7 +589,7 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
         assert job.result is not None
         fact_id = job.result["fact_ids"][0]
 
@@ -601,10 +603,11 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        assert receipt.status.value == "failed"
-        assert receipt.error is not None
-        assert receipt.error.code.value == "conflict"
-        assert receipt.error.message == "fact is closed, not active"
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
+        assert job.status.value == "failed"
+        assert job.error is not None
+        assert job.error.code.value == "conflict"
+        assert job.error.message == "fact is closed, not active"
 
     async def test_episode_pages_do_not_repeat_episodes(
         self, graph_backend: GraphBackend
@@ -660,7 +663,7 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
         assert job.result is not None
         fact_id = job.result["fact_ids"][0]
 
@@ -675,7 +678,7 @@ class TestMemoryService:
             ),
         )
 
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
         assert job.status.value == "failed"
         assert job.error is not None
         assert job.error.code.value == "invalid_argument"
@@ -728,10 +731,9 @@ class TestMemoryService:
         )
 
         receipt = await harness.service.add_memory(harness.principal, request)
-        job = await harness.service.get_job(harness.principal, receipt.job_id)
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
 
-        assert receipt.status.value == "done", job.error
-        assert receipt.result == job.result
+        assert job.status.value == "done"
         assert job.result is not None
         assert job.result["ontology_refused"] == 1
         assert job.result["skipped"] == {"not_state": 1}
@@ -833,12 +835,16 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        assert receipt.status.value == "done"
-        assert receipt.result is not None
-        assert receipt.result["ontology_refused"] == 1
-        assert receipt.result["skipped"] == {}
-        assert len(receipt.result["fact_ids"]) == 1
-        assert first_receipt.result is not None
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
+        first_job = await wait_for_job(
+            harness.service, harness.principal, first_receipt.job_id
+        )
+        assert job.status.value == "done"
+        assert job.result is not None
+        assert job.result["ontology_refused"] == 1
+        assert job.result["skipped"] == {}
+        assert len(job.result["fact_ids"]) == 1
+        assert first_job.result is not None
         catalog = await manager.catalog()
         assert catalog.relation_by_label("DIRECTS") is None
         episodes = await harness.service.list_episodes(
@@ -854,8 +860,8 @@ class TestMemoryService:
             for episode in episodes.episodes
         }
         assert actor_values == {
-            first_receipt.result["episode_id"]: ("speaker-1", "speaker-1", "user"),
-            receipt.result["episode_id"]: ("speaker-1", "speaker-1", "assistant"),
+            first_job.result["episode_id"]: ("speaker-1", "speaker-1", "user"),
+            job.result["episode_id"]: ("speaker-1", "speaker-1", "assistant"),
         }
 
         rejected = await harness.service.add_memory(
@@ -869,8 +875,11 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        assert rejected.status.value == "failed"
-        assert rejected.result is None
+        rejected_job = await wait_for_job(
+            harness.service, harness.principal, rejected.job_id
+        )
+        assert rejected_job.status.value == "failed"
+        assert rejected_job.result is None
 
     async def test_sourced_unknown_labels_are_dropped_and_not_registered(
         self, graph_backend: GraphBackend
@@ -916,5 +925,47 @@ class TestMemoryService:
         assert [
             (item["index"], item["reason"]) for item in job.result.get("dropped", [])
         ] == [(0, "unknown_relation"), (1, "unknown_relation")]
+        assert [item["detail"] for item in job.result["dropped"]] == [
+            "relation is not in the ontology",
+            "an endpoint type is not in the ontology",
+        ]
         assert job.result["fact_ids"] == []
         assert await manager.catalog() == before
+
+    async def test_sourced_known_endpoint_types_with_wrong_pattern_are_dropped(
+        self, graph_backend: GraphBackend
+    ):
+        """Drop sourced facts with known endpoint types outside relation patterns."""
+        harness = await memory_service_harness(graph_backend)
+        stores = await graph_backend.stores_for("t1")
+        manager = _ontology_manager(stores, harness.clock)
+        await load_defaults(manager)
+
+        receipt = await harness.service.add_memory(
+            harness.principal,
+            AddMemory(
+                tenant="t1",
+                kind=MemoryKind.SOURCED_FACTS,
+                content="Acme employs Ana.",
+                facts=[
+                    HostFact(
+                        subject="Acme",
+                        subject_type="Organization",
+                        relation="WORKS_AT",
+                        object="Ana",
+                        object_type="Person",
+                        evidence_quote="Acme employs Ana",
+                    ),
+                ],
+                wait_seconds=5,
+            ),
+        )
+        job = await wait_for_job(harness.service, harness.principal, receipt.job_id)
+
+        assert job.status.value == "done"
+        assert job.result is not None
+        assert [
+            (item["index"], item["reason"], item["detail"])
+            for item in job.result.get("dropped", [])
+        ] == [(0, "wrong_direction", "endpoint types do not fit the relation")]
+        assert job.result["fact_ids"] == []
