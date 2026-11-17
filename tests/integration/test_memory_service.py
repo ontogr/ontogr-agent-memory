@@ -348,11 +348,10 @@ class TestMemoryService:
         )
 
         with pytest.raises(LLMUnavailableError):
-            receipt = await harness.service.add_memory(
+            await harness.service.add_memory(
                 harness.principal,
                 AddMemory(tenant="t1", kind=MemoryKind.TEXT, content="Ana works here."),
             )
-            await wait_for_job(harness.service, harness.principal, receipt.job_id)
 
         assert await harness.state.tenant_ids() == []
 
