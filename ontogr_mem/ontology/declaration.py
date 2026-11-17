@@ -105,8 +105,8 @@ def check_declaration(declaration: OntologyDeclaration) -> None:
     """
     _check_names(declaration.entities, "entity")
     _check_names(declaration.relations, "relation")
-    entities = {e.label: e for e in declaration.entities}
-    relations = {r.label: r for r in declaration.relations}
+    entities = {entity.label: entity for entity in declaration.entities}
+    relations = {relation.label: relation for relation in declaration.relations}
     for entity in declaration.entities:
         _check_entity(entity, entities)
     for relation in declaration.relations:

@@ -380,3 +380,19 @@ def test_active_entities_cannot_be_reparented_to_retired_types():
                 ),
             ),
         )
+
+
+def test_an_existing_retired_parent_does_not_block_unrelated_changes():
+    """A stored child under a retired parent can still be edited."""
+    head = base()
+    parent = next(entity for entity in head.entities if entity.label == "Person")
+    parent.status = Status.DEPRECATED
+    relation = next(
+        relation for relation in head.relations if relation.label == "works_at"
+    )
+    relation.patterns[0].status = Status.DEPRECATED
+    result = apply_changeset(head, cs(head, AddEntity(label="Team")))
+    assert result.version == head.version + 1
+    assert any(entity.label == "Team" for entity in result.entities)
+    child = next(entity for entity in result.entities if entity.label == "Employee")
+    assert (child.status, child.parent_id) == (Status.ACTIVE, parent.type_id)

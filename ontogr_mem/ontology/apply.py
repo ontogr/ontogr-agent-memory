@@ -72,7 +72,7 @@ def apply_changeset(cat: Ontology, cs: ChangeSet) -> Ontology:
     index = _CatalogIndex(work)
     for op in cs.ops:
         _apply_op(work, op, index)
-    _check_indexed(work, index)
+    _check_indexed(work, index, previous=cat)
     out = work.model_copy(
         update={"version": cat.version + 1, "parent_version": cat.version}
     )
@@ -416,12 +416,14 @@ def _check(cat: Ontology) -> None:
     _check_indexed(cat, _CatalogIndex(cat))
 
 
-def _check_indexed(cat: Ontology, index: _CatalogIndex) -> None:
+def _check_indexed(
+    cat: Ontology, index: _CatalogIndex, *, previous: Ontology | None = None
+) -> None:
     """Check ``cat`` with an index that already reflects its current types."""
     _check_unknown(cat, index)
     for kind in (Kind.ENTITY, Kind.RELATION):
         _check_names(cat, kind)
-    _check_hierarchy(cat, index)
+    _check_hierarchy(cat, index, previous=previous)
     _check_identity(cat)
     _check_patterns(cat, index)
     _check_merges(cat, index)
@@ -464,7 +466,9 @@ def _check_names(cat: Ontology, kind: Kind) -> None:
             seen[key] = t.type_id
 
 
-def _check_hierarchy(cat: Ontology, index: _CatalogIndex) -> None:
+def _check_hierarchy(
+    cat: Ontology, index: _CatalogIndex, *, previous: Ontology | None
+) -> None:
     """Every parent exists and is not Unknown, with no cycle and depth at most 8."""
     for e in cat.entities:
         if e.parent_id is None:
@@ -473,7 +477,19 @@ def _check_hierarchy(cat: Ontology, index: _CatalogIndex) -> None:
         if e.parent_id == UNKNOWN_ID or parent is None:
             raise InvalidChange("bad parent", item=e.label)
         if e.status is Status.ACTIVE and parent.status is not Status.ACTIVE:
-            raise InvalidChange("parent must be active", item=e.label)
+            old_child = previous.entity(e.type_id) if previous is not None else None
+            old_parent = (
+                previous.entity(parent.type_id) if previous is not None else None
+            )
+            # An existing inactive parent must not block unrelated changes.
+            if (
+                old_child is None
+                or old_child.parent_id != parent.type_id
+                or old_child.status is not Status.ACTIVE
+                or old_parent is None
+                or old_parent.status is Status.ACTIVE
+            ):
+                raise InvalidChange("parent must be active", item=e.label)
         seen = {e.type_id}
         depth = 0
         cur: Entity | None = e
