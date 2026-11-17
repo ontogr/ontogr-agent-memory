@@ -362,3 +362,21 @@ def test_set_relation_kind_refuses_unknown_and_missing_relation():
         apply_changeset(
             a, cs(a, SetRelationKind(target="nope", kind=RelationKind.SINGLE))
         )
+
+
+def test_active_entities_cannot_be_reparented_to_retired_types():
+    """A new parent must be active after the change set applies."""
+    head = base()
+    with pytest.raises(InvalidChange, match="parent must be active"):
+        apply_changeset(
+            head,
+            cs(
+                head,
+                DeprecateType(kind=Kind.ENTITY, target="Organization"),
+                SetParent(target="Employee", parent="Organization"),
+                DeprecatePattern(
+                    relation="works_at",
+                    pattern=PatternSpec(src="Person", tgt="Organization"),
+                ),
+            ),
+        )

@@ -3,7 +3,7 @@
 import inspect
 import types
 from collections.abc import Sequence
-from typing import Annotated, Union, get_args, get_origin
+from typing import Annotated, ForwardRef, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
@@ -18,6 +18,12 @@ from ontogr_mem.ontology.models import RelationKind
 
 
 _CONTAINERS = {list, set, frozenset, tuple, Sequence}
+
+
+def _has_unresolved_annotation(annotation: object) -> bool:
+    return isinstance(annotation, ForwardRef) or any(
+        _has_unresolved_annotation(argument) for argument in get_args(annotation)
+    )
 
 
 def _targets(annotation: object, classes: set[type[BaseModel]]) -> set[str]:
@@ -55,14 +61,20 @@ def declaration_from_models(models: Sequence[type[BaseModel]]) -> OntologyDeclar
     for model in models:
         parent = next((base for base in model.__mro__[1:] if base in listed), None)
         inherited = (
-            set(parent.model_fields)
+            parent.model_fields
             if parent is not None and issubclass(parent, BaseModel)
-            else set()
+            else {}
         )
         for name, field in model.model_fields.items():
-            if name in inherited:
-                continue
+            if _has_unresolved_annotation(field.annotation):
+                raise InvalidChange(
+                    "unresolved model field annotation", item=f"{model.__name__}.{name}"
+                )
             targets = _targets(field.annotation, listed)
+            if name in inherited and targets == _targets(
+                inherited[name].annotation, listed
+            ):
+                continue
             if not targets:
                 continue
             label = name.upper()

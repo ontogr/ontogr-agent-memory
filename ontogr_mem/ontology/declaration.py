@@ -66,9 +66,9 @@ def _check_names(
     renamed: set[str] = set()
     for item in items:
         check_identifier(item.label, kind=kind)
-        if item.label.casefold() in RESERVED_LABELS:
-            _fail("reserved label", item.label)
         key = normalize(item.label)
+        if key in RESERVED_LABELS:
+            _fail("reserved label", item.label)
         if key in names:
             _fail(f"name '{item.label}' is declared twice", item.label)
         names[key] = item.label

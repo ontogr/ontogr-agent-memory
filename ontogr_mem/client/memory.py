@@ -111,6 +111,9 @@ class Memory:
             InvalidChange: If the ontology cannot be loaded.
             EmbedderUnavailableError: If no embedding provider can open.
 
+        On first tenant access, a conflict with the stored ontology raises
+        InvalidArgumentError.
+
         Context exit stops jobs without draining. Settings read .env from the
         current directory. Injected models and embedders remain caller-owned.
         """
@@ -136,6 +139,7 @@ class Memory:
                         models=selected_models,
                         embedder=selected_embedder,
                         ontology=declaration,
+                        ontology_tenant=selected_tenant,
                     )
                 )
                 yield cls(

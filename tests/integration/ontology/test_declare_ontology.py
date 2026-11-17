@@ -67,6 +67,11 @@ class TestDeclareOntology:
             )
             == person_id
         )
+        persisted = await manager.catalog()
+        organization_id = next(
+            item.type_id for item in persisted.entities if item.label == "Organization"
+        )
+        assert organization_id != person_id
         history = await manager.history()
         assert history[-1].channel.value == "import"
         assert history[-1].actor == "declare"

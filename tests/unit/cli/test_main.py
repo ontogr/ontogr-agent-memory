@@ -9,6 +9,7 @@ from ontogr_mem.cli import main
 from ontogr_mem.errors import AgentMemoryError, MissingExtraError
 from ontogr_mem.llm.failures import ModelNotConfiguredError
 from ontogr_mem.ontology.errors import InvalidChange
+from ontogr_mem.service.errors import InvalidArgumentError
 from ontogr_mem.vectorstore.builtin import EmbedderUnavailableError
 
 
@@ -152,6 +153,11 @@ class TestMain:
                 InvalidChange("cannot read the ontology file"),
                 ("Invalid ontology: cannot read the ontology file",),
                 id="invalid-ontology",
+            ),
+            pytest.param(
+                InvalidArgumentError("the ontology does not apply: name collides"),
+                ("the ontology does not apply: name collides",),
+                id="stored-ontology-conflict",
             ),
         ],
     )

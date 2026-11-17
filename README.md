@@ -111,7 +111,7 @@ A label that the catalog does not hold is handled by kind:
 
 ##### Declare an ontology
 
-Pass a YAML, JSON or Turtle file as a `pathlib.Path` when you open memory. You can also pass a list of Pydantic classes or an `OntologyDeclaration`.
+Pass a YAML, JSON or Turtle file as a `pathlib.Path` when you open memory. For Turtle classes with multiple declared parents, the loader keeps the parent whose label sorts first. You can also pass a list of Pydantic classes or an `OntologyDeclaration`.
 
 ```python
 from pathlib import Path
@@ -138,7 +138,7 @@ relations:
 - A declaration replaces the default. Include every type the tenant should use.
 - On first access, memory commits one ontology version if the declaration changes the stored ontology. Reopening with the same declaration commits nothing.
 - A type keeps its id when the label stays the same. Use `renamed_from` to rename a type, `merged_into` to redirect a type and `deprecated: true` to retire it. Omitted types are deprecated. Existing aliases are kept.
-- `single` keeps one value per subject, and `many` allows multiple values. `judged` marks relations for model-based comparison.
+- `single` keeps one value per subject, and `many` allows multiple values. `judged` currently follows the same write policy as `many`.
 - With no declaration, existing tenants keep their ontology and new tenants get the default.
 - Both `ontogr-mem chat` and `ontogr-mem mcp` accept `--ontology ontology.yaml`. MCP also reads `MEMORY_MCP_ONTOLOGY`.
 

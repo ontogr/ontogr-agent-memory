@@ -10,6 +10,7 @@ from pydantic_ai.models.concurrency import ConcurrencyLimitedModel
 from ontogr_mem.data_models.clock import Clock
 from ontogr_mem.llm import LLMConfig, ModelRole, RoleModels, build_models
 from ontogr_mem.observability import Tracer
+from ontogr_mem.ontology import EntityDeclaration, OntologyDeclaration, OntologyManager
 from ontogr_mem.relational_store.config import StateSettings
 from ontogr_mem.service.bootstrap import ServiceSettings, open_service
 from ontogr_mem.service.contracts import ClearTenant
@@ -20,6 +21,7 @@ from ontogr_mem.vectorstore import Embedder
 from tests.support.clock import FixedClock
 from tests.support.embedder import MockEmbedder
 from tests.support.graph_backend import GraphBackend
+from tests.support.tenants import new_tenant
 
 
 def _judge_model(models: RoleModels) -> Any:
@@ -263,3 +265,43 @@ class TestOpenService:
             status = await runtime.service.get_status(reader)
 
         assert status.llm_available is False
+
+    async def test_ontology_declaration_is_scoped_to_the_selected_tenant(
+        self, graph_backend: GraphBackend
+    ):
+        """Initializing another tenant preserves its existing ontology."""
+        selected = new_tenant()
+        other = new_tenant()
+        other_stores = await graph_backend.stores_for(other)
+        existing = OntologyDeclaration(entities=[EntityDeclaration(label="Widget")])
+        clock = FixedClock()
+        other_manager = OntologyManager(other_stores.ontology_store, clock)
+        before = await other_manager.declare(existing)
+        async with open_service(
+            ServiceSettings(backend=graph_backend.name, _env_file=None),
+            state_settings=StateSettings(
+                backend="memory", allow_ephemeral=True, _env_file=None
+            ),
+            stores_factory=graph_backend.stores_for,
+            drop_graph=graph_backend.store.erase_tenant,
+            clock=clock,
+            embedder=MockEmbedder(),
+            ontology=OntologyDeclaration(entities=[EntityDeclaration(label="Gadget")]),
+            ontology_tenant=selected,
+        ) as runtime:
+            await runtime.service.get_status(
+                Principal(
+                    id="reader",
+                    default_tenant=selected,
+                    grants={
+                        selected: frozenset({Grant.READ}),
+                        other: frozenset({Grant.READ}),
+                    },
+                )
+            )
+        assert await other_manager.catalog() == before
+        selected_stores = await graph_backend.stores_for(selected)
+        selected_manager = OntologyManager(selected_stores.ontology_store, clock)
+        assert [
+            entity.label for entity in (await selected_manager.catalog()).entities
+        ] == ["Unknown", "Gadget"]

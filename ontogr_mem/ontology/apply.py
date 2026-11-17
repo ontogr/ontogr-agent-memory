@@ -450,7 +450,7 @@ def _check_names(cat: Ontology, kind: Kind) -> None:
         is_unknown = kind is Kind.ENTITY and t.type_id == UNKNOWN_ID
         if not is_unknown:
             check_identifier(t.label, kind=kind.value)
-            if t.label.casefold() in RESERVED_LABELS:
+            if normalize(t.label) in RESERVED_LABELS:
                 raise InvalidChange("reserved label", item=t.label)
         for name in [t.label, *t.aliases]:
             key = normalize(name)
@@ -469,8 +469,11 @@ def _check_hierarchy(cat: Ontology, index: _CatalogIndex) -> None:
     for e in cat.entities:
         if e.parent_id is None:
             continue
-        if e.parent_id == UNKNOWN_ID or index.entity(e.parent_id) is None:
+        parent = index.entity(e.parent_id)
+        if e.parent_id == UNKNOWN_ID or parent is None:
             raise InvalidChange("bad parent", item=e.label)
+        if e.status is Status.ACTIVE and parent.status is not Status.ACTIVE:
+            raise InvalidChange("parent must be active", item=e.label)
         seen = {e.type_id}
         depth = 0
         cur: Entity | None = e

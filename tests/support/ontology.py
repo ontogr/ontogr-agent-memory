@@ -89,4 +89,5 @@ def graph_ontology_harness(
 async def load_catalog(manager: OntologyManager, catalog: Ontology) -> Ontology:
     """Apply the difference between the stored and supplied ontologies."""
     head = await manager.catalog()
-    return await manager.apply(diff(head, catalog))
+    changes = diff(head, catalog)
+    return await manager.apply(changes) if changes.ops else head

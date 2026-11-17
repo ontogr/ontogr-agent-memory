@@ -20,6 +20,7 @@ from ontogr_mem.llm.failures import ModelNotConfiguredError
 from ontogr_mem.llm.roles import ModelRole
 from ontogr_mem.mcp_server.settings import McpSettings
 from ontogr_mem.ontology.errors import InvalidChange
+from ontogr_mem.service.errors import InvalidArgumentError
 from ontogr_mem.vectorstore.builtin import EmbedderUnavailableError
 
 
@@ -118,6 +119,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         status = 1
     except InvalidChange as error:
         print(f"Invalid ontology: {error}", file=sys.stderr)
+        status = 1
+    except InvalidArgumentError as error:
+        print(str(error), file=sys.stderr)
         status = 1
     except AgentMemoryError:
         print(
