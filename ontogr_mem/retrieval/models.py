@@ -222,7 +222,8 @@ class RetrievalRequest:
 
         Raises:
             RetrievalError: If the query is blank, a timestamp has no timezone,
-                the time filters conflict, or a bound is out of range.
+                the time filters conflict, a bound is out of range, or the
+                modalities are empty or unsupported.
         """
         if not self.query.strip():
             msg = "query must not be blank"
@@ -255,6 +256,14 @@ class RetrievalRequest:
         if self.disputed not in DISPUTED_MODES:
             msg = f"disputed must be one of {DISPUTED_MODES}"
             raise RetrievalError(msg)
+        if not self.modalities:
+            msg = "modalities must not be empty"
+            raise RetrievalError(msg)
+        try:
+            modalities = frozenset(Modality(value) for value in self.modalities)
+        except ValueError as exc:
+            msg = f"unsupported modality: {exc}"
+            raise RetrievalError(msg) from exc
         if len(self.mentions) > MENTION_CAP:
             msg = f"mentions must hold at most {MENTION_CAP} names"
             raise RetrievalError(msg)
@@ -265,9 +274,7 @@ class RetrievalRequest:
             object.__setattr__(
                 self,
                 "scope",
-                SearchScope(
-                    modalities=frozenset(Modality(value) for value in self.modalities)
-                ),
+                SearchScope(modalities=modalities),
             )
 
     def to_temporal_query(self) -> TemporalQuery:

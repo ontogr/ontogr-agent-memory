@@ -121,14 +121,10 @@ class FactGate:
             )
             if not missing:
                 break
-            by_id.update(
-                {
-                    entity.entity_id: entity
-                    for entity in await self._entities.get_entities(
-                        missing, follow_merged=False
-                    )
-                }
-            )
+            fetched = await self._entities.get_entities(missing, follow_merged=False)
+            if not fetched:
+                break
+            by_id.update({entity.entity_id: entity for entity in fetched})
         types: dict[str, int | None] = {}
         for entity_id in ids:
             entity = by_id.get(entity_id)

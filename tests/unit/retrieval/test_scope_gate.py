@@ -166,3 +166,25 @@ class TestFactGate:
 
         gate = FactGate(SearchScope(entity_types=frozenset({1})), Reader())
         assert await gate.admit_entities(["a", "b"]) == ["a"]
+
+    async def test_stops_when_a_merge_target_cannot_be_fetched(self) -> None:
+        """Stop following merges when a stored target has no entity row."""
+        stale = SimpleNamespace(
+            entity_id="stale", ontology_type_id=1, merged_into="gone"
+        )
+        calls = 0
+
+        class Reader:
+            async def get_entities(
+                self, ids: list[str], *, follow_merged: bool
+            ) -> list[object]:
+                nonlocal calls
+                calls += 1
+                if calls > 4:
+                    raise AssertionError("merge traversal did not terminate")
+                return [stale] if "stale" in ids else []
+
+        gate = FactGate(SearchScope(entity_types=frozenset({1})), Reader())
+
+        assert await gate.admit_entities(["stale"]) == []
+        assert calls == 2

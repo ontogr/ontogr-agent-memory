@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Any, Literal, TypeVar, cast
+from typing import Annotated, Any, Literal, TypeVar
 
 from pydantic import (
     AfterValidator,
@@ -378,10 +378,7 @@ class SearchMemory(ContractModel):
         Annotated[str, Field(min_length=1, max_length=128)]
     ] = Field(default_factory=list, max_length=MAX_FILTER_LABELS)
     modalities: list[Literal["actual", "planned", "conditional", "desired"]] = Field(
-        default_factory=lambda: cast(
-            list[Literal["actual", "planned", "conditional", "desired"]],
-            ["actual"],
-        ),
+        default_factory=lambda: ["actual"],
         min_length=1,
     )
     budget_tokens: int = Field(default=2000, ge=100, le=32000)
