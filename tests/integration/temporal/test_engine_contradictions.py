@@ -4,6 +4,7 @@ Each test ingests observations, then checks the stored history and the current
 view that a reader gets. The judge is a scripted pair judge.
 """
 
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from ontogr_mem.data_models.fact_versions import FactStatus
@@ -16,6 +17,7 @@ from ontogr_mem.temporal.cardinality import (
 )
 from ontogr_mem.temporal.engine import TemporalEngine
 from ontogr_mem.temporal.query import TemporalQuery
+from ontogr_mem.temporal.reader import FactReader
 from ontogr_mem.temporal.report import Outcome
 from ontogr_mem.temporal.verdicts import (
     ConflictDecision,
@@ -52,7 +54,11 @@ async def ingest_city_and_employer(engine: TemporalEngine) -> None:
     """Ana worked at acme from 2010 (one-valued slot) and globex from 2015 (many)."""
     await engine.ingest_observations(
         [
-            obs("m1", "acme", at(2010)),
+            replace(
+                obs("m1", "acme", at(2010)),
+                statement="Ana worked for Acme",
+                source_system="test-source",
+            ),
             obs("p1", "globex", at(2015), slot="other", rel=2),
         ]
     )
@@ -108,6 +114,17 @@ async def test_record_verdicts_then_reconcile_applies_them(graph_backend: GraphB
     believed = TemporalQuery(now=NOW, include_history=True, known_at=NOW)
     closed = [v for v in await store.query(believed) if v.object_id == "acme"]
     assert [(v.valid_to, v.status) for v in closed] == [(at(2015), FactStatus.CLOSED)]
+    current_read = await FactReader(store).by_ids(
+        [closed[0].fact_id], TemporalQuery(now=NOW)
+    )
+    assert current_read == []
+    assert closed[0].evidence
+    evidence = await FactReader(store).observation_texts(closed[0].evidence)
+    assert len(evidence) == len(closed[0].evidence)
+    assert {item.episode_id for item in evidence.values()} == {"ep-m1"}
+    observations = await store.observations_by_ids(closed[0].evidence)
+    assert {item.statement for item in observations} == {"Ana worked for Acme"}
+    assert {item.source_system for item in observations} == {"test-source"}
 
 
 async def test_person_decision_overrides_rules_and_survives_rerun(
