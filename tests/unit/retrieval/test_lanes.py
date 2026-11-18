@@ -276,3 +276,165 @@ class TestEntityLane:
 
         assert output.record.status is LaneStatus.FAILED
         assert output.record.failed == ("keyword", "node")
+
+
+class TestFilteredLaneRefill:
+    """Filtered fact lanes request more candidates when needed."""
+
+    async def test_vector_lane_refills_after_gate_rejects_candidates(self):
+        """Fetch a wider vector window when filtering drops candidates."""
+
+        class PagingVectors(VectorPort):
+            async def search(self, kind, vector, *, k, filters=None, min_score=None):
+                if kind is VectorKind.EDGE:
+                    self.windows = getattr(self, "windows", []) + [k]
+                    return [Hit(f"f{i}", 1.0, i) for i in range(min(k, 4))]
+                return []
+
+        class PagingFacts(FactPort):
+            async def by_ids(self, ids, query):
+                return [view(fact_id) for fact_id in ids]
+
+        class Gate:
+            async def admit(self, views):
+                return [item for item in views if item.fact_id == "f3"]
+
+        vectors = PagingVectors()
+        result = await run_vector_lane(
+            vectors,
+            [0.1],
+            limit=1,
+            settings=RetrievalSettings(),
+            facts=PagingFacts(),
+            query=TemporalQuery(now=NOW),
+            gate=Gate(),
+        )
+        assert [fact.fact_id for fact in result.facts] == ["f3"]
+        assert vectors.windows == [2, 4]
+
+    async def test_vector_lane_refills_after_hydration_drops_candidates(self):
+        """Fetch a wider vector window when hydration removes other modalities."""
+
+        class PagingVectors(VectorPort):
+            async def search(self, kind, vector, *, k, filters=None, min_score=None):
+                if kind is VectorKind.EDGE:
+                    self.windows = getattr(self, "windows", []) + [k]
+                    return [Hit(f"f{i}", 1.0, i) for i in range(min(k, 4))]
+                return []
+
+        class PagingFacts(FactPort):
+            async def by_ids(self, ids, query):
+                return [view("f3")] if "f3" in ids else []
+
+        vectors = PagingVectors()
+        result = await run_vector_lane(
+            vectors,
+            [0.1],
+            limit=1,
+            settings=RetrievalSettings(),
+            facts=PagingFacts(),
+            query=TemporalQuery(now=NOW),
+        )
+        assert [fact.fact_id for fact in result.facts] == ["f3"]
+        assert vectors.windows == [2, 4]
+
+    async def test_keyword_lane_refills_after_gate_rejects_candidates(self):
+        """Fetch a wider keyword window when filtering drops candidates."""
+
+        class PagingKeywords(KeywordPort):
+            async def search(self, kind, query, *, limit):
+                if kind is KeywordKind.OBSERVATION:
+                    self.windows = getattr(self, "windows", []) + [limit]
+                    return [KeywordHit(f"o{i}", 1.0, i) for i in range(min(limit, 4))]
+                return []
+
+        class PagingFacts(FactPort):
+            async def by_observations(self, ids, query):
+                return [
+                    view(f"f{index}", evidence=(f"o{index}",))
+                    for index in range(4)
+                    if f"o{index}" in ids
+                ]
+
+        class Gate:
+            async def admit(self, views):
+                return [item for item in views if item.fact_id == "f3"]
+
+        keywords = PagingKeywords()
+        result = await run_keyword_lane(
+            keywords,
+            PagingFacts(),
+            query="x",
+            temporal_query=TemporalQuery(now=NOW),
+            limit=1,
+            settings=RetrievalSettings(),
+            gate=Gate(),
+        )
+        assert [fact.fact_id for fact in result.facts] == ["f3"]
+        assert keywords.windows == [2, 4]
+
+    async def test_keyword_refill_error_keeps_the_previous_page(self):
+        """A typed refill failure keeps prior facts and reports its cause."""
+
+        class FailingRefillKeywords(KeywordPort):
+            async def search(self, kind, query, *, limit):
+                if kind is KeywordKind.OBSERVATION:
+                    if limit > 2:
+                        raise KeywordTimeoutError("refill timed out")
+                    return [KeywordHit("o0", 1.0, 0), KeywordHit("o1", 0.9, 1)]
+                return []
+
+        class RejectedGate:
+            async def admit(self, views):
+                return [item for item in views if item.fact_id == "f0"]
+
+        class RefillFacts(FactPort):
+            async def by_observations(self, ids, query):
+                return [view("f0", evidence=("o0",)), view("f1", evidence=("o1",))]
+
+        result = await run_keyword_lane(
+            FailingRefillKeywords(),
+            RefillFacts(),
+            query="x",
+            temporal_query=TemporalQuery(now=NOW),
+            limit=2,
+            settings=RetrievalSettings(candidate_factor=1),
+            gate=RejectedGate(),
+        )
+
+        assert [fact.fact_id for fact in result.facts] == ["f0"]
+        assert result.record.failed == ("observation",)
+        assert "refill timed out" in result.record.detail
+
+    async def test_vector_refill_error_keeps_the_previous_page(self):
+        """A typed refill failure keeps prior facts and reports its cause."""
+
+        class FailingRefillVectors(VectorPort):
+            async def search(self, kind, vector, *, k, filters=None, min_score=None):
+                if kind is VectorKind.EDGE:
+                    if k > 2:
+                        raise QueryTimeoutError("refill timed out")
+                    return [Hit("f0", 1.0, 0), Hit("f1", 0.9, 1)]
+                return []
+
+        class RejectedGate:
+            async def admit(self, views):
+                return [item for item in views if item.fact_id == "f0"]
+
+        class RefillFacts(FactPort):
+            async def by_ids(self, ids, query):
+                return [view("f0"), view("f1")]
+
+        result = await run_vector_lane(
+            FailingRefillVectors(),
+            [0.1],
+            limit=2,
+            settings=RetrievalSettings(candidate_factor=1),
+            facts=RefillFacts(),
+            query=TemporalQuery(now=NOW),
+            gate=RejectedGate(),
+        )
+
+        assert [fact.fact_id for fact in result.facts] == ["f0"]
+        assert result.record.failed == ("edge",)
+        assert "refill timed out" in result.record.detail

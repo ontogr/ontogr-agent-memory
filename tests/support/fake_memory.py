@@ -9,19 +9,22 @@ background work.
 
 import asyncio
 import inspect
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, cast
 
-from ontogr_mem.client import Memory
+from ontogr_mem.client import Memory, Modality
 from ontogr_mem.data_models import Role
 from ontogr_mem.data_models.jobs import JobState
 from ontogr_mem.llm.models import RoleModels
 from ontogr_mem.service.contracts import (
+    EntityPage,
     EntityRef,
     FactOut,
     MemoryContext,
+    OntologyView,
+    StaleEpisodePage,
     WriteReceipt,
 )
 from ontogr_mem.service.errors import InvalidArgumentError
@@ -32,7 +35,15 @@ from tests.support.scripted_model import scripted_role_models
 _MAX_SEARCH_QUERY_CHARS = 2000
 
 # Methods of Memory that the fake must accept with the same argument names.
-_CHECKED_METHODS = ("search", "write_text", "invalidate", "drain")
+_CHECKED_METHODS = (
+    "search",
+    "list_entities",
+    "get_ontology",
+    "stale_episodes",
+    "write_text",
+    "invalidate",
+    "drain",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +153,14 @@ class FakeMemory:
         include_history: bool = False,
         limit: int = 10,
         budget_tokens: int = 2000,
+        entity_types: Sequence[str] | None = None,
+        exclude_entity_types: Sequence[str] | None = None,
+        relation_types: Sequence[str] | None = None,
+        exclude_relation_types: Sequence[str] | None = None,
+        modalities: Sequence[
+            Modality | Literal["actual", "planned", "conditional", "desired"]
+        ]
+        | None = None,
     ) -> MemoryContext:
         """Record the query and budget, then return the scripted context.
 
@@ -163,6 +182,28 @@ class FakeMemory:
         if context is None:
             return MemoryContext(state="none", rendered="")
         return context(query)
+
+    async def list_entities(
+        self,
+        *,
+        entity_type: str | None = None,
+        cursor: str | None = None,
+        limit: int = 20,
+    ) -> EntityPage:
+        """Return an empty page of active entities."""
+        return EntityPage(entities=[])
+
+    async def get_ontology(self, *, include_deprecated: bool = False) -> OntologyView:
+        """Return an empty ontology for the fake tenant."""
+        return OntologyView(
+            tenant=self.tenant, version=1, entity_types=[], relation_types=[]
+        )
+
+    async def stale_episodes(
+        self, *, cursor: str | None = None, limit: int = 20
+    ) -> StaleEpisodePage:
+        """Return an empty stale episode page for the fake tenant."""
+        return StaleEpisodePage(tenant=self.tenant, current_version=1, episodes=[])
 
     async def write_text(
         self,

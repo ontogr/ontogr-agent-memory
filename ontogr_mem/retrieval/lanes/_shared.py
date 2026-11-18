@@ -40,6 +40,26 @@ async def run_search(operation: Callable[[], Awaitable[T]]) -> SearchResult[T]:
         return SearchResult(error=exc)
 
 
+async def widen(
+    run: Callable[[int], Awaitable[T]],
+    survivors: Callable[[T], int],
+    full: Callable[[T], bool],
+    *,
+    start: int,
+    want: int,
+    rechecks: int,
+) -> T:
+    """Double a candidate window while a full page has too few survivors."""
+    window = start
+    result = await run(window)
+    for _ in range(rechecks):
+        if survivors(result) >= want or not full(result):
+            break
+        window *= 2
+        result = await run(window)
+    return result
+
+
 def lane_record(
     name: str,
     found: bool,

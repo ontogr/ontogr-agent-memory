@@ -5,14 +5,15 @@ found: the ranked facts, the ranked episodes, the entity cards, one record per
 lane and the notes the retriever made on the way.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from typing import Final
 
 from ontogr_mem.data_models.timestamps import require_utc
 from ontogr_mem.retrieval.errors import RetrievalError
-from ontogr_mem.temporal.query import ACTUAL_ONLY, FactView, TemporalQuery
+from ontogr_mem.retrieval.scope import SearchScope
+from ontogr_mem.temporal.query import FactView, TemporalQuery
 
 
 GRAPH_DEPTH_CAP: Final = 3
@@ -189,6 +190,7 @@ class RetrievalRequest:
             ``exclude``.
         mentions: Entity names the question names.
         graph_depth: Hops the graph lane walks from its seeds.
+        scope: Resolved type and modality filters for this request.
     """
 
     query: str
@@ -202,8 +204,9 @@ class RetrievalRequest:
     disputed: str = "flag"
     mentions: tuple[str, ...] = ()
     graph_depth: int = 1
+    scope: SearchScope = field(default_factory=SearchScope)
 
-    def __post_init__(self) -> None:
+    def __post_init__(self) -> None:  # noqa: PLR0912
         """Reject a request the retriever cannot serve.
 
         Raises:
@@ -253,7 +256,7 @@ class RetrievalRequest:
 
         Returns:
             A query with the same present time, valid time, system time,
-            overlap window and history flag.
+            overlap window and history flag, and the resolved modalities.
         """
         return TemporalQuery(
             now=self.now,
@@ -261,7 +264,7 @@ class RetrievalRequest:
             known_at=self.known_at,
             overlaps=self.overlaps,
             include_history=self.include_history,
-            modalities=ACTUAL_ONLY,
+            modalities=self.scope.modalities,
         )
 
 

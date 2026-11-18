@@ -321,6 +321,8 @@ Lanes fuse by reciprocal rank fusion. The top fact in one result scores 1.0, and
 
 - **Time filters apply in every lane:** `valid_at`, `known_at`, overlap windows, and `include_history` shape all results the same way.
 - **Requests can narrow the search:** A request can limit results to one session, flag or exclude disputed facts, and search several tenants the caller may read.
+- **Type filters use ontology labels:** `entity_types`, `exclude_entity_types`, `relation_types`, and `exclude_relation_types` narrow search. Entity type filters include descendants, and old labels and aliases resolve through the tenant's ontology. An unknown label raises `invalid_argument`. Include filters keep facts with at least one matching endpoint; exclude filters remove facts with either matching endpoint. Relation filters match the relation type. Labels within a filter are alternatives (OR); filter categories combine with AND. Filters do not call a model.
+- **Modality filters are opt-in:** `modalities` accepts `actual`, `planned`, `conditional`, and `desired`. Search defaults to `actual`; name other modalities to include them. Episode passages remain raw source text.
 - **The context block is budgeted:** It has a time frame, a token budget, facts, entities, and episodes. Items are placed whole within section shares, and unused space moves to the next section. Stored text is escaped, so it cannot break the frame. The block reports how many items were dropped and which lanes failed.
 
 A lane reports one of four statuses:
@@ -377,7 +379,7 @@ A principal holds grants per tenant:
 
 | Grant | Allows |
 | --- | --- |
-| `read` | Search, entity reads, history, episode lists, stats, operations, and job reads. |
+| `read` | Search, entity reads, ontology reads, history, episode lists, stale episode reports, stats, operations, and job reads. |
 | `write` | Add, update, consolidate, and feedback. |
 | `forget` | Invalidate and forget. |
 | `share` | Reserved for delegation. No public share verb yet. |
@@ -518,6 +520,8 @@ The server registers these tools:
 
 - `search_memory`
 - `get_entity`
+- `list_entities`
+- `get_ontology`
 - `get_job`
 - `write_facts`
 - `forget_memory`
@@ -547,7 +551,7 @@ Set the server with these `MEMORY_MCP_*` variables. The CLI flags `--transport`,
 | `MEMORY_MCP_TOOLS` | All tools | Comma list of tools to register. An empty value removes every tool. An unknown name is an error. |
 | `MEMORY_MCP_SKILLS_EXTENSION` | `true` | Whether the server advertises the skills extension. |
 
-To narrow the tools, set `MEMORY_MCP_TOOLS=search_memory,get_entity,get_job,get_skill`.
+To narrow the tools, set `MEMORY_MCP_TOOLS=search_memory,get_entity,list_entities,get_ontology,get_job,get_skill`.
 
 Compose stops the MCP service with a grace period of five minutes. Unfinished jobs resume on the next start. Keep one MCP process per state volume.
 
@@ -600,7 +604,9 @@ from ontogr_mem.client import Memory
 async def main() -> None:
     async with Memory.open() as memory:
         receipt = await memory.write_fact(
-            "Ana", "works_at", "Acme",
+            "Ana",
+            "works_at",
+            "Acme",
             valid_from=datetime(2024, 1, 1, tzinfo=UTC),
             wait_seconds=10,
         )
@@ -612,6 +618,12 @@ async def main() -> None:
         result = await memory.search("Where does Ana work?")
         print(result.state)
         print(result.rendered)
+
+        result = await memory.search(
+            "Where does Ana work?",
+            entity_types=["Person", "Organization"],
+            relation_types=["works_at", "employed_by"],
+        )
 
 
 asyncio.run(main())
@@ -797,15 +809,32 @@ A read does not create a job. A search that finds nothing reports an `indexing` 
 | Verb | Grant | Behavior |
 | --- | --- | --- |
 | `search_memory` | read | Searches one or more tenants and returns facts, entities, and context. |
+| `list_entities` | read | Pages through entities, optionally by entity type. |
+| `get_ontology` | read | Returns the tenant's entity and relation type catalog. |
 | `get_entity` | read | Returns one entity and its current or historical facts. |
 | `entity` | read | Returns an entity card with aliases and facts. |
 | `graph` | read | Returns a bounded neighbourhood around seed entities. |
 | `list_episodes` | read | Pages through episode metadata, newest first. |
+| `stale_episodes` | read | Client-only report of episodes extracted under an older ontology version. |
 | `history` | read | Returns every visible version of one fact's slot. |
 | `stats` | read | Returns tenant counts and usage. |
 | `operations` | read | Lists recent operation rows. |
 | `get_job` | read | Returns one job after checking its tenant grant. |
 | `get_status` | read | Reports service health and visible tenants. |
+
+The Python `Memory` client exposes the same search filters and the `list_entities` and
+`get_ontology` methods. MCP exposes search filters, `list_entities`, and
+`get_ontology` when that tool is enabled. `stale_episodes` is available on the Python client only.
+
+`list_entities(entity_type=...)` accepts an ontology label and includes entities of
+that type and its descendants. `get_ontology(include_deprecated=True)` can include
+deprecated types; its labels are the vocabulary accepted by the filters.
+
+`stale_episodes()` reports message and document episodes whose recorded ontology
+version is lower than the tenant's current version. Any ontology change makes older
+episodes stale, including changes that only affect descriptions. The report does not
+re-extract episodes automatically. To refresh one, write its text again, then forget
+the old episode.
 
 ### Forget and export verbs
 
@@ -825,7 +854,7 @@ Writes return a `WriteReceipt` with a job id and status. A positive `wait_second
 
 AddMemory writes accept a `role`, which defaults to `user`, and a `speaker`. The speaker is both the actor id and display name. If it is omitted, the service uses the caller id as the actor id and leaves the display name empty. Episode listings and retrieved episode passages include the actor id, display name, and role.
 
-Completed text and message results include `unplaced`, the number of stored facts without a relation type, and `skipped`, counts keyed by remaining temporal skip reason. Events and actual states are visible by default. Planned, conditional and desired facts are stored but hidden from default reads. Facts with no stated time start at the episode time and carry the `reference` time basis. An invalid stated time is cleared and reported as a time issue. Host writes do not call a model judge.
+Completed text and message results include `unplaced`, the number of stored facts without a relation type, and `skipped`, counts keyed by remaining temporal skip reason. Events and actual states are visible by default. Planned, conditional and desired facts are stored but hidden from default reads unless a search names those modalities. Facts without a usable stated time start at the episode time and carry the `reference` time basis. An invalid stated time is cleared and reported as a time issue. Host writes do not call a model judge.
 
 ### Errors
 
@@ -985,6 +1014,7 @@ Settings classes use `pydantic-settings`. They read the `.env` file in the curre
 | `MEMORY_PGVECTOR_` | pgvector connection, search, and outbox limits. |
 | `MEMORY_VECTORSTORE_` | Embedding batches, retries, timeouts, and vector indexes. |
 | `MEMORY_RETRIEVAL_` | Candidate counts, fusion constants, penalties, and context shares. |
+| `MEMORY_RETRIEVAL_FILTER_RECHECKS` | Maximum additional candidate windows fetched when type filters leave too few results; set to `0` to disable refills. |
 | `MEMORY_KEYWORD_` | Tenant-scoped fulltext search limits. |
 | `MEMORY_RESOLUTION_` | Entity resolution thresholds and verification budgets. |
 | `MEMORY_TEMPORAL_` | Temporal retries, batch size, and episode pending time. |

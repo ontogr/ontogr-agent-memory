@@ -1,7 +1,7 @@
 """EpisodeStateStore operations for graph-backed temporal storage."""
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from ontogr_mem.data_models.episode import TemporalStatus
@@ -146,6 +146,33 @@ class EpisodeStateStore:
             )
             for row in rows.rows
         ]
+
+    async def episodes_below_version(
+        self, version: int, *, after: str | None, limit: int, kinds: Sequence[str]
+    ) -> list[tuple[str, int]]:
+        """Return committed episode ids and versions below ``version``."""
+        rows = await self._runner.run(
+            QuerySpec(
+                f"MATCH (e:{EPISODE} {self._map()}) "
+                "WHERE e.temporal_status = $status "
+                "AND e.temporal_ontology_version < $version "
+                "AND e.kind IN $kinds "
+                "AND ($after IS NULL OR e.id > $after) "
+                "RETURN e.id AS id, e.temporal_ontology_version AS version "
+                "ORDER BY e.id LIMIT $limit",
+                {
+                    "status": TemporalStatus.COMMITTED.value,
+                    "version": version,
+                    "kinds": kinds,
+                    "after": after,
+                    "limit": limit,
+                },
+                read_only=True,
+                idempotent=True,
+                tag="temporal_episodes_below_version",
+            )
+        )
+        return [(str(row["id"]), int(row["version"])) for row in rows.rows]
 
     async def episodes_matching(self, selector: SourceSelector) -> list[str]:
         """Return the ids of episodes whose source matches, sorted."""

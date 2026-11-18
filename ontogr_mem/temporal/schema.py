@@ -12,6 +12,7 @@ LABELS = (
     "Conflict",
 )
 RANGES = (
+    ("Episode", "temporal_ontology_version", False),
     ("Observation", "episode_id", False),
     ("Observation", "slot_key", False),
     ("LedgerEntry", "chain", False),

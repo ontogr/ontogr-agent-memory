@@ -12,6 +12,8 @@ from ontogr_mem.data_models.tenant import validate_tenant_id
 ALL_TOOLS = (
     "search_memory",
     "get_entity",
+    "list_entities",
+    "get_ontology",
     "get_job",
     "add_memory",
     "write_facts",

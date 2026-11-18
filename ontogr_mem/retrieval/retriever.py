@@ -18,6 +18,7 @@ from ontogr_mem.retrieval.errors import (
     RetrievalError,
 )
 from ontogr_mem.retrieval.fusion import fuse
+from ontogr_mem.retrieval.gate import FactGate
 from ontogr_mem.retrieval.keyword import KeywordSearch
 from ontogr_mem.retrieval.lanes import LaneOutput
 from ontogr_mem.retrieval.lanes.entity import run_entity_lane
@@ -128,8 +129,10 @@ class Retriever:
                 episode hydration fails.
         """
         temporal_query = request.to_temporal_query()
+        scope = request.scope
+        gate = FactGate(scope, self._entities) if scope is not None else None
         vector_lane, keyword_lane, entity_lane = await self._initial_lanes(
-            request, temporal_query
+            request, temporal_query, gate
         )
         graph_lane = await run_graph_lane(
             self._facts,
@@ -141,6 +144,7 @@ class Retriever:
             settings=self._settings,
             query_text=request.query,
             disputed=request.disputed,
+            gate=gate,
         )
         fact_results = self._fused_facts(
             (vector_lane, keyword_lane, graph_lane), request.limit
@@ -161,7 +165,18 @@ class Retriever:
             fact_results, limit=request.limit, settings=self._settings
         )
         fact_results = await self._add_evidence(fact_results, notes)
-        entity_cards = await self._entity_cards(entity_lane, fact_results, notes)
+        if scope is not None and scope.filters_facts:
+            supporting_episode_ids = {
+                episode_id for fact in fact_results for episode_id in fact.episode_ids
+            }
+            episode_results = [
+                episode
+                for episode in episode_results
+                if episode.episode_id in supporting_episode_ids
+            ]
+        entity_cards = await self._entity_cards(
+            entity_lane, fact_results, notes, gate=gate
+        )
         result = RetrievalResult(
             facts=tuple(fact_results),
             episodes=tuple(episode_results),
@@ -185,7 +200,10 @@ class Retriever:
         )
 
     async def _initial_lanes(
-        self, request: RetrievalRequest, temporal_query: TemporalQuery
+        self,
+        request: RetrievalRequest,
+        temporal_query: TemporalQuery,
+        gate: FactGate | None = None,
     ) -> tuple[LaneOutput, LaneOutput, LaneOutput]:
         """Embed once and run the independent lanes with their own filters."""
         outcome = (await self._vectors.gateway.embed([request.query], purpose="query"))[
@@ -205,6 +223,7 @@ class Retriever:
                 query=temporal_query,
                 disputed=request.disputed,
                 embedding_error=embedding_error,
+                gate=gate,
             ),
             partial(
                 run_keyword_lane,
@@ -215,6 +234,7 @@ class Retriever:
                 limit=request.limit,
                 settings=self._settings,
                 disputed=request.disputed,
+                gate=gate,
             ),
             partial(
                 run_entity_lane,
@@ -450,11 +470,13 @@ class Retriever:
             )
         return result
 
-    async def _entity_cards(
+    async def _entity_cards(  # noqa: PLR0912
         self,
         entity_lane: LaneOutput,
         facts: Sequence[FactResult],
         notes: list[str],
+        *,
+        gate: FactGate | None = None,
     ) -> list[EntityCard]:
         """Load cards for entity-lane hits, then for fact endpoints."""
         source_map = {
@@ -471,14 +493,28 @@ class Retriever:
         if not ordered_ids:
             return []
         try:
-            entities = await self._ordered_entities(ordered_ids)
+            if gate is not None:
+                ordered_ids = await gate.admit_entities(ordered_ids)
+                if not ordered_ids:
+                    return []
+            resolved = await self._ordered_entities(ordered_ids)
         except Exception as exc:
             if not _port_error(exc):
                 raise
             notes.append(f"entity cards unavailable: {exc}")
             return []
+        for requested_id, entity in resolved:
+            for lane in source_map.get(requested_id, ("fact",)):
+                target = source_map.setdefault(entity.entity_id, [])
+                if lane not in target:
+                    target.append(lane)
+
         cards: list[EntityCard] = []
-        for entity in entities:
+        seen: set[str] = set()
+        for _, entity in resolved:
+            if entity.entity_id in seen:
+                continue
+            seen.add(entity.entity_id)
             try:
                 aliases = await self._entities.aliases_of(entity.entity_id)
             except Exception as exc:
@@ -501,8 +537,8 @@ class Retriever:
                 break
         return cards
 
-    async def _ordered_entities(self, ids: Sequence[str]) -> list[Entity]:
-        """Resolve merged ids and preserve the first candidate's position."""
+    async def _ordered_entities(self, ids: Sequence[str]) -> list[tuple[str, Entity]]:
+        """Resolve merged ids and keep the requested id beside each survivor."""
         direct = await self._entities.get_entities(ids)
         known = {entity.entity_id: entity for entity in direct}
         while True:
@@ -521,8 +557,7 @@ class Retriever:
                 break
             known.update({entity.entity_id: entity for entity in fetched})
 
-        ordered: list[Entity] = []
-        seen: set[str] = set()
+        resolved: list[tuple[str, Entity]] = []
         for entity_id in ids:
             current = known.get(entity_id)
             visited: set[str] = set()
@@ -532,14 +567,9 @@ class Retriever:
                     break
                 visited.add(current.entity_id)
                 current = known.get(current.merged_into)
-            if (
-                current is not None
-                and current.status is EntityStatus.ACTIVE
-                and current.entity_id not in seen
-            ):
-                ordered.append(current)
-                seen.add(current.entity_id)
-        return ordered
+            if current is not None and current.status is EntityStatus.ACTIVE:
+                resolved.append((entity_id, current))
+        return resolved
 
 
 def _find_view(key: FactKey, lanes: Sequence[LaneOutput]) -> FactView | None:

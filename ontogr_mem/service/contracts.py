@@ -30,6 +30,7 @@ from ontogr_mem.service.errors import (
 )
 from ontogr_mem.service.limits import (
     MAX_CONTENT_BYTES,
+    MAX_FILTER_LABELS,
     MAX_HOST_FACT_ATTRIBUTES,
     MAX_HOST_FACT_CHARS,
     MAX_HOST_FACTS,
@@ -51,6 +52,11 @@ TenantId = Annotated[str, AfterValidator(validate_tenant_id)]
 
 UtcDatetime = Annotated[datetime, AfterValidator(require_utc)]
 """A timezone-aware datetime; one without a timezone fails validation."""
+
+DEFAULT_MODALITIES: tuple[
+    Literal["actual", "planned", "conditional", "desired"], ...
+] = ("actual",)
+"""The modalities a search returns unless the caller names others."""
 
 
 def _exactly_one(**named: object) -> None:
@@ -364,6 +370,22 @@ class SearchMemory(ContractModel):
     disputed: Literal["flag", "exclude"] = "flag"
     mentions: list[str] = Field(default_factory=list)
     include_history: bool = False
+    entity_types: list[Annotated[str, Field(min_length=1, max_length=128)]] = Field(
+        default_factory=list, max_length=MAX_FILTER_LABELS
+    )
+    exclude_entity_types: list[Annotated[str, Field(min_length=1, max_length=128)]] = (
+        Field(default_factory=list, max_length=MAX_FILTER_LABELS)
+    )
+    relation_types: list[Annotated[str, Field(min_length=1, max_length=128)]] = Field(
+        default_factory=list, max_length=MAX_FILTER_LABELS
+    )
+    exclude_relation_types: list[
+        Annotated[str, Field(min_length=1, max_length=128)]
+    ] = Field(default_factory=list, max_length=MAX_FILTER_LABELS)
+    modalities: list[Literal["actual", "planned", "conditional", "desired"]] = Field(
+        default_factory=lambda: list(DEFAULT_MODALITIES),
+        min_length=1,
+    )
     budget_tokens: int = Field(default=2000, ge=100, le=32000)
     limit: int = Field(default=10, ge=1, le=MAX_RESULTS)
     format: Literal["json", "prompt", "both"] = "both"
@@ -422,6 +444,86 @@ class ListEpisodes(ScopedRequest):
     session_id: str | None = None
     cursor: str | None = None
     limit: int = Field(default=20, ge=1, le=MAX_RESULTS)
+
+
+class ListEntities(ScopedRequest):
+    """List active entities in stable id order."""
+
+    entity_type: str | None = Field(default=None, min_length=1, max_length=128)
+    cursor: str | None = None
+    limit: int = Field(default=20, ge=1, le=MAX_RESULTS)
+
+
+class GetOntology(ScopedRequest):
+    """Read the tenant's ontology labels and descriptions."""
+
+    include_deprecated: bool = False
+
+
+class PatternOut(ContractModel):
+    """A permitted source and target entity type pair."""
+
+    source: str
+    target: str
+
+
+class EntityTypeOut(ContractModel):
+    """Public description of an entity type."""
+
+    label: str
+    description: str
+    parent: str | None = None
+    aliases: list[str]
+    identity_attributes: list[str]
+    status: str
+    merged_into: str | None = None
+
+
+class RelationTypeOut(ContractModel):
+    """Public description of a relation type."""
+
+    label: str
+    description: str
+    aliases: list[str]
+    kind: str
+    symmetric: bool
+    patterns: list[PatternOut]
+    status: str
+    merged_into: str | None = None
+
+
+class OntologyView(ContractModel):
+    """Ontology vocabulary exposed to callers."""
+
+    tenant: TenantId
+    version: int
+    entity_types: list[EntityTypeOut]
+    relation_types: list[RelationTypeOut]
+
+
+class ListStaleEpisodes(ScopedRequest):
+    """Page through episodes extracted under an older ontology version."""
+
+    cursor: str | None = None
+    limit: int = Field(default=20, ge=1, le=MAX_RESULTS)
+
+
+class StaleEpisodeOut(ContractModel):
+    """One episode that predates the current ontology version."""
+
+    episode_id: str
+    kind: str
+    ingested_at: UtcDatetime
+    ontology_version: int
+
+
+class StaleEpisodePage(ContractModel):
+    """One page of stale episodes and the current ontology version."""
+
+    tenant: TenantId
+    current_version: int
+    episodes: list[StaleEpisodeOut]
+    next_cursor: str | None = None
 
 
 class ErrorInfo(ContractModel):
@@ -560,6 +662,13 @@ class EntityOut(ContractModel):
     summary: str = ""
     aliases: list[str] = Field(default_factory=list)
     proposed_type: str = ""
+
+
+class EntityPage(ContractModel):
+    """One page of active entities."""
+
+    entities: list[EntityOut]
+    next_cursor: str | None = None
 
 
 class MemoryContext(ContractModel):

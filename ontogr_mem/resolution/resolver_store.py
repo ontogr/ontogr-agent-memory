@@ -547,6 +547,12 @@ class ResolverStore(Protocol):
         """Return the active entities, ordered by id."""
         ...
 
+    async def list_active_entities(
+        self, *, type_ids: frozenset[int] | None, after: str | None, limit: int
+    ) -> list[Entity]:
+        """Return active entities by id, after ``after``, of the given types."""
+        ...
+
     async def all_entities(self) -> list[Entity]:
         """Return every entity status, ordered by id."""
         ...

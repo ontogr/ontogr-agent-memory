@@ -13,6 +13,8 @@ from tests.support.mcp_memory import FakeMemoryService, build_memory
 NO_ADD_TOOLS = [
     "search_memory",
     "get_entity",
+    "list_entities",
+    "get_ontology",
     "get_job",
     "write_facts",
     "forget_memory",
@@ -22,6 +24,8 @@ NO_ADD_TOOLS = [
 ALL_ENABLED_TOOLS = [
     "search_memory",
     "get_entity",
+    "list_entities",
+    "get_ontology",
     "get_job",
     "add_memory",
     "write_facts",
@@ -153,9 +157,22 @@ class TestBuildServer:
         [
             (
                 "search_memory",
-                {"query", "as_of", "include_history", "limit", "budget_tokens"},
+                {
+                    "query",
+                    "as_of",
+                    "include_history",
+                    "limit",
+                    "budget_tokens",
+                    "entity_types",
+                    "exclude_entity_types",
+                    "relation_types",
+                    "exclude_relation_types",
+                    "modalities",
+                },
             ),
             ("get_entity", {"name", "include_history"}),
+            ("list_entities", {"entity_type", "cursor", "limit"}),
+            ("get_ontology", {"include_deprecated"}),
             ("get_job", {"job_id"}),
             (
                 "write_facts",

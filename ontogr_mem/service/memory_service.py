@@ -16,17 +16,23 @@ from ontogr_mem.service.contracts import (
     AddMemory,
     ClearTenant,
     ConsolidateMemory,
+    EntityPage,
     EntityView,
     EpisodePage,
     ForgetMemory,
     ForgetMode,
     GetEntity,
+    GetOntology,
     InvalidateMemory,
     JobView,
+    ListEntities,
     ListEpisodes,
+    ListStaleEpisodes,
     MemoryContext,
     MemoryFeedback,
+    OntologyView,
     SearchMemory,
+    StaleEpisodePage,
     StatusOut,
     UpdateMemory,
     WriteReceipt,
@@ -190,6 +196,36 @@ class MemoryService:
     ) -> EpisodePage:
         """Read one newest-first page of episode metadata."""
         return await self._queries.list_episodes(principal, request, trace_id=trace_id)
+
+    async def list_entities(
+        self,
+        principal: Principal,
+        request: ListEntities,
+        *,
+        trace_id: str | None = None,
+    ) -> EntityPage:
+        """List active entities in a tenant."""
+        return await self._queries.list_entities(principal, request, trace_id=trace_id)
+
+    async def get_ontology(
+        self,
+        principal: Principal,
+        request: GetOntology,
+        *,
+        trace_id: str | None = None,
+    ) -> OntologyView:
+        """Read a tenant's ontology vocabulary."""
+        return await self._queries.get_ontology(principal, request, trace_id=trace_id)
+
+    async def stale_episodes(
+        self,
+        principal: Principal,
+        request: ListStaleEpisodes,
+        *,
+        trace_id: str | None = None,
+    ) -> StaleEpisodePage:
+        """List episodes extracted under an older ontology version."""
+        return await self._queries.stale_episodes(principal, request, trace_id=trace_id)
 
     async def memory_feedback(
         self, principal: Principal, request: MemoryFeedback

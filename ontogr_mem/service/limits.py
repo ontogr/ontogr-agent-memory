@@ -23,6 +23,9 @@ MAX_HOST_FACT_ATTRIBUTES: Final = 10
 MAX_RESULTS: Final = 100
 """Most results a read request may ask for."""
 
+MAX_FILTER_LABELS: Final = 20
+"""Most ontology labels one search filter may contain."""
+
 WRITES_PER_MINUTE: Final = 60
 """Default write tokens per caller per minute."""
 
