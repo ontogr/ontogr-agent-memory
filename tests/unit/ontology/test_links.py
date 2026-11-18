@@ -64,6 +64,8 @@ def test_entity_family_includes_descendants_and_merged_ids():
     links = TypeLinks.from_ontology(ontology)
     assert links.entity_family(" human ") == frozenset({1, 2, 3})
     assert links.entity_family("Unknown") == frozenset({0})
+    assert links.relation_family("KNOWS") == frozenset({0})
+    assert links.relation_family("Familiar") == frozenset({0})
 
 
 def test_ambiguous_alias_is_not_resolved():
@@ -83,5 +85,4 @@ def test_ambiguous_alias_is_not_resolved():
     assert links.entity_family("Shared") is None
     assert links.relation_family("Shared") is None
     assert links.relation_family("KNOWS") == frozenset({0})
-    assert links.relation_family("Familiar") == frozenset({0})
     assert links.relation_family("OWNS") == frozenset({1})

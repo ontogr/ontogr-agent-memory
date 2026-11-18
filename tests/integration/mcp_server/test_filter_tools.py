@@ -44,12 +44,24 @@ class TestFilterTools:
                         {
                             **GROUNDED_FACT,
                             "subject": "Bob",
+                            "subject_type": "Organization",
                             "object": "Globex",
+                            "object_type": "Organization",
                             "evidence_quote": "Bob works at Globex",
                         },
                     ],
                 )
                 assert job["status"] == "done"
+
+                unfiltered = _content(
+                    await client.call_tool(
+                        "search_memory", {"query": "Where does Ana work?"}
+                    )
+                )
+                assert unfiltered["state"] == "found"
+                assert any(
+                    "Globex" in fact["statement"] for fact in unfiltered["facts"]
+                )
 
                 search = _content(
                     await client.call_tool(
