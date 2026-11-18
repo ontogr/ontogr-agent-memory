@@ -20,7 +20,7 @@ from ontogr_mem.llm import LLMConfig, ModelRole, RoleModels, build_models
 from ontogr_mem.ontology.declare import build_target
 from ontogr_mem.ontology.default import default_ontology
 from ontogr_mem.ontology.models import Ontology
-from ontogr_mem.ontology.projection import project
+from ontogr_mem.ontology.projection import Projection, project
 from ontogr_mem.ontology.stamp import stamp_types as _stamp_types
 
 
@@ -104,7 +104,7 @@ def _episode(row: InputEpisode) -> Episode:
 
 
 async def _run_episode(
-    episode: Episode, mode: str, models: RoleModels, projection: Any
+    episode: Episode, mode: str, models: RoleModels, projection: Projection
 ) -> dict[str, Any]:
     """Run one episode through the requested extraction structure."""
     started = time.perf_counter()
