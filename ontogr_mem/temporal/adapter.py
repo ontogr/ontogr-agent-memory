@@ -37,6 +37,7 @@ from ontogr_mem.temporal.cardinality import (
     Cardinality,
     DictRelationPolicy,
     RelationRules,
+    rules_for,
 )
 from ontogr_mem.temporal.errors import EpisodeMismatchError
 from ontogr_mem.temporal.timeutil import span_end
@@ -124,7 +125,9 @@ def _isolated_slot_key(
         start = (
             valid_from.isoformat() if time_basis is TimeBasis.STATED else "reference"
         )
-        return stable_id("slot-event", subject_id, object_id, relation, start)
+        return stable_id(
+            "slot-event", subject_id, object_id, relation, modality.value, start
+        )
     if modality is not Modality.ACTUAL:
         return stable_id("slot-plan", subject_id, object_id, relation, modality.value)
     return stable_id("slot-text", subject_id, object_id, normalize_text(statement))
@@ -254,11 +257,7 @@ async def _convert(
     except (ValueError, OverflowError) as exc:
         return Skipped(fact.fact_id, SkipReason.BAD_INTERVAL, str(exc))
 
-    rules = (
-        policy.rules(relation_type_id)
-        if relation_type_id is not None
-        else RelationRules()
-    )
+    rules = rules_for(policy, relation_type_id, fact.modality, fact.fact_kind)
     slot_key = (
         typed.slot_key
         if typed.slot_key is not None

@@ -315,6 +315,8 @@ class TemporalEngine:
             verdicts = []
             for candidate_id in {pair.b.fact_id for pair in asked}:
                 pair = by_id[candidate_id]
+                if outcome.invalid_ids and candidate_id not in outcome.contradicted:
+                    continue
                 verdict = (
                     VerdictKind.CONTRADICTS
                     if candidate_id in outcome.contradicted

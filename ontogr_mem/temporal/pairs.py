@@ -76,9 +76,11 @@ def pair_input(
         side = fact_side(fact, observations, trust)
         first = observations.get(side.first_obs_id)
         relation = (
-            fact.relation_type_id
+            fact.relation_label.strip()
+            if fact.relation_label and fact.relation_label.strip()
+            else str(fact.relation_type_id)
             if fact.relation_type_id is not None
-            else fact.relation_label or "related to"
+            else "related to"
         )
         sides.append(side)
         views.append(

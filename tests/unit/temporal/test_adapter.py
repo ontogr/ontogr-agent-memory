@@ -175,6 +175,31 @@ class TestAdapter:
         assert first[0].valid_to is None
         assert first[0].slot_key != second[0].slot_key
 
+    async def test_event_slot_isolated_by_modality_but_shares_reference_time(self):
+        """Undated event slots share reference time only within one modality."""
+        (actual,), _ = await convert(
+            typed(fact_kind=FactKind.EVENT, valid_from=None, time_basis=TimeBasis.NONE)
+        )
+        (same_modality,), _ = await convert(
+            typed(
+                fact_id="f2",
+                fact_kind=FactKind.EVENT,
+                valid_from=None,
+                time_basis=TimeBasis.NONE,
+            )
+        )
+        (planned,), _ = await convert(
+            typed(
+                fact_id="f3",
+                fact_kind=FactKind.EVENT,
+                modality=Modality.PLANNED,
+                valid_from=None,
+                time_basis=TimeBasis.NONE,
+            )
+        )
+        assert actual.slot_key == same_modality.slot_key
+        assert actual.slot_key != planned.slot_key
+
     async def test_planned_state_keeps_modality_and_separate_slot(self):
         """A planned state does not share the actual state's slot."""
         (planned,), _ = await convert(typed(modality=Modality.PLANNED))
