@@ -850,24 +850,26 @@ class TestMemoryService:
             job.result["episode_id"]
         )
         assert {fact.fact_id for fact in message_facts} == set(job.result["fact_ids"])
-        placed = [fact for fact in message_facts if fact.relation_type_id is not None]
-        unplaced = [fact for fact in message_facts if fact.relation_type_id is None]
-        assert len(placed) == 1
-        assert len(unplaced) == 1
+        (placed,) = [
+            fact for fact in message_facts if fact.relation_type_id is not None
+        ]
+        (unplaced,) = [fact for fact in message_facts if fact.relation_type_id is None]
         catalog = await manager.catalog()
         assert catalog.relation_by_label("DIRECTS") is None
-        assert placed[0].relation_label == "OWNS"
-        assert placed[0].relation_type_id == catalog.relation_by_label("OWNS").type_id
-        assert unplaced[0].relation_label == "DIRECTS"
-        assert unplaced[0].relation_type_id is None
+        assert placed.relation_label == "OWNS"
+        owns = catalog.relation_by_label("OWNS")
+        if owns is None:
+            raise AssertionError("OWNS is missing from the ontology")
+        assert placed.relation_type_id == owns.type_id
+        assert unplaced.relation_label == "DIRECTS"
         assert first_job.result is not None
         entity = await harness.service.get_entity(
             harness.principal, GetEntity(tenant="t1", name="Hydra")
         )
         readback = {fact.fact_id: fact.statement for fact in entity.facts}
         assert first_job.result["fact_ids"][0] in readback
-        assert readback[placed[0].fact_id] == "The speaker owns Hydra"
-        assert readback[unplaced[0].fact_id] == "The speaker directs Hydra"
+        assert readback[placed.fact_id] == "The speaker owns Hydra"
+        assert readback[unplaced.fact_id] == "The speaker directs Hydra"
         episodes = await harness.service.list_episodes(
             harness.principal,
             ListEpisodes(tenant="t1", limit=10),
