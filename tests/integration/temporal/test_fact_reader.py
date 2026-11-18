@@ -200,9 +200,10 @@ class TestFactReader:
             FactStatus.WITHDRAWN,
             FactStatus.ACTIVE,
         }
-        assert {view.fact_id for view in read} == {
-            view.fact_id for view in stored_query
-        }
+        read_ids = {view.fact_id for view in read}
+        assert read_ids == {view.fact_id for view in stored_query}
+        assert closed.fact_id in read_ids
+        assert successor.fact_id not in read_ids
         assert successor.fact_id in {view.fact_id for view in history}
         assert [(view.version, view.status) for view in by_observation] == [
             (1, FactStatus.ACTIVE),

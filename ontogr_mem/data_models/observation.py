@@ -80,7 +80,7 @@ class Observation:
         connector: Connector that brought the statement in, for trust rules.
         actor_role: Role of the person or system behind it, for trust rules.
         fact_kind: Whether the claim is a state or event.
-        modality: Whether the claim is actual, planned, or desired.
+        modality: Whether the claim is actual, planned, conditional, or desired.
         relation_label: Textual relation when no catalog type applies.
     """
 

@@ -734,6 +734,7 @@ class TestDefaultTenantWrites:
                 assert org_job.status is JobState.DONE
                 assert org_job.result is not None
                 assert org_job.result["unplaced"] == 0
+                org_fact_ids = org_job.result["fact_ids"]
 
                 obj = await memory.write_facts(
                     "Hydra is located in Berlin.",
@@ -753,14 +754,21 @@ class TestDefaultTenantWrites:
                 assert obj_job.status is JobState.DONE
                 assert obj_job.result is not None
                 assert obj_job.result["unplaced"] == 0
+                obj_fact_ids = obj_job.result["fact_ids"]
 
                 await memory.drain()
-                acme = await memory.search("Where is Acme located?")
-                assert [(fact.subject.name, fact.relation) for fact in acme.facts] == [
+                acme = await memory.get_entity("Acme")
+                hydra = await memory.get_entity("Hydra")
+                acme_facts = [
+                    fact for fact in acme.facts if fact.fact_id in org_fact_ids
+                ]
+                hydra_facts = [
+                    fact for fact in hydra.facts if fact.fact_id in obj_fact_ids
+                ]
+                assert [(fact.subject.name, fact.relation) for fact in acme_facts] == [
                     ("Acme", "LOCATED_IN")
                 ]
-                hydra = await memory.search("Where is Hydra located?")
-                assert [(fact.subject.name, fact.relation) for fact in hydra.facts] == [
+                assert [(fact.subject.name, fact.relation) for fact in hydra_facts] == [
                     ("Hydra", "LOCATED_IN")
                 ]
         finally:
