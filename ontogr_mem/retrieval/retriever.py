@@ -503,13 +503,15 @@ class Retriever:
                 raise
             notes.append(f"entity cards unavailable: {exc}")
             return []
-        cards: list[EntityCard] = []
-        seen: set[str] = set()
         for requested_id, entity in resolved:
             for lane in source_map.get(requested_id, ("fact",)):
                 target = source_map.setdefault(entity.entity_id, [])
                 if lane not in target:
                     target.append(lane)
+
+        cards: list[EntityCard] = []
+        seen: set[str] = set()
+        for _, entity in resolved:
             if entity.entity_id in seen:
                 continue
             seen.add(entity.entity_id)

@@ -38,7 +38,10 @@ async def run_vector_lane(
         )
         return LaneOutput(record, error=error)
 
+    last_success = None
+
     async def edge_candidates(window: int):
+        nonlocal last_success
         hits = await vectors.search(
             VectorKind.EDGE,
             embedding,
@@ -63,7 +66,9 @@ async def run_vector_lane(
                 views = await gate.admit(views)
             if disputed == "exclude":
                 views = [view for view in views if not view.disputed]
-        return hits, views, len(hits), window, positions if hits else {}
+        result = (hits, views, len(hits), window, positions if hits else {})
+        last_success = result
+        return result
 
     edge_search, episode_search = await asyncio.gather(
         run_search(
@@ -94,6 +99,8 @@ async def run_vector_lane(
         if result.error is not None
     ]
     edge_result = edge_search.value
+    if edge_result is None and edge_search.error is not None:
+        edge_result = last_success
     edge_hits = edge_result[0] if edge_result else []
     episode_hits = episode_search.value or []
     fact_views = edge_result[1] if edge_result else []

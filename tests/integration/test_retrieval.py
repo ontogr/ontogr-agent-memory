@@ -265,15 +265,26 @@ class RetrievalContract:
         with pytest.raises(RetrievalError, match="all retrieval lanes failed"):
             await retriever.retrieve(world.request())
 
-    async def test_typed_hydration_failure_raises_retrieval_error(
-        self, retrieval_world
-    ):
-        """Fact hydration errors fail the request instead of a lane."""
+    async def test_typed_hydration_failure_degrades_fact_lanes(self, retrieval_world):
+        """Typed fact failures degrade their lanes but other results survive."""
         world = retrieval_world
         retriever = _retriever(world, facts=_FailingFacts())
 
-        with pytest.raises(RetrievalError, match="fact hydration failed"):
-            await retriever.retrieve(world.request())
+        result = await retriever.retrieve(
+            world.request(mentions=("Ana",), graph_depth=3)
+        )
+
+        assert result.facts == ()
+        vector, keyword, _, graph = result.lanes
+        assert vector.failed == ("edge",)
+        assert keyword.failed == ("observation",)
+        assert graph.status is LaneStatus.FAILED
+        assert graph.failed == ("touching",)
+        for lane in (vector, keyword, graph):
+            assert "TemporalError: fact read unavailable" in lane.detail
+        assert "degraded: edge, observation, graph" in result.context.text
+        assert result.episodes
+        assert result.entities
 
     async def test_deleted_episode_vector_is_dropped_with_a_note(self, retrieval_world):
         """A stale vector cannot hydrate a deleted episode and is counted."""
@@ -427,7 +438,13 @@ class _FailingFacts:
     async def by_ids(self, ids, query):
         raise TemporalError("fact read unavailable")
 
+    async def touching(self, ids, query):
+        raise TemporalError("fact read unavailable")
+
     async def by_observations(self, ids, query):
+        raise TemporalError("fact read unavailable")
+
+    async def observation_texts(self, ids):
         raise TemporalError("fact read unavailable")
 
 

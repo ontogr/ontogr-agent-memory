@@ -405,3 +405,36 @@ class TestFilteredLaneRefill:
         assert [fact.fact_id for fact in result.facts] == ["f0"]
         assert result.record.failed == ("observation",)
         assert "refill timed out" in result.record.detail
+
+    async def test_vector_refill_error_keeps_the_previous_page(self):
+        """A typed refill failure keeps prior facts and reports its cause."""
+
+        class FailingRefillVectors(VectorPort):
+            async def search(self, kind, vector, *, k, filters=None, min_score=None):
+                if kind is VectorKind.EDGE:
+                    if k > 2:
+                        raise QueryTimeoutError("refill timed out")
+                    return [Hit("f0", 1.0, 0), Hit("f1", 0.9, 1)]
+                return []
+
+        class RejectedGate:
+            async def admit(self, views):
+                return [item for item in views if item.fact_id == "f0"]
+
+        class RefillFacts(FactPort):
+            async def by_ids(self, ids, query):
+                return [view("f0"), view("f1")]
+
+        result = await run_vector_lane(
+            FailingRefillVectors(),
+            [0.1],
+            limit=2,
+            settings=RetrievalSettings(candidate_factor=1),
+            facts=RefillFacts(),
+            query=TemporalQuery(now=NOW),
+            gate=RejectedGate(),
+        )
+
+        assert [fact.fact_id for fact in result.facts] == ["f0"]
+        assert result.record.failed == ("edge",)
+        assert "refill timed out" in result.record.detail

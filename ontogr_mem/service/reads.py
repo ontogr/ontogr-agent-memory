@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from ontogr_mem.data_models import Alias, Episode, JobState, Kind, require_utc
+from ontogr_mem.data_models import Episode, JobState, Kind, require_utc
 from ontogr_mem.llm.tokens import estimate_tokens
 from ontogr_mem.ontology.models import UNKNOWN_ID, Status
 from ontogr_mem.resolution.keys import strict_key
@@ -349,15 +350,19 @@ async def list_entities(
         type_ids=family, after=after, limit=request.limit + 1
     )
     page = entities[: request.limit]
-    aliases_by_entity: dict[str, list[Alias]] = {}
-    for alias in await runtime.stores.resolver_store.all_aliases():
-        aliases_by_entity.setdefault(alias.entity_id, []).append(alias)
+    alias_lists = await asyncio.gather(
+        *(runtime.stores.resolver_store.aliases_of(entity.entity_id) for entity in page)
+    )
+    aliases_by_entity = {
+        entity.entity_id: aliases
+        for entity, aliases in zip(page, alias_lists, strict=True)
+    }
     return EntityPage(
         entities=[
             entity_out(
                 tenant_id,
                 entity,
-                aliases_by_entity.get(entity.entity_id, []),
+                aliases_by_entity[entity.entity_id],
             )
             for entity in page
         ],

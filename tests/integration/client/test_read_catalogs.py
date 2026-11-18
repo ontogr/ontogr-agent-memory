@@ -74,10 +74,10 @@ class TestClientReadCatalogs:
                 )
                 assert len(second.entities) == 1
                 assert second.next_cursor is None
-                assert first.entities[0].entity.id < second.entities[0].entity.id
+                assert first.entities[0].entity_id < second.entities[0].entity_id
                 assert {
-                    first.entities[0].entity.type_label,
-                    second.entities[0].entity.type_label,
+                    first.entities[0].type_label,
+                    second.entities[0].type_label,
                 } == {"Person"}
                 assert receipt.job_id
         finally:
