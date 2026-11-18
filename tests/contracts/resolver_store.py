@@ -843,7 +843,7 @@ class ResolverStoreContract:
     ):
         """Dirty, provisional and swept rows follow the per-entity rules."""
         await store.write_entity_batch([entity("changed-low")], [])
-        checked_rows = await store.write_entity_batch(
+        await store.write_entity_batch(
             [entity("checked-c"), entity("checked-a")], []
         )
 

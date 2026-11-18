@@ -1,14 +1,13 @@
 """Exercise ontology-aware MCP tools through the in-process transport."""
 
 from ontogr_mem.graphstore.falkordb import FalkorDBGraphStore
-from tests.support.tenants import new_tenant
-
 from tests.integration.mcp_server.test_server import (
     GROUNDED_FACT,
     _content,
     _write_and_wait,
     open_client,
 )
+from tests.support.tenants import new_tenant
 
 
 class TestFilterTools:

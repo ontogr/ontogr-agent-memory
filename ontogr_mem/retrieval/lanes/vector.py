@@ -101,7 +101,7 @@ async def run_vector_lane(
             view.version,
         )
     )
-    dropped = max(0, len(set(hit.id for hit in edge_hits)) - len(fact_views))
+    dropped = max(0, len({hit.id for hit in edge_hits}) - len(fact_views))
 
     episode_ids = tuple(dict.fromkeys(hit.id for hit in episode_hits))
     found = bool(fact_views or episode_ids)
