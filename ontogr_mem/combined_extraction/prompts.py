@@ -55,7 +55,7 @@ def build_combined_prompt(
 ) -> str:
     """Render entities and facts input using the shared pass prompt components."""
     previous_list = list(previous)
-    entity_shape = ENTITY_ITEM_SHAPE.removeprefix("{").removesuffix("}")
+    entity_shape = ENTITY_ITEM_SHAPE.removeprefix("{")
     task = (
         "Task: extract the entities and the facts in <episode_text>. Output "
         '{"entities": [{"ref": str, '

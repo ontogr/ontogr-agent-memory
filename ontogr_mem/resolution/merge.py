@@ -234,8 +234,8 @@ def build_unmerge_plan(
     restored_survivor = survivor.model_copy(
         update={
             "type_label": delta["type_label"],
-            "ontology_type_id": delta["ontology_type_id"],
-            "proposed_type": delta["proposed_type"],
+            "ontology_type_id": delta.get("ontology_type_id", 0),
+            "proposed_type": delta.get("proposed_type", ""),
             "uri": delta["uri"],
             "descriptions": [
                 d for d in survivor.descriptions if d not in delta["descriptions_added"]

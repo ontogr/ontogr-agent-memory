@@ -75,7 +75,12 @@ class CombinedExtractor:
             run = await run_agent(
                 combined_agent,
                 ModelRole.FACT_EXTRACTION,
-                build_combined_prompt(episode, view, previous_list),
+                build_combined_prompt(
+                    episode,
+                    view,
+                    previous_list,
+                    instructions=self._fact_settings.instructions,
+                ),
                 models=self._models,
                 deps=None,
             )
