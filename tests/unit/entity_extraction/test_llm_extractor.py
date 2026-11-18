@@ -91,6 +91,44 @@ class TestLLMExtractor:
 
         assert result.entities[0].type_id == UNKNOWN_TYPE_ID
 
+    async def test_same_name_with_distinct_types_stays_separate(self):
+        """Two catalog types keep two entities for the same name."""
+        models, _ = entity_models(
+            [
+                reply(
+                    {"name": "Jordan", "type_id": 0, "confidence": 0.9},
+                    {"name": "Jordan", "type_id": 2, "confidence": 0.9},
+                )
+            ]
+        )
+
+        result = await LLMExtractor(models).extract(
+            text_episode("Jordan met Jordan."), catalog()
+        )
+
+        assert [(e.local_id, e.type_id) for e in result.entities] == [
+            ("e0", 0),
+            ("e1", 2),
+        ]
+
+    async def test_same_name_collapses_when_both_types_are_downgraded(self):
+        """Low confidence gives both proposals the same effective type."""
+        models, _ = entity_models(
+            [
+                reply(
+                    {"name": "Jordan", "type_id": 0, "confidence": 0.6},
+                    {"name": "Jordan", "type_id": 2, "confidence": 0.6},
+                )
+            ]
+        )
+
+        result = await LLMExtractor(models).extract(
+            text_episode("Jordan met Jordan."), catalog()
+        )
+
+        assert len(result.entities) == 1
+        assert result.entities[0].type_id == UNKNOWN_TYPE_ID
+
     async def test_reasks_a_malformed_reply_and_keeps_both_requests_in_usage(self):
         """A bad shape is re-asked whole; usage counts both requests."""
         models, scripted = entity_models(

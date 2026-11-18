@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from ontogr_mem.data_models import ExtractedEntity
+from ontogr_mem.data_models import UNKNOWN_LABEL, ExtractedEntity
 from ontogr_mem.resolution.keys import loose_key, strict_key
 from ontogr_mem.resolution.policy import (
     ResolutionPolicy,
@@ -64,6 +64,8 @@ def _promote_group_type(
     if winner != target.type_label:
         target.type_label = winner
         target.ontology_type_id = extracted.ontology_type_id or 0
+        target.proposed_type = extracted.proposed_type
+    elif target.type_label == label == UNKNOWN_LABEL and not target.proposed_type:
         target.proposed_type = extracted.proposed_type
 
 

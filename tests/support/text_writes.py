@@ -118,7 +118,7 @@ def _answer(script: Script) -> Callable[[ScriptedCall], object]:
     def answer(call: ScriptedCall) -> object:
         prompt = call.prompt
         entities, facts = fenced[_block(prompt, "episode_text")]
-        if COMBINED_MARKER in prompt:
+        if prompt.startswith(COMBINED_MARKER):
             return {
                 "entities": [
                     {**_entity_item(prompt, entity), "ref": f"e{index}"}

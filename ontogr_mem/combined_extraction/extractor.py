@@ -108,7 +108,7 @@ class CombinedExtractor:
         raws = [
             RawEntity(**item.model_dump(exclude={"ref"})) for item in output.entities
         ]
-        entities, local_ids = bind_entities(
+        entities, local_ids, dropped = bind_entities(
             episode, view.catalog, raws, self._entity_settings
         )
         refs = {
@@ -118,6 +118,7 @@ class CombinedExtractor:
         }
         entities = add_speaker(episode, entities, view.catalog)
         entities_result.entities = entities
+        entities_result.dropped = dropped
         entities_result.status = (
             Status.OK
             if local_ids and any(local is not None for local in local_ids)

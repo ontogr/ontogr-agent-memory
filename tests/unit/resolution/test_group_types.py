@@ -57,3 +57,16 @@ class TestGroupTypes:
             9,
             "Org",
         )
+
+    def test_later_unknown_mention_supplies_missing_proposed_type(self):
+        """Keep a proposed type when the first Unknown mention supplied none."""
+        first = ex("e1", "Acme", "Unknown")
+        second = replace(ex("e2", "Acme", "Unknown"), proposed_type="Startup")
+
+        [group] = build_groups([first, second], ResolutionPolicy(), TypeRelations())
+
+        assert (group.type_label, group.ontology_type_id, group.proposed_type) == (
+            "Unknown",
+            0,
+            "Startup",
+        )

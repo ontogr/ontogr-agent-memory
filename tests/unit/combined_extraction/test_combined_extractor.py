@@ -3,7 +3,7 @@
 from pydantic_ai.exceptions import ModelHTTPError
 
 from ontogr_mem.combined_extraction import CombinedExtractor
-from ontogr_mem.data_models import PreviousEpisodes, Status, TypeView
+from ontogr_mem.data_models import DropReason, PreviousEpisodes, Status, TypeView
 from ontogr_mem.fact_extraction import FactDropReason
 from tests.support.facts import fact_catalog, make_episode
 from tests.support.scripted_model import scripted_model, scripted_role_models
@@ -70,6 +70,51 @@ class TestCombinedExtractor:
         )
         assert facts.usage.buckets["combined/fact_extraction"].calls == 1
         assert len(scripted.calls) == 1
+
+    async def test_same_name_refs_with_distinct_types_bind_separately(self):
+        """Same-name refs with different effective types get distinct local ids."""
+        episode = make_episode("Jordan switched to Postgres because Jordan needs it")
+        extractor, _, episode, catalog = prepare(
+            combined_reply(
+                [entity("person", "Jordan", 0), entity("company", "Jordan", 2)],
+                [fact(["person", "company"], "Jordan switched to Postgres")],
+            ),
+            episode,
+        )
+
+        entities, facts = await extractor.extract(episode, catalog, None)
+
+        jordans = [item for item in entities.entities if item.name == "Jordan"]
+        assert [(item.local_id, item.type_id) for item in jordans] == [
+            ("e0", 0),
+            ("e1", 2),
+        ]
+        assert facts.facts[0].entity_refs == ("e0", "e1")
+
+    async def test_rejected_entities_are_reported_as_drops(self):
+        """Report every entity the binder rejects with a public drop reason."""
+        bad_type = {"ref": "bad", "name": "Atlas", "type_id": 9, "confidence": 0.9}
+        extractor, _, episode, catalog = prepare(
+            combined_reply(
+                [
+                    bad_type,
+                    entity("blank", "", 1),
+                    entity("missing", "Atlantis", 2),
+                    entity("kept", "Postgres", 1),
+                ],
+                [],
+            )
+        )
+
+        entities, facts = await extractor.extract(episode, catalog, None)
+
+        assert [(d.reason, d.item["name"]) for d in entities.dropped] == [
+            (DropReason.TYPE_OUT_OF_RANGE, "Atlas"),
+            (DropReason.MISSING_FIELD, ""),
+            (DropReason.MISSING_FIELD, "Atlantis"),
+        ]
+        assert [item.name for item in entities.entities] == ["Postgres", "Ana"]
+        assert facts.status is Status.EMPTY
 
     async def test_dropped_entity_ref_does_not_collide_with_renumbered_entity(self):
         """Keep surviving entity references aligned after a dropped entity."""

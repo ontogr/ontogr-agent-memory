@@ -6,6 +6,8 @@ from dataclasses import replace
 
 from ontogr_mem.data_models import (
     UNKNOWN_TYPE_ID,
+    Dropped,
+    DropReason,
     Episode,
     ExtractedEntity,
     Method,
@@ -85,30 +87,45 @@ def bind_entities(
     types: TypeCatalog,
     raw: Sequence[RawEntity],
     settings: EntityExtractionSettings,
-) -> tuple[list[ExtractedEntity], list[str | None]]:
+) -> tuple[list[ExtractedEntity], list[str | None], list[Dropped]]:
     """Bind model entities to the episode text and the type catalog.
 
     Names that are not in the episode text and ids outside the catalog are
-    discarded. Entities with one normalized name collapse into the first.
+    discarded and reported as drops. Entities with the same normalized name and
+    effective type collapse into the first, keeping the higher confidence.
 
     Returns:
-        The bound entities, and for each raw item the local id of the entity it
-        became. A discarded item has None. A duplicate has the id of the entity
-        it collapsed into.
+        The bound entities, for each raw item the local id of the entity it
+        became, and every rejected item with its reason. A discarded item has
+        None as its local id. A duplicate has the id of the entity it collapsed
+        into and is not reported as a drop.
     """
     text = text_of(episode)
     out: list[ExtractedEntity] = []
     ids: list[str | None] = []
-    seen: dict[str, int] = {}
+    dropped: list[Dropped] = []
+    seen: dict[tuple[str, int], int] = {}
     for item in raw:
         name = item.name.strip()
-        if not name or not types.has_entity_id(item.type_id):
+        info = {"name": item.name, "type_id": item.type_id}
+        if not name:
+            log.debug("discarding entity with a blank name")
+            dropped.append(Dropped(info, DropReason.MISSING_FIELD, "blank name"))
+            ids.append(None)
+            continue
+        if not types.has_entity_id(item.type_id):
             log.debug("discarding entity %r with type id %s", name, item.type_id)
+            dropped.append(
+                Dropped(info, DropReason.TYPE_OUT_OF_RANGE, f"type id {item.type_id}")
+            )
             ids.append(None)
             continue
         spans = find_spans(text, name)
         if not spans:
             log.debug("discarding entity %r: not in the episode", name)
+            dropped.append(
+                Dropped(info, DropReason.MISSING_FIELD, "name not in the episode")
+            )
             ids.append(None)
             continue
         confidence = (
@@ -119,12 +136,12 @@ def bind_entities(
         type_id = item.type_id if confidence >= settings.threshold else UNKNOWN_TYPE_ID
         proposed = (item.type_label or "").strip()
         name_key = normalize_name(name)
-        if (index := seen.get(name_key)) is not None:
+        if (index := seen.get((name_key, type_id))) is not None:
             prior = out[index]
             out[index] = replace(prior, confidence=max(prior.confidence, confidence))
             ids.append(out[index].local_id)
             continue
-        seen[name_key] = len(out)
+        seen[(name_key, type_id)] = len(out)
         local_id = f"e{len(out)}"
         out.append(
             ExtractedEntity(
@@ -140,4 +157,4 @@ def bind_entities(
             )
         )
         ids.append(local_id)
-    return out, ids
+    return out, ids, dropped

@@ -24,6 +24,10 @@ from ontogr_mem.ontology.projection import project
 from ontogr_mem.ontology.stamp import stamp_types as _stamp_types
 
 
+COMPARISON_KINDS = frozenset({Kind.MESSAGE, Kind.DOCUMENT})
+"""Episode kinds whose text both extraction paths can process."""
+
+
 @dataclass(frozen=True, slots=True)
 class InputEpisode:
     """An episode row loaded from JSONL."""
@@ -36,7 +40,11 @@ class InputEpisode:
 
 
 def load_episodes(path: str | Path) -> list[InputEpisode]:
-    """Load JSONL episodes, applying defaults based on physical line numbers."""
+    """Load JSONL episodes, applying defaults based on physical line numbers.
+
+    Only message and document rows are accepted because both extraction paths
+    process text content.
+    """
     episodes = []
     for line_number, line in enumerate(Path(path).read_text().splitlines(), 1):
         if not line.strip():
@@ -46,6 +54,8 @@ def load_episodes(path: str | Path) -> list[InputEpisode]:
             if not isinstance(row, dict) or not isinstance(row.get("text"), str):
                 raise ValueError("text must be a string")
             kind = Kind(row.get("kind", "message"))
+            if kind not in COMPARISON_KINDS:
+                raise ValueError(f"unsupported kind {kind.value!r} for comparison")
             occurred_at = datetime.fromisoformat(
                 row.get("occurred_at", "2026-01-01T12:00:00+00:00")
             )
@@ -120,10 +130,14 @@ async def _run_episode(
         fact_items = fact_result.facts
     usage = [getattr(result, "usage", None) for result in results]
     buckets = [bucket for item in usage if item for bucket in item.buckets.values()]
-    names = {entity.name for entity in entity_items}
+    names_by_id = {entity.local_id: entity.name for entity in entity_items}
     fact_names = {
-        name for fact in fact_items for name in (fact.subject_name, fact.object_name)
+        names_by_id[ref]
+        for fact in fact_items
+        for ref in fact.entity_refs
+        if ref in names_by_id
     }
+    names = set(names_by_id.values())
     return {
         "seconds": time.perf_counter() - started,
         "requests": sum(b.calls for b in buckets),
@@ -142,13 +156,25 @@ async def _run_episode(
     }
 
 
-async def run(episodes: list[InputEpisode], out: Path) -> dict[str, Any]:
-    """Run sequential mode comparisons and write the detailed report."""
-    models = build_models(LLMConfig())
+async def run(
+    episodes: list[InputEpisode], out: Path, models: RoleModels
+) -> dict[str, Any]:
+    """Run sequential mode comparisons and write the detailed report.
+
+    Args:
+        episodes: Input episodes to compare.
+        out: Destination for the JSON report.
+        models: Shared model pool used by both extraction paths.
+
+    Returns:
+        The report written to `out`.
+
+    Raises:
+        SystemExit: If either extraction model is not configured.
+    """
     required = (ModelRole.ENTITY_EXTRACTION, ModelRole.FACT_EXTRACTION)
     missing = [role.value for role in required if not models.configured(role)]
     if missing:
-        await models.aclose()
         raise SystemExit(f"configure extraction models: {', '.join(missing)}")
     ontology = build_target(Ontology.genesis(), default_ontology())
     projection = project(ontology)
@@ -157,34 +183,29 @@ async def run(episodes: list[InputEpisode], out: Path) -> dict[str, Any]:
         mode: {"requests": 0, "input_tokens": 0, "output_tokens": 0, "seconds": 0.0}
         for mode in ("two_pass", "combined")
     }
-    try:
-        for row in episodes:
-            episode = _episode(row)
-            modes = {
-                mode: await _run_episode(episode, mode, models, projection)
-                for mode in ("two_pass", "combined")
+    for row in episodes:
+        episode = _episode(row)
+        modes = {
+            mode: await _run_episode(episode, mode, models, projection)
+            for mode in ("two_pass", "combined")
+        }
+        for mode, result in modes.items():
+            for key in totals[mode]:
+                totals[mode][key] += result[key]
+        a, b = (set(modes[m]["entity_names"]) for m in ("two_pass", "combined"))
+        qa, qb = (set(modes[m]["fact_quotes"]) for m in ("two_pass", "combined"))
+        output["episodes"].append(
+            {
+                "id": row.id,
+                "modes": modes,
+                "overlap": {
+                    "entity_name_jaccard": len(a & b) / len(a | b) if a | b else 1.0,
+                    "fact_quote_jaccard": len(qa & qb) / len(qa | qb)
+                    if qa | qb
+                    else 1.0,
+                },
             }
-            for mode, result in modes.items():
-                for key in totals[mode]:
-                    totals[mode][key] += result[key]
-            a, b = (set(modes[m]["entity_names"]) for m in ("two_pass", "combined"))
-            qa, qb = (set(modes[m]["fact_quotes"]) for m in ("two_pass", "combined"))
-            output["episodes"].append(
-                {
-                    "id": row.id,
-                    "modes": modes,
-                    "overlap": {
-                        "entity_name_jaccard": len(a & b) / len(a | b)
-                        if a | b
-                        else 1.0,
-                        "fact_quote_jaccard": len(qa & qb) / len(qa | qb)
-                        if qa | qb
-                        else 1.0,
-                    },
-                }
-            )
-    finally:
-        await models.aclose()
+        )
     output["totals"] = totals
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(output, indent=2) + "\n")
@@ -197,6 +218,15 @@ async def run(episodes: list[InputEpisode], out: Path) -> dict[str, Any]:
     return output
 
 
+async def _run_live(episodes: list[InputEpisode], out: Path) -> dict[str, Any]:
+    """Run the comparison with the models configured in the environment."""
+    models = build_models(LLMConfig())
+    try:
+        return await run(episodes, out, models)
+    finally:
+        await models.aclose()
+
+
 def main() -> None:
     """Run the real endpoint comparison."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -204,7 +234,7 @@ def main() -> None:
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args()
     destination = validate_output_path(args.out)
-    asyncio.run(run(load_episodes(args.episodes), destination))
+    asyncio.run(_run_live(load_episodes(args.episodes), destination))
 
 
 if __name__ == "__main__":

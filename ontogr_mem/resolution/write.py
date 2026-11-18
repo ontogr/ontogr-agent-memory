@@ -4,7 +4,7 @@ The entity and its aliases are written first and mentions last. The resolver
 writes mentions after every group, because one episode may span several groups.
 """
 
-from ontogr_mem.data_models import Clock
+from ontogr_mem.data_models import UNKNOWN_LABEL, Clock
 from ontogr_mem.data_models.entities import (
     Alias,
     AliasSource,
@@ -71,6 +71,10 @@ def _matched(
             type_label = winner
             type_id = group.ontology_type_id
             proposed_type = group.proposed_type
+    elif type_label == UNKNOWN_LABEL:
+        proposed_type = proposed_type or group.proposed_type
+    elif not type_id:
+        type_id = group.ontology_type_id
     descriptions = list(entity.descriptions)
     for description in group.descriptions:
         if description not in descriptions:

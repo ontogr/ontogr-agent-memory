@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Entities expose stable ontology type ids and `proposed_type` when the model's type name cannot be matched. Such entities use the `Unknown` type.
-- `MEMORY_EXTRACTION_MODE` selects `two_pass` (the default, up to two model calls per write) or `combined` extraction (one model call per write).
+- `MEMORY_EXTRACTION_MODE` selects `two_pass` (the default) or `combined` extraction. Combined mode requests entities and facts in one pass. Invalid model replies can trigger retries.
 - `Memory.open(ontology=...)` accepts a YAML, JSON or Turtle file path, a list of
   Pydantic classes or an `OntologyDeclaration`. The `chat` and `mcp` commands
   accept `--ontology`, and MCP also reads `MEMORY_MCP_ONTOLOGY`.
