@@ -8,6 +8,7 @@ from ontogr_mem.ontology.errors import InvalidChange
 from ontogr_mem.ontology.models import Frozen, RelationKind
 from ontogr_mem.ontology.names import (
     MAX_NAME_LEN,
+    RESERVED_IDENTITY_NAMES,
     RESERVED_LABELS,
     check_identifier,
     normalize,
@@ -21,7 +22,7 @@ class EntityDeclaration(Frozen):
     description: str = ""
     aliases: list[str] = Field(default_factory=list)
     parent: str | None = None
-    identity_attributes: list[str] = Field(default_factory=list)
+    identity_attributes: tuple[str, ...] = ()
     renamed_from: list[str] = Field(default_factory=list)
     merged_into: str | None = None
     deprecated: bool = False
@@ -128,6 +129,8 @@ def _check_entity(
     for name in entity.identity_attributes:
         check_identifier(name, kind="identity attribute")
         key = normalize(name)
+        if name.strip().casefold() in RESERVED_IDENTITY_NAMES:
+            _fail("identity attribute name is reserved", entity.label)
         if key in seen:
             _fail("identity attributes must be unique", entity.label)
         seen.add(key)

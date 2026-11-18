@@ -167,6 +167,19 @@ Resolution links extracted names to canonical entities through a ladder:
 - **Mentions and aliases are records:** Entity verdicts record same, distinct, or uncertain decisions for later runs.
 - **Model failures never merge:** Deferred deduplication uses blocking and vector candidates, then verifies the pairs that need a decision. An unreadable verdict is not remembered as a decision.
 
+#### Entity identity and resolver compatibility
+
+Ontology type ids define entity compatibility and identity. Resolution compares
+these stable ids, follows ontology type merges, and treats sibling or unrelated
+types as distinct. Identity attributes declared on a type are also inherited
+from its parent types. Shared identity values can confirm a match, while
+conflicting values prevent a merge.
+
+Custom resolver integrations must provide the active ontology's `TypeLinks` when
+they call `resolve`, `deduplicate`, or `merge`. Use `resolver.linked(links)` to
+bind one ontology snapshot for consolidation operations. Entity records must
+include `ontology_type_id`; use `0` for the `Unknown` type.
+
 ### Temporal and consistency engine
 
 *Facts keep two time axes, and conflicts are settled by rules, a judge, or a person.*

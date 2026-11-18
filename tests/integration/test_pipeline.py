@@ -433,7 +433,7 @@ class TestFullCycle:
             cons,
             FixedClock().now,
             ConsolidationSettings(_env_file=None, prune=PruneSettings(dry_run=False)),
-            resolution=stack.resolver,
+            resolution=stack.resolver.linked(await stack.links()),
             temporal=await stack.engine(),
             models=scripted_role_models(consolidation=model),
             run_ids=lambda: next(run_ids),
@@ -489,7 +489,7 @@ class TestFullCycle:
             cons,
             FixedClock().now,
             ConsolidationSettings(_env_file=None, prune=PruneSettings(dry_run=False)),
-            resolution=stack.resolver,
+            resolution=stack.resolver.linked(await stack.links()),
             temporal=engine,
             models=scripted_role_models(consolidation=model),
         )

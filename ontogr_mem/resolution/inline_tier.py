@@ -54,6 +54,7 @@ async def inline_verify(
             view,
             policy=policy,
             settings=settings,
+            links=links,
             settle=False,
         )
         plan = apply_verdicts(collected, {}, incomplete)

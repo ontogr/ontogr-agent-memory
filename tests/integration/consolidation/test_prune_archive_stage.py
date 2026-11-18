@@ -17,6 +17,7 @@ from tests.integration.resolution.resolver_helpers import ex
 from tests.support.consolidation import ConsWorld, new_world
 from tests.support.graph_backend import GraphBackend
 from tests.support.scripted_model import scripted_role_models
+from tests.support.type_world import WORLD
 from tests.unit.temporal.helpers import at, obs
 
 
@@ -48,7 +49,7 @@ def ctx_for(world: ConsWorld) -> StageContext:
         store=world.store,
         settings=world.settings,
         models=scripted_role_models(),
-        resolution=world.resolution,
+        resolution=world.resolution.linked(WORLD.links),
         temporal=world.temporal,
     )
 
@@ -300,14 +301,16 @@ async def test_a_mention_that_restored_an_entity_clears_its_archive_record(
 ) -> None:
     """Resolution restores a matched archived entity, so it is no longer archived."""
     world = await new_world(graph_backend, live_settings())
-    created = await world.resolution.resolve([ex("1", "Old", "Thing")])
+    created = await world.resolution.resolve([ex("1", "Old", "Thing")], WORLD.links)
     old_id = created.entities[0].entity_id
     world.clock.advance(days=400)
     await ScoringStage().run(ctx_for(world))
     await PruneArchiveStage().run(ctx_for(world))
     assert await entity_status(world, old_id) is EntityStatus.ARCHIVED
 
-    again = await world.resolution.resolve([ex("1", "Old", "Thing", episode_id="e2")])
+    again = await world.resolution.resolve(
+        [ex("1", "Old", "Thing", episode_id="e2")], WORLD.links
+    )
     assert again.entities[0].entity_id == old_id
     await ScoringStage().run(ctx_for(world))
     await PruneArchiveStage().run(ctx_for(world))

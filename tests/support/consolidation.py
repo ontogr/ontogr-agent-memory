@@ -98,6 +98,7 @@ class ConsWorld:
         now = self.clock()
         entity = Entity(
             entity_id=entity_id,
+            ontology_type_id=1,
             type_label="Thing",
             canonical_name=name,
             strict_key=name.lower(),

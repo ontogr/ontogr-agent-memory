@@ -129,6 +129,7 @@ def _entity(entity_id: str, name: str, *, type_label: str = "Person") -> Entity:
     """Create an entity with text fields that Erase must clear."""
     return Entity(
         entity_id=entity_id,
+        ontology_type_id=1,
         type_label=type_label,
         canonical_name=name,
         strict_key=strict_key(name),

@@ -12,6 +12,7 @@ from ontogr_mem.data_models.observation import Observation, ObservationKind
 from tests.support.consolidation import ConsWorld, new_world
 from tests.support.graph_backend import GraphBackend
 from tests.support.scripted_model import scripted_role_models
+from tests.support.type_world import WORLD
 
 
 def ctx_for(world: ConsWorld) -> StageContext:
@@ -22,7 +23,7 @@ def ctx_for(world: ConsWorld) -> StageContext:
         store=world.store,
         settings=world.settings,
         models=scripted_role_models(),
-        resolution=world.resolution,
+        resolution=world.resolution.linked(WORLD.links),
         temporal=world.temporal,
     )
 

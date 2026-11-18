@@ -51,6 +51,7 @@ class TestTenantStacks:
         await first.resolver_store.save_entity(
             Entity(
                 entity_id="only-first",
+                ontology_type_id=1,
                 type_label="Thing",
                 canonical_name="Only first",
                 strict_key="only first",

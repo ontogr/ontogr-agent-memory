@@ -13,6 +13,7 @@ from ontogr_mem.llm import ModelCallFailedError, RoleModels
 from tests.support.consolidation import ConsWorld, new_world
 from tests.support.graph_backend import GraphBackend
 from tests.support.scripted_model import Scripted, scripted_model, scripted_role_models
+from tests.support.type_world import WORLD
 
 
 LONG = "Founded in Berlin in 2010. " * 100
@@ -33,7 +34,7 @@ def ctx_for(
         clock=world.clock,
         store=world.store,
         settings=world.settings,
-        resolution=world.resolution if resolution else None,
+        resolution=world.resolution.linked(WORLD.links) if resolution else None,
         temporal=world.temporal,
         models=models if models is not None else scripted_role_models(),
     )

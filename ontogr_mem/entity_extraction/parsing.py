@@ -1,6 +1,6 @@
 """Strict parsing of model replies, with a lenient JSON fallback."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from ontogr_mem.json_reply import SchemaError, load_json
@@ -14,6 +14,7 @@ class RawEntity:
     type_id: int
     type_label: str | None = None
     description: str = ""
+    attributes: dict[str, str] = field(default_factory=dict)
     confidence: float | None = None
 
 

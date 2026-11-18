@@ -18,10 +18,11 @@ from ontogr_mem.ingestion.store import EpisodeStore
 from ontogr_mem.llm import LLMConfig, build_models
 from ontogr_mem.ontology.extraction_items import stabilize_facts
 from ontogr_mem.ontology.manager import OntologyManager
+from ontogr_mem.ontology.links import TypeLinks
 from ontogr_mem.ontology.models import AddRelation, PatternSpec
+from ontogr_mem.ontology.stamp import stamp_types
 from ontogr_mem.resolution import EntityResolver, ResolutionPolicy
 from ontogr_mem.resolution.config import ResolverSettings
-from ontogr_mem.resolution.policy import ResolutionMode, TypePolicy
 from ontogr_mem.temporal import TemporalEngine, from_type_view
 from ontogr_mem.vectorstore import EmbeddingGateway, VectorStore
 from ontogr_mem.vectorstore.memory import InMemoryBackend
@@ -129,11 +130,17 @@ class TemporalStack:
     resolver: EntityResolver
     manager: OntologyManager
 
+    async def links(self) -> TypeLinks:
+        """Return the type links of the stack's current ontology."""
+        view = await self.manager.extraction_view()
+        return TypeLinks.from_ontology(view.ontology)
+
     async def ingest(self, episode: Episode, entities: list[ExtractedEntity]):
         """Run one episode through extraction, resolution and the engine."""
         await self.episodes.write_episodes([episode])
-        await self.resolver.resolve(entities)
         view = await self.manager.extraction_view()
+        stamped = stamp_types(entities, view)
+        await self.resolver.resolve(stamped, await self.links())
         models, _ = fact_models(answer=scripted_facts(temporal_replies(view.view)))
         extraction = FactExtraction(
             LLMFactExtractor(models), InMemoryFactStore(), view.view
@@ -173,7 +180,7 @@ async def temporal_stack(store, handle, keyed: bool) -> TemporalStack:
     resolver = EntityResolver(
         GraphResolverStore(runner, tenant_keyed=keyed),
         vectors,
-        ResolutionPolicy(types={"Person": TypePolicy(mode=ResolutionMode.AUTO_KEY)}),
+        ResolutionPolicy(),
         ResolverSettings(inline_verification=False),
         FixedClock(),
         models=build_models(LLMConfig.model_construct()),

@@ -38,6 +38,7 @@ from ontogr_mem.ontology.models import (
 )
 from ontogr_mem.ontology.names import (
     MAX_NAME_LEN,
+    RESERVED_IDENTITY_NAMES,
     RESERVED_LABELS,
     check_identifier,
     normalize,
@@ -510,7 +511,7 @@ def _check_identity(cat: Ontology) -> None:
         for name in entity.identity_attributes:
             check_identifier(name, kind="identity attribute")
             key = normalize(name)
-            if key in {"uri", "actor_id", "role"}:
+            if name.strip().casefold() in RESERVED_IDENTITY_NAMES:
                 raise InvalidChange("identity attribute name is reserved", item=name)
             if key in seen:
                 raise InvalidChange(

@@ -36,6 +36,7 @@ from tests.integration.resolution.resolver_helpers import count_active, ex
 from tests.support.clock import FixedClock
 from tests.support.embedder import MockEmbedder
 from tests.support.graph_backend import GraphBackend
+from tests.support.type_world import WORLD
 from tests.unit.resolution.helpers import oracle_models
 
 
@@ -103,6 +104,7 @@ async def _ranked_store(
         entity = Entity(
             entity_id=f"c{index:02}",
             type_label="Company",
+            ontology_type_id=WORLD.ids["Company"],
             canonical_name=name,
             strict_key=name.casefold(),
             loose_key=name.casefold(),
@@ -134,8 +136,10 @@ async def test_same_name_twice_gives_one_entity_two_mentions_and_a_key_decision(
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(graph_backend, store)
 
-    first = await resolver.resolve([ex("1", "Acme Corp")])
-    second = await resolver.resolve([ex("1", "acme  corp", episode_id="ep2")])
+    first = await resolver.resolve([ex("1", "Acme Corp")], WORLD.links)
+    second = await resolver.resolve(
+        [ex("1", "acme  corp", episode_id="ep2")], WORLD.links
+    )
 
     assert first.entities[0].entity_id == second.entities[0].entity_id
     assert second.decisions[0].method is DecisionMethod.KEY
@@ -152,7 +156,7 @@ async def test_two_mentions_in_one_batch_collapse_into_one_entity(
     resolver = await make(graph_backend, store)
 
     result = await resolver.resolve(
-        [ex("1", "Acme"), ex("2", "acme", episode_id="ep2")]
+        [ex("1", "Acme"), ex("2", "acme", episode_id="ep2")], WORLD.links
     )
 
     assert len(result.entities) == 1
@@ -168,7 +172,7 @@ async def test_incompatible_types_with_one_name_stay_separate(
     resolver = await make(graph_backend, store)
 
     result = await resolver.resolve(
-        [ex("1", "Java", "Language"), ex("2", "Java", "City")]
+        [ex("1", "Java", "Language"), ex("2", "Java", "City")], WORLD.links
     )
 
     assert result.entities[0].entity_id != result.entities[1].entity_id
@@ -182,8 +186,10 @@ async def test_java_language_never_matches_java_place_across_batches(
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(graph_backend, store)
 
-    first = await resolver.resolve([ex("1", "Java", "City")])
-    second = await resolver.resolve([ex("1", "Java", "Language", episode_id="ep2")])
+    first = await resolver.resolve([ex("1", "Java", "City")], WORLD.links)
+    second = await resolver.resolve(
+        [ex("1", "Java", "Language", episode_id="ep2")], WORLD.links
+    )
 
     assert first.entities[0].entity_id != second.entities[0].entity_id
     assert second.decisions[0].outcome is Outcome.CREATED
@@ -196,8 +202,10 @@ async def test_person_family_key_hit_is_created_provisional_not_merged(
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(graph_backend, store)
 
-    first = await resolver.resolve([ex("1", "John Smith", "Person")])
-    second = await resolver.resolve([ex("1", "John Smith", "Person", episode_id="ep2")])
+    first = await resolver.resolve([ex("1", "John Smith", "Person")], WORLD.links)
+    second = await resolver.resolve(
+        [ex("1", "John Smith", "Person", episode_id="ep2")], WORLD.links
+    )
 
     assert first.entities[0].entity_id != second.entities[0].entity_id
     decision = second.decisions[0]
@@ -217,21 +225,20 @@ async def test_equal_identity_attribute_matches_a_person_automatically(
 ):
     """An equal identity attribute settles a key hit that needs verification."""
     policy = ResolutionPolicy(
-        types={
-            "Person": TypePolicy(
-                mode=ResolutionMode.VERIFY_ALWAYS, identity_attrs=("email",)
-            )
-        }
+        types={"Person": TypePolicy(mode=ResolutionMode.VERIFY_ALWAYS)}
     )
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(graph_backend, store, policy=policy)
 
-    first = await resolver.resolve([ex("1", "John Smith", "Person", email="J@x.org")])
+    first = await resolver.resolve(
+        [ex("1", "John Smith", "Person", email="J@x.org")], WORLD.links
+    )
     other = await resolver.resolve(
-        [ex("1", "Johnny S", "Person", episode_id="ep2", email="j@x.org")]
+        [ex("1", "Johnny S", "Person", episode_id="ep2", email="j@x.org")], WORLD.links
     )
     third = await resolver.resolve(
-        [ex("1", "John Smith", "Person", episode_id="ep3", email="j@x.org")]
+        [ex("1", "John Smith", "Person", episode_id="ep3", email="j@x.org")],
+        WORLD.links,
     )
 
     assert first.entities[0].entity_id != other.entities[0].entity_id
@@ -243,13 +250,15 @@ async def test_conflicting_identity_attribute_vetoes_a_key_hit(
     graph_backend: GraphBackend,
 ):
     """A conflicting identity attribute turns a key hit into a new entity."""
-    policy = ResolutionPolicy(types={"Person": TypePolicy(identity_attrs=("email",))})
     store = (await graph_backend.open_stores()).resolver_store
-    resolver = await make(graph_backend, store, policy=policy)
+    resolver = await make(graph_backend, store)
 
-    first = await resolver.resolve([ex("1", "John Smith", "Person", email="a@x.org")])
+    first = await resolver.resolve(
+        [ex("1", "John Smith", "Person", email="a@x.org")], WORLD.links
+    )
     second = await resolver.resolve(
-        [ex("1", "John Smith", "Person", episode_id="ep2", email="b@x.org")]
+        [ex("1", "John Smith", "Person", episode_id="ep2", email="b@x.org")],
+        WORLD.links,
     )
 
     assert first.entities[0].entity_id != second.entities[0].entity_id
@@ -262,9 +271,11 @@ async def test_digit_only_difference_never_auto_merges(graph_backend: GraphBacke
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(graph_backend, store)
 
-    first = await resolver.resolve([ex("1", "Quarterly Report Q3 2023", "Work")])
+    first = await resolver.resolve(
+        [ex("1", "Quarterly Report Q3 2023", "Work")], WORLD.links
+    )
     second = await resolver.resolve(
-        [ex("1", "Quarterly Report Q3 2024", "Work", episode_id="ep2")]
+        [ex("1", "Quarterly Report Q3 2024", "Work", episode_id="ep2")], WORLD.links
     )
 
     assert first.entities[0].entity_id != second.entities[0].entity_id
@@ -278,8 +289,10 @@ async def test_fuzzy_hyphen_variant_matches_with_a_jaccard_score(
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(graph_backend, store)
 
-    first = await resolver.resolve([ex("1", "Joe Michaels", "Work")])
-    second = await resolver.resolve([ex("1", "Joe-Michaels", "Work", episode_id="ep2")])
+    first = await resolver.resolve([ex("1", "Joe Michaels", "Work")], WORLD.links)
+    second = await resolver.resolve(
+        [ex("1", "Joe-Michaels", "Work", episode_id="ep2")], WORLD.links
+    )
 
     assert first.entities[0].entity_id == second.entities[0].entity_id
     decision = second.decisions[0]
@@ -294,8 +307,10 @@ async def test_near_name_below_jaccard_threshold_is_not_merged(
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(graph_backend, store)
 
-    first = await resolver.resolve([ex("1", "Joe Michaels", "Work")])
-    second = await resolver.resolve([ex("1", "Joe Michael", "Work", episode_id="ep2")])
+    first = await resolver.resolve([ex("1", "Joe Michaels", "Work")], WORLD.links)
+    second = await resolver.resolve(
+        [ex("1", "Joe Michael", "Work", episode_id="ep2")], WORLD.links
+    )
 
     assert first.entities[0].entity_id != second.entities[0].entity_id
 
@@ -305,8 +320,10 @@ async def test_short_low_entropy_names_are_exact_only(graph_backend: GraphBacken
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(graph_backend, store)
 
-    first = await resolver.resolve([ex("1", "Sam", "Work")])
-    second = await resolver.resolve([ex("1", "Sammy", "Work", episode_id="ep2")])
+    first = await resolver.resolve([ex("1", "Sam", "Work")], WORLD.links)
+    second = await resolver.resolve(
+        [ex("1", "Sammy", "Work", episode_id="ep2")], WORLD.links
+    )
 
     assert first.entities[0].entity_id != second.entities[0].entity_id
 
@@ -318,12 +335,15 @@ async def test_unknown_candidate_type_is_promoted_to_the_specific_type(
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(graph_backend, store)
 
-    first = await resolver.resolve([ex("1", "Berlin", "Unknown")])
-    second = await resolver.resolve([ex("1", "Berlin", "City", episode_id="ep2")])
+    first = await resolver.resolve([ex("1", "Berlin", "Unknown")], WORLD.links)
+    second = await resolver.resolve(
+        [ex("1", "Berlin", "City", episode_id="ep2")], WORLD.links
+    )
 
     assert first.entities[0].entity_id == second.entities[0].entity_id
     [entity] = await store.active_entities()
     assert entity.type_label == "City"
+    assert entity.ontology_type_id == WORLD.ids["City"]
 
 
 async def test_ontology_uri_match_beats_name(graph_backend: GraphBackend):
@@ -331,7 +351,9 @@ async def test_ontology_uri_match_beats_name(graph_backend: GraphBackend):
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(graph_backend, store)
 
-    first = await resolver.resolve([ex("1", "Big Apple", "City", uri="http://x/nyc")])
+    first = await resolver.resolve(
+        [ex("1", "Big Apple", "City", uri="http://x/nyc")], WORLD.links
+    )
     second = await resolver.resolve(
         [
             ex(
@@ -341,7 +363,8 @@ async def test_ontology_uri_match_beats_name(graph_backend: GraphBackend):
                 episode_id="ep2",
                 uri="http://x/nyc",
             )
-        ]
+        ],
+        WORLD.links,
     )
 
     assert first.entities[0].entity_id == second.entities[0].entity_id
@@ -354,7 +377,7 @@ async def test_surface_forms_become_aliases_and_resolve_next_time(
     """An alias written for an entity resolves a later mention."""
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(graph_backend, store)
-    first = await resolver.resolve([ex("1", "New York City", "City")])
+    first = await resolver.resolve([ex("1", "New York City", "City")], WORLD.links)
     target = first.entities[0].entity_id
     await store.write_entity_batch(
         [],
@@ -370,7 +393,9 @@ async def test_surface_forms_become_aliases_and_resolve_next_time(
         ],
     )
 
-    second = await resolver.resolve([ex("1", "NYC", "City", episode_id="ep3")])
+    second = await resolver.resolve(
+        [ex("1", "NYC", "City", episode_id="ep3")], WORLD.links
+    )
 
     assert second.entities[0].entity_id == target
     assert second.decisions[0].method is DecisionMethod.ALIAS
@@ -385,8 +410,8 @@ async def test_concurrent_resolves_of_one_new_name_end_with_one_entity(
     second = await make(graph_backend, store)
 
     await asyncio.gather(
-        first.resolve([ex("1", "Acme")]),
-        second.resolve([ex("1", "Acme", episode_id="ep2")]),
+        first.resolve([ex("1", "Acme")], WORLD.links),
+        second.resolve([ex("1", "Acme", episode_id="ep2")], WORLD.links),
     )
 
     assert await count_active(store) == 1
@@ -399,8 +424,8 @@ async def test_empty_name_is_skipped_and_empty_batch_is_a_noop(
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(graph_backend, store)
 
-    assert (await resolver.resolve([])).entities == []
-    assert (await resolver.resolve([ex("1", "   ")])).entities == []
+    assert (await resolver.resolve([], WORLD.links)).entities == []
+    assert (await resolver.resolve([ex("1", "   ")], WORLD.links)).entities == []
     assert await count_active(store) == 0
 
 
@@ -415,7 +440,8 @@ async def test_same_local_id_from_different_episodes_stay_apart(
         [
             ex("1", "Acme", episode_id="a"),
             ex("1", "Globex", episode_id="b"),
-        ]
+        ],
+        WORLD.links,
     )
 
     assert result.entities[0].entity_id != result.entities[1].entity_id
@@ -435,8 +461,12 @@ async def test_two_fresh_tenants_write_byte_identical_ids_with_a_fixed_clock(
         graph_backend, (await graph_backend.open_stores()).resolver_store, clock=clock
     )
 
-    one = await first.resolve([ex("1", "Acme", "Company", episode_id="ep1")])
-    two = await second.resolve([ex("1", "Acme", "Company", episode_id="ep1")])
+    one = await first.resolve(
+        [ex("1", "Acme", "Company", episode_id="ep1")], WORLD.links
+    )
+    two = await second.resolve(
+        [ex("1", "Acme", "Company", episode_id="ep1")], WORLD.links
+    )
 
     assert one.entities == two.entities
     assert one.aliases == two.aliases
@@ -451,7 +481,9 @@ async def test_entity_id_is_the_literal_uuid5_of_the_episode_and_local_id(
         graph_backend,
     )
 
-    result = await resolver.resolve([ex("e0", "Acme", "Company", episode_id="ep1")])
+    result = await resolver.resolve(
+        [ex("e0", "Acme", "Company", episode_id="ep1")], WORLD.links
+    )
 
     assert result.entities[0].entity_id == entity_id("ep1", "e0")
     assert result.entities[0].entity_id == "408424a3-4698-5fec-b7d9-2d221ebd4221"
@@ -463,10 +495,10 @@ async def test_second_resolve_over_an_episode_raises_and_writes_nothing(
     """Mentions are the commit marker, so a second run is refused."""
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(graph_backend, store)
-    await resolver.resolve([ex("1", "Acme")])
+    await resolver.resolve([ex("1", "Acme")], WORLD.links)
 
     with pytest.raises(EpisodeAlreadyResolvedError) as raised:
-        await resolver.resolve([ex("2", "Globex")])
+        await resolver.resolve([ex("2", "Globex")], WORLD.links)
 
     assert raised.value.episode_id == "ep1"
     assert await count_active(store) == 1
@@ -479,7 +511,7 @@ async def test_vector_search_failure_aborts_the_episode_untouched(
     """A vector error is not treated as an empty candidate list."""
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(graph_backend, store)
-    await resolver.resolve([ex("1", "Acme")])
+    await resolver.resolve([ex("1", "Acme")], WORLD.links)
 
     async def boom(*args: object, **kwargs: object) -> list[object]:
         raise VectorStoreError("down")
@@ -487,7 +519,7 @@ async def test_vector_search_failure_aborts_the_episode_untouched(
     monkeypatch.setattr(resolver.vectors, "search", boom)
 
     with pytest.raises(VectorStoreError):
-        await resolver.resolve([ex("1", "Globex", episode_id="ep2")])
+        await resolver.resolve([ex("1", "Globex", episode_id="ep2")], WORLD.links)
 
     assert await count_active(store) == 1
     assert not await store.episode_resolution_state("ep2")
@@ -508,9 +540,7 @@ async def test_candidate_cap_and_verifier_order_follow_rank_key(
     resolver = await make(
         graph_backend, store, vectors=vector_store, inline=True, models=models
     )
-    groups = build_groups(
-        [ex("1", QUERY, "Company")], resolver.policy, resolver.relations
-    )
+    groups = build_groups([ex("1", QUERY, "Company")], resolver.policy, WORLD.links)
     candidates, _ = await candidate_pass(
         groups,
         store=store,
@@ -526,7 +556,7 @@ async def test_candidate_cap_and_verifier_order_follow_rank_key(
         "c02",
     ]
 
-    result = await resolver.resolve([ex("1", QUERY, "Company")])
+    result = await resolver.resolve([ex("1", QUERY, "Company")], WORLD.links)
 
     assert seen == ["Quasar", "Nimbus", "Vortex"]
     assert result.decisions[0].outcome is Outcome.CREATED_PROVISIONAL

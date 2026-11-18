@@ -13,6 +13,7 @@ from ontogr_mem.data_models.entities import (
     VerdictSource,
     VerifyStatus,
 )
+from ontogr_mem.ontology.links import TypeLinks, TypeRel
 from ontogr_mem.resolution.blocking import BlockIndex
 from ontogr_mem.resolution.config import Budget
 from ontogr_mem.resolution.errors import (
@@ -27,7 +28,6 @@ from ontogr_mem.resolution.keys import (
 from ontogr_mem.resolution.merge import pick_survivor, survivor_order
 from ontogr_mem.resolution.policy import (
     ResolutionMode,
-    TypeRel,
     identity_agree,
     identity_conflict,
 )
@@ -79,9 +79,9 @@ def _pair(a: str, b: str) -> Pair:
     return (a, b) if a < b else (b, a)
 
 
-def _vetoed(resolver: "EntityResolver", a: Entity, b: Entity) -> bool:
+def _vetoed(links: TypeLinks, a: Entity, b: Entity) -> bool:
     if (
-        resolver.policy.relation(a.type_label, b.type_label, resolver.relations)
+        links.relation(a.ontology_type_id, b.ontology_type_id)
         is TypeRel.DISTINCT
     ):
         return True
@@ -94,11 +94,12 @@ def _vetoed(resolver: "EntityResolver", a: Entity, b: Entity) -> bool:
 
 def _rule_same(
     resolver: "EntityResolver",
+    links: TypeLinks,
     a: Entity,
     b: Entity,
     keys: dict[str, set[str]],
 ) -> bool:
-    if resolver.policy.relation(a.type_label, b.type_label, resolver.relations) not in (
+    if links.relation(a.ontology_type_id, b.ontology_type_id) not in (
         TypeRel.SAME,
         TypeRel.NESTED,
     ):
@@ -216,7 +217,7 @@ async def _candidates(
 
 
 async def run_deduplication(
-    resolver: "EntityResolver", *, plan_only: bool, budget: Budget
+    resolver: "EntityResolver", links: TypeLinks, *, plan_only: bool, budget: Budget
 ) -> ConsolidationReport:
     """Run one deduplication pass over the tenant's active entities."""
     report = ConsolidationReport(plan_only=plan_only)
@@ -224,8 +225,8 @@ async def run_deduplication(
     report.selected = len(selected)
     if not selected:
         return report
-    signals = await _pair_signals(resolver, selected, entities, index, alias_loose_keys)
-    known, to_ask = await _classify(resolver, report, signals, entities)
+    signals = await _pair_signals(resolver, links, selected, entities, index, alias_loose_keys)
+    known, to_ask = await _classify(resolver, links, report, signals, entities)
     if plan_only:
         same = {pair for pair, verdict in known.items() if verdict is VerdictKind.SAME}
         report.plan = _plan(entities, same, resolver.settings.cluster_cap)
@@ -244,7 +245,7 @@ async def run_deduplication(
     }
     same = {pair for pair, verdict in known.items() if verdict is VerdictKind.SAME}
     report.plan = _plan(entities, same, resolver.settings.cluster_cap)
-    await _apply(resolver, report)
+    await _apply(resolver, links, report)
     await _mark_checked(
         resolver,
         [entity for entity in selected if entity.entity_id not in unresolved_entities],
@@ -275,6 +276,7 @@ async def _context(
 
 async def _pair_signals(
     resolver: "EntityResolver",
+    links: TypeLinks,
     selected: list[Entity],
     entities: dict[str, Entity],
     index: BlockIndex,
@@ -299,7 +301,7 @@ async def _pair_signals(
             other = entities.get(other_id)
             if other is None or other.status is not EntityStatus.ACTIVE:
                 continue
-            if _vetoed(resolver, entity, other):
+            if _vetoed(links, entity, other):
                 continue
             pair = _pair(entity.entity_id, other_id)
             signals[pair] = _merge(signals.get(pair, PairSignals()), value)
@@ -308,6 +310,7 @@ async def _pair_signals(
 
 async def _classify(
     resolver: "EntityResolver",
+    links: TypeLinks,
     report: ConsolidationReport,
     signals: dict[Pair, PairSignals],
     entities: dict[str, Entity],
@@ -340,7 +343,7 @@ async def _classify(
         if stored is not None and stored.inputs_hash == inputs_hash(a, b):
             report.pairs_skipped_fresh += 1
             known[pair] = stored.verdict
-        elif _rule_same(resolver, a, b, keys):
+        elif _rule_same(resolver, links, a, b, keys):
             report.pairs_rule_same += 1
             known[pair] = VerdictKind.SAME
         else:
@@ -387,14 +390,10 @@ def _pair_input(
     resolver: "EntityResolver", a: Entity, b: Entity, signals: PairSignals
 ) -> PairInput:
     """Build one verifier input with the votes its signals need."""
-    cross = (
-        resolver.policy.relation(a.type_label, b.type_label, resolver.relations)
-        is TypeRel.FAMILY
-    )
     return PairInput(
         a,
         b,
-        two_votes=needs_two_votes(signals, resolver.settings, cross),
+        two_votes=needs_two_votes(signals, resolver.settings),
         cosine=signals.cosine,
         jaccard=signals.jaccard,
     )
@@ -448,12 +447,15 @@ async def _store_verdicts(
         await resolver.store.write_verdicts(verdicts)
 
 
-async def _apply(resolver: "EntityResolver", report: ConsolidationReport) -> None:
+async def _apply(
+    resolver: "EntityResolver", links: TypeLinks, report: ConsolidationReport
+) -> None:
     """Merge every planned clique."""
     for planned in report.plan:
         for absorbed_id in planned.absorbed_ids:
             try:
                 record = await resolver.merge(
+                    links,
                     planned.survivor_id,
                     absorbed_id,
                     actor="resolver",

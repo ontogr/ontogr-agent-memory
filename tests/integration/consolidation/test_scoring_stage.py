@@ -10,6 +10,7 @@ from ontogr_mem.consolidation.stages.scoring import ScoringStage
 from tests.support.consolidation import ConsWorld, new_world
 from tests.support.graph_backend import GraphBackend
 from tests.support.scripted_model import scripted_role_models
+from tests.support.type_world import WORLD
 from tests.unit.temporal.helpers import at, obs
 
 
@@ -21,7 +22,7 @@ def ctx_for(world: ConsWorld) -> StageContext:
         store=world.store,
         settings=world.settings,
         models=scripted_role_models(),
-        resolution=world.resolution,
+        resolution=world.resolution.linked(WORLD.links),
         temporal=world.temporal,
     )
 

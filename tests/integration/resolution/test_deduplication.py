@@ -23,6 +23,8 @@ from tests.contracts.resolver_store import alias, entity, mention
 from tests.integration.resolution.resolver_helpers import make
 from tests.support.embedder import MockEmbedder, RecordingEmbedder
 from tests.support.graph_backend import GraphBackend
+from tests.support.type_world import WORLD
+from tests.unit.resolution.helpers import entity as typed_entity
 from tests.unit.resolution.helpers import oracle_models
 
 
@@ -48,12 +50,53 @@ async def _duplicate_store(graph_backend: GraphBackend) -> ResolverStore:
     return store
 
 
+async def test_related_type_pairs_merge_by_the_key_rule(graph_backend: GraphBackend):
+    """A Contract and a PurchaseOrder with one name merge without a model."""
+    store = (await graph_backend.open_stores()).resolver_store
+    await store.write_entity_batch(
+        [
+            typed_entity("e1", name="Acme", type_label="Contract"),
+            typed_entity("e2", name="acme", type_label="PurchaseOrder"),
+        ],
+        [],
+    )
+    resolver = await make(store)
+
+    report = await resolver.deduplicate(WORLD.links)
+
+    assert report.pairs_rule_same == 1
+    assert report.pairs_merged == 1
+
+
+async def test_distinct_type_pairs_with_one_name_stay_separate(
+    graph_backend: GraphBackend,
+):
+    """A Company and a City with one name are not merged."""
+    store = (await graph_backend.open_stores()).resolver_store
+    await store.write_entity_batch(
+        [
+            typed_entity("e1", name="Hydra", type_label="Company"),
+            typed_entity("e2", name="Hydra", type_label="City"),
+        ],
+        [],
+    )
+    resolver = await make(store)
+
+    report = await resolver.deduplicate(WORLD.links)
+
+    assert report.pairs_merged == 0
+    assert all(
+        item.status is EntityStatus.ACTIVE
+        for item in await store.get_entities(["e1", "e2"])
+    )
+
+
 async def test_rule_same_pairs_are_merged_without_a_model(graph_backend: GraphBackend):
     """A merge leaves its survivor dirty until a later pass checks it."""
     store = await _duplicate_store(graph_backend)
     resolver = await make(store)
 
-    report = await resolver.deduplicate()
+    report = await resolver.deduplicate(WORLD.links)
 
     assert report.pairs_rule_same == 1
     assert report.pairs_merged == 1
@@ -68,12 +111,12 @@ async def test_rule_same_pairs_are_merged_without_a_model(graph_backend: GraphBa
     assert survivor.last_checked_version == 0
     assert survivor.revision > survivor.last_checked_version
 
-    settled = await resolver.deduplicate()
+    settled = await resolver.deduplicate(WORLD.links)
 
     assert settled.selected == 1
     survivor = (await store.get_entities([survivor_id]))[0]
     assert survivor.last_checked_version == survivor.revision
-    assert (await resolver.deduplicate()).selected == 0
+    assert (await resolver.deduplicate(WORLD.links)).selected == 0
 
 
 async def test_plan_only_reports_the_plan_without_writing(graph_backend: GraphBackend):
@@ -88,7 +131,9 @@ async def test_plan_only_reports_the_plan_without_writing(graph_backend: GraphBa
     before_verdict = await store.live_verdict("e1", "e2")
     resolver = await make(store)
 
-    reports = [await resolver.deduplicate(plan_only=True) for _ in range(2)]
+    reports = [
+        await resolver.deduplicate(WORLD.links, plan_only=True) for _ in range(2)
+    ]
 
     assert reports[0].plan
     assert reports[1].plan == reports[0].plan
@@ -103,7 +148,7 @@ async def test_selected_entities_are_marked_checked(graph_backend: GraphBackend)
     await store.write_entity_batch([entity("e1", name="Acme")], [])
     resolver = await make(store)
 
-    await resolver.deduplicate()
+    await resolver.deduplicate(WORLD.links)
 
     survivor = (await store.get_entities(["e1"]))[0]
     assert survivor.last_checked_version == survivor.revision
@@ -125,7 +170,7 @@ async def test_alias_only_batch_reopens_checked_owner(graph_backend: GraphBacken
 
     owner = (await store.get_entities(["e1"]))[0]
     counterpart = (await store.get_entities(["e2"]))[0]
-    report = await (await make(store)).deduplicate()
+    report = await (await make(store)).deduplicate(WORLD.links)
 
     assert owner.revision > owner.last_checked_version
     assert counterpart.last_checked_version == counterpart.revision
@@ -181,7 +226,7 @@ async def test_checkpoint_cannot_split_entity_and_alias_batch(
 
     try:
         await asyncio.wait_for(pausing_runner.write_finished.wait(), timeout=10)
-        report = await resolver.deduplicate()
+        report = await resolver.deduplicate(WORLD.links)
     finally:
         pausing_runner.resume.set()
         await batch
@@ -443,7 +488,7 @@ async def test_pass_continues_when_a_merge_loses_a_concurrent_write(
     )
     resolver = await make(racing_store)
 
-    report = await resolver.deduplicate()
+    report = await resolver.deduplicate(WORLD.links)
 
     assert report.pairs_merged == 0
     assert report.pairs_rejected == 0
@@ -452,7 +497,7 @@ async def test_pass_continues_when_a_merge_loses_a_concurrent_write(
     assert all(item.status is EntityStatus.ACTIVE for item in stored)
     assert any(item.revision > item.last_checked_version for item in stored)
 
-    second = await resolver.deduplicate()
+    second = await resolver.deduplicate(WORLD.links)
 
     assert second.pairs_merged == 1
 
@@ -580,9 +625,9 @@ async def test_completed_default_pass_does_not_reselect_checked_entities(
     resolver = await make(store, embedder=embedder)
     embedder.embedded.clear()
 
-    first = await resolver.deduplicate()
+    first = await resolver.deduplicate(WORLD.links)
     selected = (await store.get_entities(["e1"]))[0]
-    second = await resolver.deduplicate()
+    second = await resolver.deduplicate(WORLD.links)
 
     assert first.selected == 1
     assert selected.last_checked_version == selected.revision
@@ -636,7 +681,7 @@ async def test_alias_matches_in_either_direction_without_stored_vectors(
     resolver = await make(store, embedder=embedder)
     embedder.embedded.clear()
 
-    report = await resolver.deduplicate()
+    report = await resolver.deduplicate(WORLD.links)
 
     assert report.selected == 1
     assert after_alias[alias_entity_id].revision > checked[alias_entity_id].revision
@@ -685,7 +730,7 @@ async def test_alias_query_uses_its_key_for_jaccard_without_stored_vectors(
     resolver = await make(store, models=models, embedder=embedder)
     embedder.embedded.clear()
 
-    report = await resolver.deduplicate()
+    report = await resolver.deduplicate(WORLD.links)
 
     assert report.selected == 1
     assert selected.revision < candidate.revision
@@ -737,7 +782,7 @@ async def test_embedding_failure_leaves_ann_candidates_for_retry(
     embedder.fail_query = True
     before = {item.entity_id: item.last_checked_version for item in entities}
     with pytest.raises(EmbeddingFailedError):
-        await resolver.deduplicate()
+        await resolver.deduplicate(WORLD.links)
 
     after_failure = await store.get_entities(["e1", "e2"])
     assert {
@@ -745,7 +790,7 @@ async def test_embedding_failure_leaves_ann_candidates_for_retry(
     } == before
     assert await resolver.store.live_verdict("e1", "e2") is None
 
-    report = await resolver.deduplicate()
+    report = await resolver.deduplicate(WORLD.links)
 
     assert report.pairs_considered == 1
     assert report.pairs_asked == 1
@@ -772,7 +817,7 @@ async def test_budget_deferred_pair_stays_dirty_until_a_later_verification(
     for item in await store.get_entities(["e1", "e2"]):
         await resolver.embed(item)
 
-    deferred = await resolver.deduplicate(budget=Budget(max_llm_pairs=0))
+    deferred = await resolver.deduplicate(WORLD.links, budget=Budget(max_llm_pairs=0))
 
     assert deferred.pairs_considered == 1
     assert deferred.pairs_asked == 0
@@ -780,7 +825,7 @@ async def test_budget_deferred_pair_stays_dirty_until_a_later_verification(
     assert [item.last_checked_version for item in after_deferred] == [0, 0]
     assert await store.live_verdict("e1", "e2") is None
 
-    retried = await resolver.deduplicate(budget=Budget(max_llm_pairs=1))
+    retried = await resolver.deduplicate(WORLD.links, budget=Budget(max_llm_pairs=1))
 
     assert retried.pairs_asked == 1
     assert retried.pairs_rejected == 1
@@ -816,7 +861,7 @@ async def test_concurrent_entity_update_is_not_checkpointed_from_an_old_snapshot
     resolver = await make(store, embedder=embedder)
     selected = (await store.get_entities(["e1"]))[0]
     embedder.pause_query = True
-    run = asyncio.create_task(resolver.deduplicate())
+    run = asyncio.create_task(resolver.deduplicate(WORLD.links))
 
     try:
         await asyncio.wait_for(embedder.query_started.wait(), timeout=5)
@@ -855,7 +900,7 @@ async def test_a_blocked_pair_is_judged_on_its_jaccard_and_not_on_a_cosine(
     models, scripted = oracle_models(lambda a, b: True)
     resolver = await make(store, models=models)
 
-    report = await resolver.deduplicate()
+    report = await resolver.deduplicate(WORLD.links)
 
     assert len(scripted.calls) == 1
     assert "jaccard=" in scripted.calls[0].prompt

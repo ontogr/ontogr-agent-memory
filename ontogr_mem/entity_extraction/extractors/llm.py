@@ -26,6 +26,7 @@ from ontogr_mem.llm import ModelRole, RoleModels, run_agent
 
 
 log = logging.getLogger(__name__)
+MAX_ATTRIBUTE_CHARS = 256
 
 
 class LLMExtractor(EntityExtractor):
@@ -135,10 +136,28 @@ def bind_entities(
         )
         type_id = item.type_id if confidence >= settings.threshold else UNKNOWN_TYPE_ID
         proposed = (item.type_label or "").strip()
+        identity_names = {
+            name.casefold(): name for name in types.identity_names(type_id)
+        }
+        attributes: dict[str, str] = {}
+        for raw_name, raw_value in item.attributes.items():
+            declared = identity_names.get(raw_name.strip().casefold())
+            value = raw_value.strip()
+            if (
+                declared is not None
+                and value
+                and len(value) <= MAX_ATTRIBUTE_CHARS
+                and find_spans(text, value)
+            ):
+                attributes.setdefault(declared, value)
         name_key = normalize_name(name)
         if (index := seen.get((name_key, type_id))) is not None:
             prior = out[index]
-            out[index] = replace(prior, confidence=max(prior.confidence, confidence))
+            out[index] = replace(
+                prior,
+                confidence=max(prior.confidence, confidence),
+                attributes={**attributes, **prior.attributes},
+            )
             ids.append(out[index].local_id)
             continue
         seen[(name_key, type_id)] = len(out)
@@ -154,6 +173,7 @@ def bind_entities(
                 proposed_type=proposed if item.type_id == UNKNOWN_TYPE_ID else "",
                 description=item.description,
                 spans=tuple(spans),
+                attributes=attributes,
             )
         )
         ids.append(local_id)

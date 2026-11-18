@@ -4,6 +4,7 @@ import pytest
 from pydantic_ai.exceptions import ModelHTTPError
 
 from ontogr_mem.data_models import UNKNOWN_TYPE_ID, Method
+from ontogr_mem.data_models import EntityType, TypeCatalog
 from ontogr_mem.entity_extraction.extractors import LLMExtractor
 from ontogr_mem.entity_extraction.settings import EntityExtractionSettings
 from ontogr_mem.llm import ModelCallFailedError, ModelOutputError
@@ -90,6 +91,34 @@ class TestLLMExtractor:
         result = await LLMExtractor(models).extract(text_episode(TEXT), catalog())
 
         assert result.entities[0].type_id == UNKNOWN_TYPE_ID
+
+    async def test_binds_only_grounded_identity_attributes(self):
+        models, _ = entity_models(
+            [reply({"name": "Ana", "type_id": 0, "confidence": 0.9,
+                    "attributes": {" Email ": "ana@example.com", "role": "admin",
+                                   "email": "missing@example.com"}})]
+        )
+        result = await LLMExtractor(models).extract(
+            text_episode("Ana uses ana@example.com."),
+            TypeCatalog([EntityType(0, "Person", identity_attributes=("email",))], []),
+        )
+        assert result.entities[0].attributes == {"email": "ana@example.com"}
+
+    async def test_demotion_discards_attributes_and_duplicate_keeps_first(self):
+        models, _ = entity_models(
+            [reply(
+                {"name": "Ana", "type_id": 0, "confidence": 0.6,
+                 "attributes": {"email": "ana@example.com"}},
+                {"name": "Ana", "type_id": -1, "confidence": 0.9,
+                 "attributes": {"email": "other@example.com"}},
+            )]
+        )
+        result = await LLMExtractor(models).extract(
+            text_episode("Ana uses ana@example.com and other@example.com."),
+            TypeCatalog([EntityType(0, "Person", identity_attributes=("email",))], []),
+        )
+        assert result.entities[0].type_id == UNKNOWN_TYPE_ID
+        assert result.entities[0].attributes == {}
 
     async def test_same_name_with_distinct_types_stays_separate(self):
         """Two catalog types keep two entities for the same name."""

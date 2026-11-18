@@ -30,6 +30,7 @@ def entity(
     """Build a resolver entity for a lane result."""
     return Entity(
         entity_id=entity_id,
+        ontology_type_id=1,
         type_label="Person",
         canonical_name=name,
         strict_key=name.casefold(),

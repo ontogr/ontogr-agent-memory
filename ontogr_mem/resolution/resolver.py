@@ -16,6 +16,7 @@ from ontogr_mem.data_models.entities import (
     VerdictKind,
 )
 from ontogr_mem.llm import ModelRole, RoleModels
+from ontogr_mem.ontology.links import TypeLinks
 from ontogr_mem.resolution.candidates import candidate_pass
 from ontogr_mem.resolution.config import Budget, ResolverSettings
 from ontogr_mem.resolution.decision import collect_matches
@@ -29,13 +30,14 @@ from ontogr_mem.resolution.errors import (
 from ontogr_mem.resolution.grouping import Group, build_groups
 from ontogr_mem.resolution.inline_tier import inline_verify
 from ontogr_mem.resolution.keys import entity_text
+from ontogr_mem.resolution.linked import LinkedResolver
 from ontogr_mem.resolution.merge import (
     build_merge_plan,
     build_unmerge_plan,
     is_user,
 )
 from ontogr_mem.resolution.plan import Plan
-from ontogr_mem.resolution.policy import ResolutionPolicy, TypeRelations
+from ontogr_mem.resolution.policy import ResolutionPolicy
 from ontogr_mem.resolution.resolver_store import ResolverStore
 from ontogr_mem.resolution.scoring import Candidate
 from ontogr_mem.resolution.verdicts import apply_verdicts
@@ -100,7 +102,6 @@ class EntityResolver:
         settings: Resolver thresholds and version.
         clock: Time source for every timestamp the resolver writes.
         models: Role-based models used by inline verification.
-        relations: Type ancestry used when comparing labels.
     """
 
     def __init__(
@@ -112,7 +113,6 @@ class EntityResolver:
         clock: Clock,
         *,
         models: RoleModels,
-        relations: TypeRelations | None = None,
     ) -> None:
         """Wire the resolver; a configured resolution role enables verification."""
         self.store = store
@@ -120,7 +120,6 @@ class EntityResolver:
         self.policy = policy
         self.settings = settings
         self.clock = clock
-        self.relations = relations or TypeRelations()
         self._verifier = (
             Verifier(models, settings)
             if models.configured(ModelRole.RESOLUTION)
@@ -134,12 +133,17 @@ class EntityResolver:
         return self._verifier
 
     async def resolve(
-        self, entities: Sequence[ExtractedEntity], *, allow_model: bool = True
+        self,
+        entities: Sequence[ExtractedEntity],
+        links: TypeLinks,
+        *,
+        allow_model: bool = True,
     ) -> ResolutionResult:
         """Link a batch of extracted entities and write their mentions.
 
         Args:
             entities: Extracted entities of one or more episodes.
+            links: Type compatibility and identity names of one ontology snapshot.
             allow_model: Whether inline verification may call the resolution
                 model. ``False`` skips inline verification for this call only.
                 When no verifier runs, a name that matches several stored
@@ -150,7 +154,7 @@ class EntityResolver:
         if not batch:
             return ResolutionResult()
         async with self._lock:
-            groups = build_groups(batch, self.policy, self.relations)
+            groups = build_groups(batch, self.policy, links)
             if not groups:
                 return ResolutionResult()
             episode_ids = sorted(
@@ -185,13 +189,18 @@ class EntityResolver:
                     store=self.store,
                     policy=self.policy,
                     settings=self.settings,
-                    relations=self.relations,
+                    links=links,
                     verifier=self._verifier,
                     incomplete=incomplete,
                     clock=self.clock,
                 )
             return await self._write(
-                groups, candidates, verified, incomplete, settle=not verifier_runs
+                groups,
+                candidates,
+                verified,
+                incomplete,
+                links,
+                settle=not verifier_runs,
             )
 
     async def _write(
@@ -200,6 +209,7 @@ class EntityResolver:
         candidates: Sequence[Sequence[Candidate]],
         verified: dict[int, dict[str, VerdictKind]],
         incomplete: bool,
+        links: TypeLinks,
         *,
         settle: bool,
     ) -> ResolutionResult:
@@ -217,7 +227,7 @@ class EntityResolver:
                 view,
                 policy=self.policy,
                 settings=self.settings,
-                relations=self.relations,
+                links=links,
                 settle=settle,
             )
             plan: Plan = apply_verdicts(collected, verified.get(index, {}), incomplete)
@@ -226,7 +236,7 @@ class EntityResolver:
                 group,
                 plan,
                 settings=self.settings,
-                relations=self.relations,
+                links=links,
                 clock=self.clock,
                 incomplete=incomplete,
             )
@@ -245,6 +255,7 @@ class EntityResolver:
 
     async def merge(
         self,
+        links: TypeLinks,
         survivor_id: str,
         absorbed_id: str,
         *,
@@ -260,8 +271,7 @@ class EntityResolver:
                 )
         plan = await build_merge_plan(
             self.store,
-            self.policy,
-            self.relations,
+            links,
             survivor_id,
             absorbed_id,
             clock=self.clock,
@@ -347,12 +357,16 @@ class EntityResolver:
         return await self.store.active_entities()
 
     async def deduplicate(
-        self, *, plan_only: bool = False, budget: Budget | None = None
+        self, links: TypeLinks, *, plan_only: bool = False, budget: Budget | None = None
     ) -> ConsolidationReport:
         """Run one deduplication pass over the tenant's active entities."""
         return await run_deduplication(
-            self, plan_only=plan_only, budget=budget or Budget()
+            self, links, plan_only=plan_only, budget=budget or Budget()
         )
+
+    def linked(self, links: TypeLinks) -> LinkedResolver:
+        """Bind ontology type links for consolidation operations."""
+        return LinkedResolver(self, links)
 
     async def embed(self, entity: Entity) -> None:
         """Write the entity vector if it is missing or stale."""

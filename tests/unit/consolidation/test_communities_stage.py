@@ -75,6 +75,7 @@ def _graph() -> EntityGraph:
     entities = {
         entity_id: Entity(
             entity_id=entity_id,
+            ontology_type_id=1,
             type_label="Thing",
             canonical_name=entity_id,
             strict_key=entity_id,

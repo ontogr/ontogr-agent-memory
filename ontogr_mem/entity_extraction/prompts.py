@@ -32,10 +32,14 @@ entry that fits, and use an entry described as a last resort only when no other 
 entry fits. If none fits, use -1 and put a \
 short type name in "type_label". Never invent ids.
 - "confidence" is your certainty from 0 to 1.
+- An entry in <entity_types> with "identity_attributes" names values that tell two \
+entities of that type apart. Put such a value in "attributes" under its name only \
+when <episode_text> states it, copied exactly as written. Never guess a value. Leave \
+"attributes" empty otherwise.
 - Do not list pronouns, generic nouns or dates unless a type asks for them."""
 ENTITY_ITEM_SHAPE = (
     '{"name": str, "type_id": n, "type_label": str|null, '
-    '"description": str, "confidence": 0..1}'
+    '"description": str, "attributes": {name: str}, "confidence": 0..1}'
 )
 NER_SYSTEM = f"{NER_INTRO}\nRules:\n{NER_REPLY_RULE}\n{NER_RULES}"
 

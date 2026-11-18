@@ -53,6 +53,7 @@ def entity(
     canonical_name = name or entity_id
     return Entity(
         entity_id=entity_id,
+        ontology_type_id=1,
         type_label="Company",
         canonical_name=canonical_name,
         strict_key=canonical_name.casefold(),

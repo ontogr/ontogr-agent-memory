@@ -18,6 +18,9 @@ Users cannot declare a type with one of these labels. Only the catalog itself ow
 ``Unknown`` (entity type id 0).
 """
 
+RESERVED_IDENTITY_NAMES = frozenset({"uri", "actor_id", "role"})
+"""Attribute names the resolver reads directly, so types cannot declare them."""
+
 
 def normalize(text: str) -> str:
     """Fold text for matching: lower case, with spaces and underscores removed."""
