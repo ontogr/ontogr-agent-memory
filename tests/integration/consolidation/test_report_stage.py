@@ -88,7 +88,14 @@ async def test_reports_both_facts_of_an_open_dispute(
     )
     await ingest_city_and_employer(engine)
     facts = await world.temporal_store.facts_of_entities(["ana"])
-    await engine.record_verdicts([verdict(facts[0], facts[1], VerdictKind.UNCERTAIN)])
+    await engine.record_verdicts(
+        [
+            await verdict(
+                world.temporal_store,
+                facts[0], facts[1], VerdictKind.UNCERTAIN, lambda: facts[0].recorded_at
+            )
+        ]
+    )
 
     result = await ReportStage().run(ctx_for(world))
 

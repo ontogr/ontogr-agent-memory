@@ -1,7 +1,7 @@
 """Execute memory write jobs against one tenant runtime."""
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -30,6 +30,7 @@ from ontogr_mem.data_models.facts import (
     Precision,
     TimeBasis,
 )
+from ontogr_mem.data_models.ids import stable_id
 from ontogr_mem.data_models.jobs import Job
 from ontogr_mem.data_models.type_catalog import TypeView
 from ontogr_mem.entity_extraction import EntityExtraction
@@ -161,6 +162,23 @@ async def add_memory(
     _settled(report, allow_skips=text_write or sourced)
     state = await tenant.stores.temporal_store.episode_state(episode.id)
     if tenant.closure is not None and text_write:
+        observations = await tenant.stores.temporal_store.observations_of_episode(
+            episode.id
+        )
+        observation_ids = {observation.obs_id for observation in observations}
+        owned_fact_ids = {
+            stable_id(
+                "fact",
+                observation.slot_key,
+                (
+                    observation.subject_id
+                    if observation.inverse
+                    else observation.object_id
+                ),
+                observation.obs_id,
+            )
+            for observation in observations
+        }
         await engine.closure_pass(
             tenant.closure,
             [
@@ -168,6 +186,8 @@ async def add_memory(
                 for fact in await tenant.stores.temporal_store.facts_of_episode(
                     episode.id
                 )
+                if fact.fact_id in owned_fact_ids
+                and observation_ids.intersection(fact.evidence)
             ],
             max_candidates=tenant.closure_settings.max_candidates,
         )
@@ -204,7 +224,6 @@ async def _prepare_fact(
             projection.ontology, relation, projection.view
         )
         relation_label = relation.label
-        relation_label = ""
     occurred_at = request.reference_time or job.created_at
     statement = request.statement or default_statement(
         request.subject, relation_label, request.object
@@ -522,7 +541,7 @@ async def update_memory(  # noqa: PLR0915
     projection = await tenant.ontology.extraction_view()
     ontology = projection.ontology
     relation = ontology.relation(current.relation_type_id)
-    if relation is None:
+    if relation is None or current.relation_type_id not in projection.relation_ids:
         raise InternalError("fact relation is missing from the ontology")
     names = await _names(tenant, [current.subject_id, current.object_id])
     subject_name = names.get(current.subject_id, current.subject_id)
@@ -626,6 +645,11 @@ async def invalidate_memory(
     )
     episode = await _ingest_draft(tenant, draft)
     projection = await tenant.ontology.extraction_view()
+    if (
+        current.relation_type_id is not None
+        and current.relation_type_id not in projection.relation_ids
+    ):
+        raise InternalError("fact relation is missing from the ontology")
     dense_relation_id = (
         None
         if current.relation_type_id is None
@@ -657,12 +681,7 @@ async def invalidate_memory(
     )
     stabilized = stabilize_facts(assign_ids(episode.id, [extracted]), projection)
     typed_end = stabilized.typed[0]
-    typed_end = typed_end.__class__(
-        typed_end.fact,
-        typed_end.relation_type,
-        typed_end.catalog_version,
-        slot_key=current.slot_key,
-    )
+    typed_end = replace(typed_end, slot_key=current.slot_key)
     refs = _StaticRefs({subject_ref: current.subject_id, object_ref: current.object_id})
     report = await tenant.engine(projection.ontology, refs).ingest([typed_end], episode)
     _settled(report)

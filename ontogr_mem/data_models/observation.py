@@ -57,6 +57,7 @@ class Observation:
 
     Attributes:
         obs_id: Deterministic id; re-ingesting the same statement is idempotent.
+            May be empty when the source has no observation identifier.
         slot_key: Slot this statement belongs to.
         subject_id: Entity on the subject side of the relation.
         object_id: Entity on the object side of the relation.
@@ -69,7 +70,8 @@ class Observation:
         valid_from_precision: Coarsest unit stated for ``valid_from``.
         valid_to: Stated end, or ``None`` for an open end.
         valid_to_precision: Coarsest unit stated for ``valid_to``.
-        time_basis: Where ``valid_from`` came from.
+        time_basis: Whether ``valid_from`` was stated, inferred from a reference
+            time, or absent.
         provenance: Extractor, model and prompt that produced the statement.
         statement: The claim in plain words.
         quote: The episode text that supports the statement.
@@ -77,6 +79,9 @@ class Observation:
         source_system: Source system the statement came from, for trust rules.
         connector: Connector that brought the statement in, for trust rules.
         actor_role: Role of the person or system behind it, for trust rules.
+        fact_kind: Whether the claim is a state or event.
+        modality: Whether the claim is actual, planned, or desired.
+        relation_label: Textual relation when no catalog type applies.
     """
 
     obs_id: str

@@ -57,6 +57,7 @@ def candidate_fact(
         fact_kind=sample.fact_kind,
         modality=sample.modality,
         relation_label=sample.relation_label,
+        time_basis=sample.time_basis,
     )
 
 
@@ -92,6 +93,10 @@ def same_content(old: Fact, new: Fact) -> bool:
         and old.valid_to_precision == new.valid_to_precision
         and old.evidence == new.evidence
         and old.closed_by == new.closed_by
+        and old.time_basis == new.time_basis
+        and old.fact_kind == new.fact_kind
+        and old.modality == new.modality
+        and old.relation_label == new.relation_label
     )
 
 

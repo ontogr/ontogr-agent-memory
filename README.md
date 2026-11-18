@@ -825,7 +825,7 @@ Writes return a `WriteReceipt` with a job id and status. A positive `wait_second
 
 AddMemory writes accept a `role`, which defaults to `user`, and a `speaker`. The speaker is both the actor id and display name. If it is omitted, the service uses the caller id as the actor id and leaves the display name empty. Episode listings and retrieved episode passages include the actor id, display name, and role.
 
-Completed text and message results include `unplaced`, the number of stored facts without a relation type, and `skipped`, counts keyed by remaining temporal skip reason. Events and actual states are visible by default. Planned, conditional and desired facts are stored but hidden from default reads. Facts without a usable stated time start at the episode time and carry the `reference` time basis. Host writes do not call a model judge.
+Completed text and message results include `unplaced`, the number of stored facts without a relation type, and `skipped`, counts keyed by remaining temporal skip reason. Events and actual states are visible by default. Planned, conditional and desired facts are stored but hidden from default reads. Facts with no stated time start at the episode time and carry the `reference` time basis. An invalid stated time is cleared and reported as a time issue. Host writes do not call a model judge.
 
 ### Errors
 

@@ -125,6 +125,8 @@ def _chat_extraction(call: ScriptedCall) -> object:
     The user sentence yields the OWNS fact. The assistant reply is stored as an
     Episode without facts, so its extraction returns empty lists.
     """
+    if "Task: list the existing facts that the new fact contradicts" in call.prompt:
+        return {"contradicted": []}
     # Earlier episodes in the prompt can repeat the user sentence, so only the
     # episode block decides which answer to give.
     if _prompt_block(call.prompt, "episode_text") == _USER_SENTENCE:

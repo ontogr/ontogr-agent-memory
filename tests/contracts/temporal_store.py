@@ -557,7 +557,9 @@ class TemporalStoreContract:
         after_rewrite = await harness.store.episode_state("ep-1")
 
         assert pending == EpisodeState(TemporalStatus.PENDING, None, 2, None, 7)
-        assert committed == EpisodeState(TemporalStatus.COMMITTED, "hash-1")
+        assert committed == EpisodeState(
+            TemporalStatus.COMMITTED, "hash-1", unplaced=2, ontology_version=7
+        )
         assert after_rewrite == committed
 
     async def test_unplaced_fact_metadata_round_trips(self, make_harness):

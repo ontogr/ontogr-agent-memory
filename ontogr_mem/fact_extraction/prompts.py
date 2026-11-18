@@ -88,8 +88,9 @@ def relation_section(view: TypeView | None) -> list[str]:
     """Render relation guidance and the relation catalog when available."""
     if view is None:
         return [
-            "There are no relation types; set relation_type_id and relation_label "
-            "to null."
+            "There are no relation types. Set relation_type_id to null. When a "
+            "fact links exactly two refs, write its relation in relation_label; "
+            "otherwise set relation_label to null."
         ]
     return [
         "Relation types: set relation_type_id to one of these ids when a type "

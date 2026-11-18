@@ -139,6 +139,7 @@ class TypeCatalog:
                 "description": t.description,
                 "source_types": sorted(t.source_types),
                 "target_types": sorted(t.target_types),
+                "symmetric": t.symmetric,
             }
             for t in self.relation_types
         ]

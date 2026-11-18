@@ -83,7 +83,7 @@ def pair_input(
                 if first and first.statement
                 else (
                     f"{fact.subject_id} "
-                    f"{fact.relation_type_id or fact.relation_label or 'related to'} "
+                    f"{fact.relation_type_id if fact.relation_type_id is not None else fact.relation_label or 'related to'} "
                     f"{fact.object_id}"
                 ),
                 interval=_interval(fact),

@@ -132,12 +132,14 @@ class ClosureJudge:
         }
         contradicted: list[str] = []
         invalid_ids = 0
+        seen: set[str] = set()
         for candidate_id in result.output.contradicted:
             fact_id = ids.get(candidate_id)
             if fact_id is None:
                 invalid_ids += 1
-            else:
+            elif fact_id not in seen:
                 contradicted.append(fact_id)
+                seen.add(fact_id)
         return ClosureOutcome(
             contradicted=tuple(contradicted),
             invalid_ids=invalid_ids,

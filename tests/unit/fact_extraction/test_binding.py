@@ -105,6 +105,17 @@ class TestBinding:
         assert f.relation_type_id is None
         assert reasons(bound) == [FactDropReason.WRONG_DIRECTION]
 
+    def test_invalid_type_clears_id_and_keeps_relation_words(self, catalog) -> None:
+        """An invalid dense id leaves the readable relation label on the fact."""
+        bound = bind_facts(
+            fact(relation_type_id=9, relation_label="lives in"),
+            view=TypeView(catalog),
+        )
+        (bound_fact,) = bound.facts
+        assert bound_fact.relation_type_id is None
+        assert bound_fact.relation_label == "lives in"
+        assert reasons(bound) == [FactDropReason.BAD_TYPE_ID]
+
     @pytest.mark.parametrize(
         ("refs", "type_id", "reason"),
         [

@@ -257,10 +257,11 @@ def bind_host_facts(
 ) -> BoundHostFacts:
     """Bind grounded host facts to the episode and merge exact duplicates.
 
-    Each input goes through the same binding as model-extracted facts. That
-    binding clears a bad type or time instead of dropping the fact, but a host
-    fact must be kept whole or not at all, so any problem it reports drops the
-    input with the first reported reason. Kept facts get `Method.RECORD`.
+    Each input goes through the same binding as model-extracted facts. A host
+    fact is dropped for self-relations, unbindable or out-of-order times,
+    event intervals, or unavailable or invalid type information. Other binding
+    drops, such as an unplaced relation, do not drop the fact. Kept facts get
+    `Method.RECORD`.
     The binding requires a time phrase from the text for any stated time. A fact
     with `valid_from` or `valid_to` uses its evidence quote, which is already
     grounded in the episode, as that phrase. A fact without times has none.

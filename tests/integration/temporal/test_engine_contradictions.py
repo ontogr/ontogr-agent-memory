@@ -100,7 +100,7 @@ async def test_record_verdicts_then_reconcile_applies_them(graph_backend: GraphB
 
     facts = await store.current_facts()
     report = await engine.record_verdicts(
-        [verdict(facts[0], facts[1], VerdictKind.CONTRADICTS)]
+        [await verdict(store, facts[0], facts[1], VerdictKind.CONTRADICTS, lambda: NOW)]
     )
 
     assert report.counts[Outcome.JUDGE_CONTRADICTS.value] == 1
@@ -128,7 +128,9 @@ async def test_person_decision_overrides_rules_and_survives_rerun(
 
     await engine.record_decision(decision)
     facts = await store.current_facts()
-    await engine.record_verdicts([verdict(facts[0], facts[1], VerdictKind.CONTRADICTS)])
+    await engine.record_verdicts(
+        [await verdict(store, facts[0], facts[1], VerdictKind.CONTRADICTS, lambda: NOW)]
+    )
     rerun = await engine.reconcile_all()
 
     assert await current_objects(store) == ["acme", "globex"]

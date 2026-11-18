@@ -9,8 +9,11 @@ from ontogr_mem.temporal.settings import ClosureSettings
 class TestClosureSettings:
     """Closure settings use stable defaults and the MEMORY_CLOSURE_ prefix."""
 
-    def test_defaults(self):
+    def test_defaults(self, monkeypatch):
         """Use enabled closure and the documented candidate and prompt defaults."""
+        monkeypatch.delenv("MEMORY_CLOSURE_ENABLED", raising=False)
+        monkeypatch.delenv("MEMORY_CLOSURE_MAX_CANDIDATES", raising=False)
+        monkeypatch.delenv("MEMORY_CLOSURE_PROMPT_VERSION", raising=False)
         settings = ClosureSettings(_env_file=None)
 
         assert settings.enabled is True

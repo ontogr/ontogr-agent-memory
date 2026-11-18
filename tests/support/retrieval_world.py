@@ -274,9 +274,13 @@ async def _finish_scenario(
     links: TypeLinks,
 ) -> tuple[dict[str, str], dict[str, Entity]]:
     """Apply scenario decisions and return stable fact and entity identities."""
+    fact_views = await FactReader(backend.temporal_store).read(
+        TemporalQuery(now=NOW, include_history=True)
+    )
     facts = await backend.temporal_store.facts_of_entities(
         [entity.entity_id for entity in stored_entities.values()]
     )
+    views_by_fact_id = {view.fact_id: view for view in fact_views}
     disputed_pairs = {
         frozenset(("Bob works at Globex", "Bob works at Initech")),
         frozenset(("Carol works at Alpha", "Carol works at Beta")),
@@ -284,13 +288,20 @@ async def _finish_scenario(
     verdicts = []
     for index, fact_a in enumerate(facts):
         for fact_b in facts[index + 1 :]:
-            statements = frozenset((fact_a.statement, fact_b.statement))
+            statements = frozenset(
+                (
+                    views_by_fact_id[fact_a.fact_id].statement,
+                    views_by_fact_id[fact_b.fact_id].statement,
+                )
+            )
             kind = (
                 VerdictKind.UNCERTAIN
                 if statements in disputed_pairs
                 else VerdictKind.UNRELATED
             )
-            verdicts.append(verdict(fact_a, fact_b, kind))
+            verdicts.append(
+                await verdict(backend.temporal_store, fact_a, fact_b, kind, lambda: NOW)
+            )
     if verdicts:
         await engine.record_verdicts(verdicts)
     all_views = await FactReader(backend.temporal_store).read(

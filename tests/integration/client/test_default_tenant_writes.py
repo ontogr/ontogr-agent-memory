@@ -608,12 +608,13 @@ class TestDefaultTenantWrites:
         """A judged contradiction closes the earlier preference."""
         tenant = new_tenant()
         try:
+            models, scripted = counted_text_models(
+                SCRIPT,
+                closures={"Ana prefers coffee": ["Ana prefers tea"]},
+            )
             async with open_memory(
                 tenant,
-                text_models(
-                    SCRIPT,
-                    closures={"Ana prefers coffee": ["Ana prefers tea"]},
-                ),
+                models,
             ) as memory:
                 await memory.write_text(
                     PREFERENCE, reference_time=EARLIER, wait_seconds=10
@@ -629,24 +630,62 @@ class TestDefaultTenantWrites:
                 history = await memory.search("What did Ana prefer?", as_of=EARLIER)
                 assert [fact.statement for fact in history.facts] == ["Ana prefers tea"]
                 assert history.facts[0].valid_to == PREFERENCE_LATER
+            closure_calls = [
+                call
+                for call in scripted.calls
+                if "Task: list the existing facts that the new fact contradicts"
+                in call.prompt
+            ]
+            assert len(closure_calls) == 1
         finally:
             await falkordb_store.erase_tenant(tenant)
 
-    async def test_unplaced_fact_does_not_call_the_closure_judge(
+    async def test_unplaced_fact_without_candidate_skips_the_closure_judge(
         self, falkordb_store: FalkorDBGraphStore
     ):
-        """An unplaced fact is stored without a closure judge request."""
+        """An unplaced fact with no same-subject candidate skips closure judging."""
         tenant = new_tenant()
         try:
             models, scripted = counted_text_models(SCRIPT)
             async with open_memory(tenant, models) as memory:
                 await memory.write_text(UNKNOWN_RELATION, wait_seconds=10)
                 await memory.drain()
+                result = await memory.search("Who does Ana mentor?")
+                assert [fact.statement for fact in result.facts] == ["Ana mentors Ben"]
             assert not any(
                 "Task: list the existing facts that the new fact contradicts"
                 in call.prompt
                 for call in scripted.calls
             )
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_unplaced_write_runs_closure_judge_with_older_same_subject_candidate(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """Closure judging receives an older same-subject fact for an unplaced write."""
+        tenant = new_tenant()
+        try:
+            models, scripted = counted_text_models(
+                SCRIPT,
+                closures={"Ana mentors Ben": ["Ana works at Acme"]},
+            )
+            async with open_memory(tenant, models) as memory:
+                await memory.write_text(FIRST, reference_time=EARLIER, wait_seconds=10)
+                await memory.write_text(
+                    UNKNOWN_RELATION, reference_time=LATER, wait_seconds=10
+                )
+                await memory.drain()
+                result = await memory.search("Who does Ana mentor?")
+                assert [fact.statement for fact in result.facts] == ["Ana mentors Ben"]
+            closure_calls = [
+                call
+                for call in scripted.calls
+                if "Task: list the existing facts that the new fact contradicts"
+                in call.prompt
+            ]
+            assert len(closure_calls) == 1
+            assert "Ana works at Acme" in closure_calls[0].prompt
         finally:
             await falkordb_store.erase_tenant(tenant)
 

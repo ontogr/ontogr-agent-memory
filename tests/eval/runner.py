@@ -69,7 +69,10 @@ async def run_eval(
     items: tuple[Labelled, ...] = LABELLED,
     settings: ClosureSettings | None = None,
 ) -> EvalReport:
-    """Judge the labelled pairs and report their outcomes and token usage.
+    """Judge statement text and report outcomes and token usage.
+
+    The judge receives statement text only. Intervals and sources remain
+    metadata in the labelled set.
 
     Args:
         models: Shared model pool used by the judge role.

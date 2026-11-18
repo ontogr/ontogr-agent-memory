@@ -1,5 +1,6 @@
 """Check closure prompt construction, reply filtering, and failure accounting."""
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -35,8 +36,13 @@ class TestClosureJudge:
             in captured["prompt"]
         )
         assert "<new_fact>\nnew fact\n</new_fact>" in captured["prompt"]
-        assert '"id": "F1", "text": "first"' in captured["prompt"]
-        assert "2025" not in captured["prompt"]
+        candidate_json = captured["prompt"].split("<existing_facts>\n", 1)[1].split(
+            "\n</existing_facts>", 1
+        )[0]
+        assert json.loads(candidate_json) == [
+            {"id": "F1", "text": "first"},
+            {"id": "F2", "text": "second"},
+        ]
         assert result.input_tokens == 3
         assert result.output_tokens == 2
         assert result.requests == 1
@@ -55,6 +61,22 @@ class TestClosureJudge:
 
         assert result.contradicted == ()
         assert result.invalid_ids == 2
+
+    async def test_duplicate_valid_ids_produce_one_contradiction(self, monkeypatch):
+        """Count a prompted fact once while counting invalid ids per occurrence."""
+
+        async def run_agent(*_args, **_kwargs):
+            output = SimpleNamespace(contradicted=["F1", "F1", "F9", "F9"])
+            return ModelRun(output, TokenUsage(0, 0, 1))
+
+        monkeypatch.setattr(closure, "run_agent", run_agent)
+        result = await ClosureJudge(None, ClosureSettings(_env_file=None)).judge(
+            "new", [("stored", "old")]
+        )
+
+        assert result.contradicted == ("stored",)
+        assert result.invalid_ids == 2
+        assert result.counts["judge_invalid_id"] == 2
 
     async def test_empty_reply_has_no_contradictions(self, monkeypatch):
         """An empty list is a successful answer with no contradictions."""

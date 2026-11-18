@@ -14,6 +14,7 @@ from ontogr_mem.temporal.cardinality import (
 from ontogr_mem.temporal.engine import TemporalEngine
 from ontogr_mem.temporal.query import ACTUAL_ONLY, TemporalQuery
 from ontogr_mem.temporal.reader import FactReader, ObservationText
+from ontogr_mem.temporal.temporal_store import SlotCommit
 from ontogr_mem.temporal.verdicts import (
     ConflictDecision,
     DecisionAction,
@@ -127,7 +128,9 @@ async def make_dispute_world(graph_backend: GraphBackend):
         ]
     )
     facts = await store.facts_of_entities(["ana"])
-    await engine.record_verdicts([verdict(facts[0], facts[1], VerdictKind.UNCERTAIN)])
+    await engine.record_verdicts(
+        [await verdict(store, facts[0], facts[1], VerdictKind.UNCERTAIN, clock.now)]
+    )
     return engine, store, clock, FactReader(store)
 
 
@@ -204,7 +207,12 @@ class TestFactReader:
         _, store, clock, reader = await make_reader_world(graph_backend)
         slot = await store.load_slot("correction")
         fact = slot.facts[0]
-        planned = replace(fact, modality=Modality.PLANNED)
+        planned = replace(
+            fact,
+            fact_id="planned-reader",
+            slot_key="planned-reader",
+            modality=Modality.PLANNED,
+        )
         event = replace(
             fact,
             fact_id="event-reader",
@@ -212,12 +220,20 @@ class TestFactReader:
             fact_kind=FactKind.EVENT,
             valid_from=at(2022),
         )
-        await store.save_slot(replace(slot, facts=(*slot.facts, planned, event)))
-        reloaded_slot = await store.load_slot(slot.slot_key)
-        assert {fact.fact_id for fact in reloaded_slot.facts} >= {
-            planned.fact_id,
-            event.fact_id,
-        }
+        await store.commit_slot(
+            SlotCommit(
+                slot_key=planned.slot_key,
+                base_revision=0,
+                new_facts=(planned,),
+            )
+        )
+        await store.commit_slot(
+            SlotCommit(
+                slot_key=event.slot_key,
+                base_revision=0,
+                new_facts=(event,),
+            )
+        )
 
         actual = await reader.read(
             TemporalQuery(now=clock.value, modalities=ACTUAL_ONLY)
@@ -230,10 +246,15 @@ class TestFactReader:
             TemporalQuery(now=clock.value, valid_at=at(2023))
         )
 
-        assert planned.fact_id not in {view.fact_id for view in actual}
-        assert planned.fact_id in {view.fact_id for view in all_facts}
-        assert event.fact_id not in {view.fact_id for view in before_event}
-        assert event.fact_id in {view.fact_id for view in after_event}
+        actual_ids = {view.fact_id for view in actual}
+        all_ids = {view.fact_id for view in all_facts}
+        before_event_ids = {view.fact_id for view in before_event}
+        after_event_ids = {view.fact_id for view in after_event}
+
+        assert planned.fact_id not in actual_ids
+        assert planned.fact_id in all_ids
+        assert event.fact_id not in before_event_ids
+        assert event.fact_id in after_event_ids
 
     async def test_touching_matches_either_entity_side(
         self, graph_backend: GraphBackend
@@ -244,9 +265,15 @@ class TestFactReader:
         touching = await reader.touching(["paris"], TemporalQuery(now=NOW))
 
         assert {view.slot_key for view in touching} == {"stable", "kept", "inverse"}
-        assert all(
-            view.statement or view.slot_key in {"kept", "inverse"} for view in touching
+        stable_view = next(view for view in touching if view.slot_key == "stable")
+        assert stable_view.statement == "Ana lives in Paris."
+        assert stable_view.source_system == "test-source"
+        assert all(view.statement for view in touching if view.slot_key != "stable")
+        (withdrawn,) = await reader.by_observations(
+            ["reset-observation"], TemporalQuery(now=NOW, include_history=True)
         )
+        assert withdrawn.status is FactStatus.WITHDRAWN
+        assert withdrawn.statement == "Ana works at Rome."
 
     async def test_subset_of_open_dispute_keeps_its_counterpart_annotation(
         self, graph_backend: GraphBackend

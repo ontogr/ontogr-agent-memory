@@ -42,7 +42,6 @@ EVENT = FactTemplate(
     "{person} visited {city}",
     ("person", "city"),
     entity_fields=("person", "city"),
-    relation_type_label="LIVES_IN",
 )
 
 

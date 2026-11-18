@@ -89,7 +89,15 @@ class ScenarioContract:
 
         facts = {fact.object_id: fact for fact in await store.current_facts()}
         await engine.record_verdicts(
-            [verdict(facts["acme"], facts["globex"], VerdictKind.CONTRADICTS)]
+            [
+                await verdict(
+                    store,
+                    facts["acme"],
+                    facts["globex"],
+                    VerdictKind.CONTRADICTS,
+                    lambda: NOW,
+                )
+            ]
         )
 
         current = await store.query(TemporalQuery(now=NOW))
@@ -118,7 +126,15 @@ class ScenarioContract:
         )
 
         await engine.record_verdicts(
-            [verdict(facts["acme"], facts["globex"], VerdictKind.CONTRADICTS)]
+            [
+                await verdict(
+                    store,
+                    facts["acme"],
+                    facts["globex"],
+                    VerdictKind.CONTRADICTS,
+                    lambda: NOW,
+                )
+            ]
         )
         await engine.reconcile_all()
 

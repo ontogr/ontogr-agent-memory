@@ -18,6 +18,14 @@ class TestRelationSection:
             "relation_type_id to null and write the relation in relation_label."
         )
 
+    def test_no_view_prompt_keeps_two_ref_relation_as_text(self):
+        """Without a catalog, two-ref links still have a textual relation."""
+        assert relation_section(None) == [
+            "There are no relation types. Set relation_type_id to null. When a "
+            "fact links exactly two refs, write its relation in relation_label; "
+            "otherwise set relation_label to null."
+        ]
+
     def test_fact_system_rule_allows_null_relation_ids_with_words(self):
         """The model-facing fact rules permit a textual relation without an id."""
         assert (
