@@ -163,13 +163,13 @@ def resolve_time(
             parsed = {}
             cleared = True
 
-    # Only an actual state without unusable times can default to the episode time.
+    # Every fact without unusable stated times starts at the episode time.
     if parsed and precision is not None:
         out.valid_from = _cut(parsed.get("valid_from"), precision)
         out.valid_to = _cut(parsed.get("valid_to"), precision)
         out.precision = precision
         out.basis = TimeBasis.STATED
-    elif not cleared and kind is FactKind.STATE and modality is Modality.ACTUAL:
+    elif not cleared:
         out.valid_from = reference
         out.precision = Precision.TIME
         out.basis = TimeBasis.REFERENCE

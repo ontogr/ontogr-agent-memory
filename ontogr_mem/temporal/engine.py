@@ -18,12 +18,12 @@ from typing import Protocol
 
 from ontogr_mem.data_models.episode import Episode, TemporalStatus
 from ontogr_mem.data_models.fact_versions import Fact
-from ontogr_mem.data_models.facts import TypedFact
+from ontogr_mem.data_models.facts import FactKind, Modality, TypedFact
 from ontogr_mem.data_models.ledger import LedgerOp
 from ontogr_mem.data_models.observation import NO_STAMP, Observation, ProvenanceStamp
 from ontogr_mem.temporal.adapter import EntityRefResolver, observations_from_facts
-from ontogr_mem.temporal.candidates import generate_candidates
-from ontogr_mem.temporal.cardinality import ConflictPolicy, DictRelationPolicy
+from ontogr_mem.temporal.cardinality import DictRelationPolicy, RelationRules, rules_for
+from ontogr_mem.temporal.closure import ClosureJudge, ClosureOutcome
 from ontogr_mem.temporal.commit import plan_commit
 from ontogr_mem.temporal.errors import (
     EpisodeAlreadyIngestedError,
@@ -35,8 +35,8 @@ from ontogr_mem.temporal.handler import (
     Partner,
     slot_directives,
 )
-from ontogr_mem.temporal.judge import JudgeOutcome, PairJudge, pair_input
 from ontogr_mem.temporal.ledger import TENANT_CHAIN, link
+from ontogr_mem.temporal.pairs import pair_input
 from ontogr_mem.temporal.query import FactView
 from ontogr_mem.temporal.reader import FactReader
 from ontogr_mem.temporal.reconcile import derive
@@ -48,12 +48,14 @@ from ontogr_mem.temporal.temporal_store import (
     SourceSelector,
     TemporalStore,
 )
+from ontogr_mem.temporal.timeutil import same_span
 from ontogr_mem.temporal.trust import Trust
 from ontogr_mem.temporal.verdicts import (
-    NEGATIVE_VERDICTS,
     ConflictDecision,
     FactVerdict,
     VerdictKind,
+    VerdictSource,
+    pair_key,
 )
 from ontogr_mem.temporal.visibility import is_withdrawable
 
@@ -134,7 +136,8 @@ class TemporalEngine:
         episode: Episode,
         stamp: ProvenanceStamp = NO_STAMP,
         *,
-        ontology_refused: int | None = None,
+        unplaced: int | None = None,
+        ontology_version: int | None = None,
     ) -> TemporalReport:
         """Turn the episode's typed facts into observations and settle them.
 
@@ -172,11 +175,10 @@ class TemporalEngine:
         report.skipped.update(skipped_counts)
         await self._store.set_episode_pending(
             episode.id,
-            ontology_refused=ontology_refused,
+            unplaced=unplaced,
+            ontology_version=ontology_version,
             skipped=(
-                skipped_counts
-                if skipped_counts or ontology_refused is not None
-                else None
+                skipped_counts if skipped_counts or unplaced is not None else None
             ),
         )
         report.merge(await self.ingest_observations(observations))
@@ -215,68 +217,125 @@ class TemporalEngine:
             await self._reconcile(slot_key, report)
         return report
 
-    async def judge_pass(self, judge: PairJudge, *, cap: int = 200) -> TemporalReport:
-        """Judge the candidate pairs that touch a pending slot.
-
-        A slot is pending when one of its facts shares an entity with a fact
-        of another slot and that pair has no verdict. The store derives that
-        from the facts and the verdicts; a relation the rules settle on their
-        own is left out.
-
-        Pairs with a stored verdict for the same inputs and prompt are not asked
-        again. Verdicts are recorded through `record_verdicts`, then every pending
-        slot is reconciled again, so a slot with all neighbours judged is cleared.
-        """
+    async def closure_pass(
+        self, judge: ClosureJudge, fact_ids: Sequence[str], *, max_candidates: int
+    ) -> TemporalReport:
+        """Ask the judge about each new fact that has closure candidates."""
         report = TemporalReport()
-        facts = await self._store.current_facts()
-        pending = await self._slots_to_judge(facts)
-        if not pending:
-            return report
-        candidates, cut = generate_candidates(facts, self._policy, cap=cap)
-        report.bump(Outcome.CANDIDATES_TRUNCATED, cut)
-        candidates = [
-            candidate
-            for candidate in candidates
-            if candidate.a.slot_key in pending or candidate.b.slot_key in pending
+        facts = await self._store.facts_by_ids(fact_ids)
+        new_facts = [
+            fact
+            for fact in facts
+            if fact.status.value == "active"
+            and fact.expired_at is None
+            and fact.valid_to is None
+            and fact.modality is Modality.ACTUAL
+            and fact.fact_kind is FactKind.STATE
         ]
-        verdicts = (
-            await self._store.verdicts_for(
-                sorted(
-                    {
-                        fact.fact_id
-                        for candidate in candidates
-                        for fact in (candidate.a, candidate.b)
-                    }
-                )
-            )
-            if candidates
-            else []
-        )
-        by_pair: dict[str, list[FactVerdict]] = {}
-        for verdict in verdicts:
-            by_pair.setdefault(verdict.pair_key, []).append(verdict)
         observations: dict[str, Mapping[str, Observation]] = {}
-        todo = []
-        for candidate in candidates:
-            left = await self._partner(candidate.a, observations)
-            right = await self._partner(candidate.b, observations)
-            pair = pair_input(candidate.pair_key, left, right, self._trust)
-            if any(
-                v.pair_key == candidate.pair_key
-                and v.valid_for(pair.inputs_hash, judge.prompt_version)
-                for v in by_pair.get(candidate.pair_key, ())
-            ):
-                report.bump(Outcome.JUDGE_CACHED)
+        for new in new_facts:
+            neighbours = [
+                fact
+                for fact in await self._store.facts_touching([new.subject_id])
+                if fact.subject_id == new.subject_id
+                and fact.fact_id != new.fact_id
+                and fact.status.value == "active"
+                and fact.expired_at is None
+                and fact.valid_to is None
+                and fact.modality is Modality.ACTUAL
+                and fact.fact_kind is FactKind.STATE
+                and fact.slot_key != new.slot_key
+                and not same_span(
+                    fact.valid_from,
+                    fact.valid_from_precision,
+                    new.valid_from,
+                    new.valid_from_precision,
+                )
+            ]
+            new_rules = rules_for(
+                self._policy, new.relation_type_id, new.modality, new.fact_kind
+            )
+            if new.relation_type_id is None:
+                candidates = neighbours
+            elif new_rules.judged:
+                candidates = [
+                    fact
+                    for fact in neighbours
+                    if fact.relation_type_id in (None, new.relation_type_id)
+                ]
             else:
-                todo.append(pair)
-        report.bump(Outcome.JUDGE_ASKED, len(todo))
-        outcome = (
-            await judge.judge_pairs(todo, now=self._clock()) if todo else JudgeOutcome()
-        )
-        _count_judge(outcome, report)
-        report.merge(await self.record_verdicts(outcome.verdicts))
-        for slot_key in sorted(pending):
-            await self._reconcile(slot_key, report)
+                candidates = [
+                    fact for fact in neighbours if fact.relation_type_id is None
+                ]
+            candidates.sort(
+                key=lambda fact: (-fact.valid_from.timestamp(), fact.fact_id)
+            )
+            candidates = candidates[:max_candidates]
+
+            pairs = []
+            for candidate in candidates:
+                left = await self._partner(new, observations)
+                right = await self._partner(candidate, observations)
+                pairs.append(
+                    pair_input(
+                        pair_key(new.fact_id, candidate.fact_id),
+                        left,
+                        right,
+                        self._trust,
+                    )
+                )
+            stored = (
+                await self._store.verdicts_for(
+                    [new.fact_id, *(candidate.fact_id for candidate in candidates)]
+                )
+                if candidates
+                else []
+            )
+            asked = []
+            for pair in pairs:
+                if any(
+                    verdict.pair_key == pair.pair_key
+                    and verdict.valid_for(pair.inputs_hash, judge.prompt_version)
+                    for verdict in stored
+                ):
+                    report.bump(Outcome.JUDGE_CACHED)
+                else:
+                    asked.append(pair)
+            if not asked:
+                continue
+            outcome = await judge.judge(
+                pairs[0].a.statement,
+                [(pair.b.fact_id, pair.b.statement) for pair in asked],
+            )
+            report.bump(Outcome.JUDGE_ASKED)
+            _count_closure(outcome, report)
+            if outcome.failed:
+                continue
+            by_id = {pair.b.fact_id: pair for pair in asked}
+            verdicts = []
+            for candidate_id in {pair.b.fact_id for pair in asked}:
+                pair = by_id[candidate_id]
+                verdict = (
+                    VerdictKind.CONTRADICTS
+                    if candidate_id in outcome.contradicted
+                    else VerdictKind.COMPATIBLE
+                )
+                verdicts.append(
+                    FactVerdict(
+                        pair_key=pair.pair_key,
+                        fact_a_id=new.fact_id,
+                        fact_b_id=candidate_id,
+                        verdict=verdict,
+                        inputs_hash=pair.inputs_hash,
+                        prompt_version=judge.prompt_version,
+                        source=VerdictSource.LLM,
+                        reason_code="closure",
+                        votes=(("1", verdict.value),),
+                        decided_at=self._clock(),
+                        source_episode_ids=pair.episode_ids,
+                    )
+                )
+            report.merge(await self.record_verdicts(verdicts))
         return report
 
     async def reconcile_slot(self, slot_key: str) -> TemporalReport:
@@ -436,25 +495,6 @@ class TemporalEngine:
         }
         return {fact.slot_key for fact in current if fact.fact_id in named - mine}
 
-    async def _slots_to_judge(self, facts: Sequence[Fact]) -> set[str]:
-        """Return the slots that still need the judge.
-
-        The store answers which slots have a neighbour nobody has judged. A
-        relation the rules settle on their own, such as a one-per-subject
-        relation, never needs the judge, so those slots are left out.
-        """
-        relations = {fact.slot_key: fact.relation_type_id for fact in facts}
-        pending: set[str] = set()
-        for slot_key in await self._store.pending_slots():
-            relation_type_id = relations.get(slot_key)
-            if relation_type_id is None:
-                continue
-            rules = self._policy.rules(relation_type_id)
-            if rules.single_valued or rules.conflict_policy is ConflictPolicy.IGNORE:
-                continue
-            pending.add(slot_key)
-        return pending
-
     async def _settle(self, slot_keys: Sequence[str], report: TemporalReport) -> None:
         """Reconcile the given slots once each and report what each changed."""
         for slot_key in slot_keys:
@@ -468,8 +508,23 @@ class TemporalEngine:
             if not observations and not state.facts:
                 return
             recorded_at = self._recorded_at(state.facts)
-            relation_type_id = (observations or state.facts)[0].relation_type_id
-            cardinality = self._policy.rules(relation_type_id).cardinality
+            first = observations[0] if observations else None
+            fact = state.facts[0] if state.facts else None
+            rules = (
+                rules_for(
+                    self._policy,
+                    first.relation_type_id,
+                    first.modality,
+                    first.fact_kind,
+                )
+                if first is not None
+                else rules_for(
+                    self._policy, fact.relation_type_id, fact.modality, fact.fact_kind
+                )
+                if fact is not None
+                else RelationRules()
+            )
+            cardinality = rules.cardinality
             handled = await self._handle(slot_key, state.facts, observations)
             if handled.rule_verdicts:
                 await self._store.put_verdicts(handled.rule_verdicts)
@@ -570,16 +625,10 @@ class TemporalEngine:
         return max(now, floor)
 
 
-def _count_judge(outcome: JudgeOutcome, report: TemporalReport) -> None:
-    """Fold a judge outcome's failure counts and verdict kinds into the report."""
-    report.bump(Outcome.TOKENS_IN, outcome.tokens_in)
-    report.bump(Outcome.TOKENS_OUT, outcome.tokens_out)
+def _count_closure(outcome: ClosureOutcome, report: TemporalReport) -> None:
+    """Fold closure failures, usage, and contradictions into the report."""
+    report.bump(Outcome.TOKENS_IN, outcome.input_tokens)
+    report.bump(Outcome.TOKENS_OUT, outcome.output_tokens)
     for key, count in outcome.counts.items():
         report.counts[key] += count
-    for verdict in outcome.verdicts:
-        if verdict.verdict is VerdictKind.CONTRADICTS:
-            report.bump(Outcome.JUDGE_CONTRADICTS)
-        elif verdict.verdict is VerdictKind.UNCERTAIN:
-            report.bump(Outcome.JUDGE_UNCERTAIN)
-        elif verdict.verdict in NEGATIVE_VERDICTS:
-            report.bump(Outcome.JUDGE_NEGATIVE)
+    report.bump(Outcome.JUDGE_CONTRADICTS, len(outcome.contradicted))

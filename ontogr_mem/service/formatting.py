@@ -49,10 +49,14 @@ def fact_out(
     episode_ids: tuple[str, ...] = (),
 ) -> FactOut:
     """Format one temporal fact and resolve its names and relation label."""
-    relation = label_of(view.relation_type_id)
+    relation = (
+        label_of(view.relation_type_id)
+        if view.relation_type_id is not None
+        else view.relation_label
+    )
     statement = view.statement or default_statement(
         names.get(view.subject_id, view.subject_id),
-        relation,
+        relation or "relates to",
         names.get(view.object_id, view.object_id),
     )
     return FactOut(
@@ -78,6 +82,9 @@ def fact_out(
         evidence_count=len(view.evidence),
         episode_ids=list(episode_ids),
         score=score,
+        modality=view.modality.value,
+        kind=view.fact_kind.value,
+        time_basis=view.time_basis.value,
     )
 
 

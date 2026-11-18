@@ -272,7 +272,7 @@ async def _process(stack: WriterStack, episodes: Sequence[Episode], observer):
     )
     reports = []
     for episode, result in zip(episodes, facts_report.results, strict=True):
-        stabilized = await stabilize_facts(stack.manager, result.facts, projection)
+        stabilized = stabilize_facts(result.facts, projection)
         reports.append(await engine.ingest(stabilized.typed, episode))
     return reports
 

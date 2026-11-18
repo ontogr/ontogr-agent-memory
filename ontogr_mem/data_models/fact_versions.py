@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
-from ontogr_mem.data_models.facts import Precision
+from ontogr_mem.data_models.facts import FactKind, Modality, Precision, TimeBasis
 
 
 class FactStatus(StrEnum):
@@ -74,7 +74,7 @@ class Fact:
     slot_key: str
     subject_id: str
     object_id: str
-    relation_type_id: int
+    relation_type_id: int | None
     valid_from: datetime
     valid_to: datetime | None
     valid_from_precision: Precision | None
@@ -87,6 +87,10 @@ class Fact:
     closed_by: str | None = None
     close_kind: SupersessionKind | None = None
     inverse: bool = False
+    fact_kind: FactKind = FactKind.STATE
+    modality: Modality = Modality.ACTUAL
+    relation_label: str = ""
+    time_basis: TimeBasis = TimeBasis.STATED
 
     @property
     def current(self) -> bool:

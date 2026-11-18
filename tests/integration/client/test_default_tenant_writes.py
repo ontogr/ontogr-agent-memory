@@ -36,8 +36,15 @@ ANA_ONE_AGAIN = "Ana (Ana@One.org) works at Dune."
 ANA_UNSTATED = "Ana works at Elm."
 ANA_NONE_AGAIN = "Ana works at Fig."
 ZETA_ORG = "Ana works at Zeta Corp."
+EVENT = "Ana visited Berlin on 10 May 2025."
+PLAN = "Ana will join Beta next year."
+DESIRE = "Ana wants to join Beta next year."
+PREFERENCE = "Ana prefers tea."
+PREFERENCE_DIFFERENT = "Ana prefers coffee."
+PREFERENCE_NOT = "Ana dislikes coffee."
 EARLIER = datetime(2025, 1, 1, tzinfo=UTC)
 LATER = datetime(2025, 6, 1, tzinfo=UTC)
+PREFERENCE_LATER = datetime(2025, 7, 1, tzinfo=UTC)
 SCRIPT = {
     FIRST: (
         [ScriptedEntity("Ana", "Person"), ScriptedEntity("Acme", "Organization")],
@@ -134,6 +141,53 @@ SCRIPT = {
         [ScriptedEntity("Ana", "Person"), ScriptedEntity("Zeta", "Organization")],
         [ScriptedFact("Ana works at Zeta", 0, 1, "WORKS_AT", "Ana works at Zeta")],
     ),
+    EVENT: (
+        [ScriptedEntity("Ana", "Person"), ScriptedEntity("Berlin", "Location")],
+        [
+            ScriptedFact(
+                "Ana visited Berlin",
+                0,
+                1,
+                "LIVES_IN",
+                EVENT,
+                fact_kind="event",
+                valid_from="2025-05-10",
+            )
+        ],
+    ),
+    PLAN: (
+        [ScriptedEntity("Ana", "Person"), ScriptedEntity("Beta", "Organization")],
+        [ScriptedFact("Ana works at Beta", 0, 1, "WORKS_AT", PLAN, modality="planned")],
+    ),
+    DESIRE: (
+        [ScriptedEntity("Ana", "Person"), ScriptedEntity("Beta", "Organization")],
+        [
+            ScriptedFact(
+                "Ana works at Beta", 0, 1, "WORKS_AT", DESIRE, modality="desired"
+            )
+        ],
+    ),
+    PREFERENCE: (
+        [ScriptedEntity("Ana", "Person"), ScriptedEntity("tea", "Preference")],
+        [ScriptedFact("Ana prefers tea", 0, 1, "PREFERS", PREFERENCE)],
+    ),
+    PREFERENCE_DIFFERENT: (
+        [ScriptedEntity("Ana", "Person"), ScriptedEntity("coffee", "Preference")],
+        [ScriptedFact("Ana prefers coffee", 0, 1, "PREFERS", PREFERENCE_DIFFERENT)],
+    ),
+    PREFERENCE_NOT: (
+        [ScriptedEntity("Ana", "Person"), ScriptedEntity("coffee", "Preference")],
+        [
+            ScriptedFact(
+                "Ana dislikes coffee",
+                0,
+                1,
+                "PREFERS",
+                PREFERENCE_NOT,
+                polarity="negated",
+            )
+        ],
+    ),
 }
 
 
@@ -168,6 +222,53 @@ async def falkordb_environment(
 
 class TestDefaultTenantWrites:
     """Text writes on a fresh tenant behave as the default ontology defines."""
+
+    async def test_an_event_is_stored_and_found(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """Events are returned by search with their event kind."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant, text_models(SCRIPT)) as memory:
+                await memory.write_text(EVENT, reference_time=LATER, wait_seconds=10)
+                await memory.drain()
+                result = await memory.search("Where did Ana visit?")
+                assert len(result.facts) == 1
+                assert result.facts[0].kind == "event"
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_a_planned_fact_is_hidden_by_default(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """Planned facts are stored but omitted from ordinary reads."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant, text_models(SCRIPT)) as memory:
+                receipt = await memory.write_text(
+                    PLAN, reference_time=EARLIER, wait_seconds=10
+                )
+                await memory.drain()
+                job = await memory.get_job(receipt.job_id)
+                assert job.result is not None and len(job.result["fact_ids"]) == 1
+                assert not (await memory.search("Where will Ana work?")).facts
+                assert not (await memory.get_entity("Ana")).facts
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_a_desired_fact_is_hidden_by_default(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """Desired facts are omitted from ordinary reads."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant, text_models(SCRIPT)) as memory:
+                await memory.write_text(DESIRE, reference_time=EARLIER, wait_seconds=10)
+                await memory.drain()
+                assert not (await memory.search("Where will Ana work?")).facts
+                assert not (await memory.get_entity("Ana")).facts
+        finally:
+            await falkordb_store.erase_tenant(tenant)
 
     async def test_a_text_write_makes_the_expected_number_of_model_requests(
         self, falkordb_store: FalkorDBGraphStore, extraction_mode: str
@@ -441,10 +542,10 @@ class TestDefaultTenantWrites:
         finally:
             await falkordb_store.erase_tenant(tenant)
 
-    async def test_unknown_relation_is_refused_and_counted(
+    async def test_unknown_relation_is_kept_as_an_unplaced_fact(
         self, falkordb_store: FalkorDBGraphStore
     ):
-        """An unknown relation is refused and counted in the job result."""
+        """An unknown relation is stored and rendered with its label."""
         tenant = new_tenant()
         try:
             async with open_memory(tenant, text_models(SCRIPT)) as memory:
@@ -455,10 +556,15 @@ class TestDefaultTenantWrites:
                 job = await memory.get_job(receipt.job_id)
                 assert job.status is JobState.DONE
                 assert job.result is not None
-                assert job.result["ontology_refused"] == 1
-                assert job.result["fact_ids"] == []
+                assert job.result["unplaced"] == 1
+                assert "ontology_refused" not in job.result
+                assert len(job.result["fact_ids"]) == 1
                 context = await memory.search("Who does Ana mentor?")
-                assert context.facts == []
+                assert len(context.facts) == 1
+                assert context.facts[0].statement == "Ana mentors Ben"
+                assert context.facts[0].relation == "mentors"
+                assert context.facts[0].kind == "state"
+                assert context.facts[0].modality == "actual"
         finally:
             await falkordb_store.erase_tenant(tenant)
 
@@ -493,5 +599,99 @@ class TestDefaultTenantWrites:
                 view = await memory.get_entity("Zeta")
                 assert view.entity.type_label == "Unknown"
                 assert view.entity.proposed_type == "Startup"
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_judged_relation_closes_a_contradicted_fact(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """A judged contradiction closes the earlier preference."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(
+                tenant,
+                text_models(
+                    SCRIPT,
+                    closures={"Ana prefers coffee": ["Ana prefers tea"]},
+                ),
+            ) as memory:
+                await memory.write_text(
+                    PREFERENCE, reference_time=EARLIER, wait_seconds=10
+                )
+                await memory.write_text(
+                    PREFERENCE_DIFFERENT,
+                    reference_time=PREFERENCE_LATER,
+                    wait_seconds=10,
+                )
+                await memory.drain()
+                facts = (await memory.search("What does Ana prefer?")).facts
+                assert [fact.statement for fact in facts] == ["Ana prefers coffee"]
+                history = await memory.search("What did Ana prefer?", as_of=EARLIER)
+                assert [fact.statement for fact in history.facts] == ["Ana prefers tea"]
+                assert history.facts[0].valid_to == PREFERENCE_LATER
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_unplaced_fact_does_not_call_the_closure_judge(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """An unplaced fact is stored without a closure judge request."""
+        tenant = new_tenant()
+        try:
+            models, scripted = counted_text_models(SCRIPT)
+            async with open_memory(tenant, models) as memory:
+                await memory.write_text(UNKNOWN_RELATION, wait_seconds=10)
+                await memory.drain()
+            assert not any(
+                "Task: list the existing facts that the new fact contradicts"
+                in call.prompt
+                for call in scripted.calls
+            )
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_structured_write_and_invalidation_do_not_call_closure_judge(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """Structured writes and invalidations do not use text closure judgments."""
+        tenant = new_tenant()
+        try:
+            models, scripted = counted_text_models(SCRIPT)
+            async with open_memory(tenant, models) as memory:
+                await memory.write_fact(
+                    "Ana",
+                    "WORKS_AT",
+                    "Acme",
+                    statement="Ana works at Acme.",
+                    valid_from=EARLIER,
+                    wait_seconds=10,
+                )
+                await memory.drain()
+                found = await memory.search("Where does Ana work?")
+                fact_id = next(fact.fact_id for fact in found.facts)
+                invalidation = await memory.invalidate(fact_id)
+                await memory.drain()
+                assert (
+                    await memory.get_job(invalidation.job_id)
+                ).status is JobState.DONE
+            assert not any(
+                "Task: list the existing facts" in call.prompt
+                for call in scripted.calls
+            )
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_multi_pattern_relation_places_both_supported_subject_types(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """LOCATED_IN accepts both Organization and Object subjects."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant, text_models(SCRIPT)) as memory:
+                await memory.write_fact("Acme", "LOCATED_IN", "Berlin", wait_seconds=10)
+                await memory.drain()
+                context = await memory.search("Where is Acme located?")
+                assert len(context.facts) == 1
+                assert context.facts[0].relation == "LOCATED_IN"
         finally:
             await falkordb_store.erase_tenant(tenant)

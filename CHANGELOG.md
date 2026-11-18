@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Temporal writes store events and planned, conditional, desired, and unplaced facts. Events and actual states appear in default reads; other modalities stay hidden by default.
+- The closure judge checks candidates once per new actual state fact during text and message writes. A contradiction closes the earlier fact by date, and a failed call leaves both facts live.
+- Write results report stored facts without a relation type in `unplaced`.
 - Entity resolution uses ontology type ids and inherited identity attributes to decide which entities can match or merge.
 - Entities expose stable ontology type ids and `proposed_type` when the model's type name cannot be matched. Such entities use the `Unknown` type.
 - `MEMORY_EXTRACTION_MODE` selects `two_pass` (the default) or `combined` extraction. Combined mode requests entities and facts in one pass. Invalid model replies can trigger retries.
@@ -20,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Facts with unknown relation labels or relation pattern violations are stored as unplaced facts. Facts without a usable stated time start at the episode time with basis `reference`.
 - Custom resolver integrations must accept a `TypeLinks` argument in `resolve`, `deduplicate`, and `merge`, and use `resolver.linked(links)` to bind one snapshot for consolidation; `Entity` construction now requires `ontology_type_id`.
 - People verification is off by default.
 - The entity extraction prompt uses ontology type ids and records the model's type name in `proposed_type` when no id matches.
@@ -44,13 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- The pair judge and its pending-slot workflow. The `ontology_refused` result field and `unknown_relation` drop reason. `MEMORY_JUDGE_` closure settings are replaced by `MEMORY_CLOSURE_` settings.
 - The `DEFAULT_CATALOG` change set and `OntologyManager.load_catalog`.
 
 - Ontology modes (`strict`, `preferred` and `open`) and the `SetModes` change.
-  In text and sourced writes, a relation that the ontology does not hold is
-  dropped and counted, and an entity type that it does not hold is kept with the
-  Unknown type. A structured fact with a relation that the ontology does not hold
-  is refused.
+-  In text and sourced writes, an entity type that the ontology does not hold is
+  kept with the Unknown type.
 - Ontology proposals, the drafting model role (`ONTOLOGY`) with its
   `MEMORY_LLM_ONTOLOGY_*` and `MEMORY_ONTOLOGY_*` settings, the stored unmatched
   rows, and `OntologyManager.stale_episodes`.

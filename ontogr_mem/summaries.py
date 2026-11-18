@@ -10,7 +10,7 @@ from ontogr_mem.errors import AmbiguousNameError
 from ontogr_mem.ingestion.store import EpisodeStore
 from ontogr_mem.resolution.keys import strict_key
 from ontogr_mem.resolution.resolver_store import ResolverStore
-from ontogr_mem.temporal.query import FactView, TemporalQuery
+from ontogr_mem.temporal.query import ACTUAL_ONLY, FactView, TemporalQuery
 from ontogr_mem.temporal.reader import FactReader
 from ontogr_mem.temporal.temporal_store import TemporalStore
 
@@ -117,7 +117,11 @@ async def entity_card(
     aliases = await resolver.aliases_of(entity.entity_id)
     views = await reader.touching(
         [entity.entity_id],
-        TemporalQuery(now=now, include_history=include_history),
+        TemporalQuery(
+            now=now,
+            include_history=include_history,
+            modalities=ACTUAL_ONLY,
+        ),
     )
     latest: dict[str, FactView] = {}
     for view in views:

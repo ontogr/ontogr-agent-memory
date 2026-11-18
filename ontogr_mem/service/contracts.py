@@ -541,6 +541,9 @@ class FactOut(ContractModel):
     evidence_count: int = 0
     episode_ids: list[str] = Field(default_factory=list)
     score: float = 0.0
+    modality: str = "actual"
+    kind: str = "state"
+    time_basis: str = "stated"
 
 
 class EntityOut(ContractModel):

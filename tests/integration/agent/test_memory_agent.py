@@ -84,6 +84,8 @@ def _hydra_answer(call: ScriptedCall) -> object:
     without declaring a relation first.
     """
     prompt = call.prompt
+    if "Task: list the existing facts that the new fact contradicts" in prompt:
+        return {"contradicted": []}
     if "Task: list the entities" in prompt:
         entity_types = json.loads(_prompt_block(prompt, "entity_types"))
         type_id = next(

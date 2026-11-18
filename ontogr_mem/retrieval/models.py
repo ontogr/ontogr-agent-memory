@@ -12,7 +12,7 @@ from typing import Final
 
 from ontogr_mem.data_models.timestamps import require_utc
 from ontogr_mem.retrieval.errors import RetrievalError
-from ontogr_mem.temporal.query import FactView, TemporalQuery
+from ontogr_mem.temporal.query import ACTUAL_ONLY, FactView, TemporalQuery
 
 
 GRAPH_DEPTH_CAP: Final = 3
@@ -261,6 +261,7 @@ class RetrievalRequest:
             known_at=self.known_at,
             overlaps=self.overlaps,
             include_history=self.include_history,
+            modalities=ACTUAL_ONLY,
         )
 
 

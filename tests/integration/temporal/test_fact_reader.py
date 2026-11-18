@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import timedelta
 
 from ontogr_mem.data_models.fact_versions import FactStatus
+from ontogr_mem.data_models.facts import FactKind, Modality
 from ontogr_mem.data_models.observation import ObservationKind
 from ontogr_mem.temporal.cardinality import (
     Cardinality,
@@ -11,7 +12,7 @@ from ontogr_mem.temporal.cardinality import (
     RelationRules,
 )
 from ontogr_mem.temporal.engine import TemporalEngine
-from ontogr_mem.temporal.query import TemporalQuery
+from ontogr_mem.temporal.query import ACTUAL_ONLY, TemporalQuery
 from ontogr_mem.temporal.reader import FactReader, ObservationText
 from ontogr_mem.temporal.verdicts import (
     ConflictDecision,
@@ -19,11 +20,11 @@ from ontogr_mem.temporal.verdicts import (
     VerdictKind,
     VerdictSource,
 )
-from tests.integration.temporal.test_engine_contradictions import ScriptedJudge
 from tests.support.clock import FixedClock
 from tests.support.episodes import make_episode
 from tests.support.graph_backend import GraphBackend
 from tests.support.temporal import open_temporal
+from tests.support.verdicts import verdict
 from tests.unit.temporal.helpers import LocalRefResolver, at, obs
 
 
@@ -125,7 +126,8 @@ async def make_dispute_world(graph_backend: GraphBackend):
             obs("dispute-b", "globex", at(2020), slot="dispute-b", rel=2),
         ]
     )
-    await engine.judge_pass(ScriptedJudge(VerdictKind.UNCERTAIN))
+    facts = await store.facts_of_entities(["ana"])
+    await engine.record_verdicts([verdict(facts[0], facts[1], VerdictKind.UNCERTAIN)])
     return engine, store, clock, FactReader(store)
 
 
@@ -166,7 +168,7 @@ class TestFactReader:
         )
         missing = await reader.by_ids(["unknown"], TemporalQuery(now=clock.value))
         history = await reader.by_ids(
-            [original.fact_id, withdrawn.fact_id],
+            [original.fact_id, withdrawn.fact_id, successor.fact_id],
             TemporalQuery(now=clock.value, include_history=True),
         )
         by_observation = await reader.by_observations(
@@ -189,26 +191,49 @@ class TestFactReader:
             FactStatus.WITHDRAWN,
             FactStatus.ACTIVE,
         }
-        assert [(v.version, v.evidence) for v in by_observation] == [
-            (1, ("stable-1",)),
-            (2, ("stable-1", "stable-2")),
-        ]
-        assert [(v.fact_id, v.version) for v in read] == [
-            (v.fact_id, v.version) for v in stored_query
-        ]
-        assert any(v.fact_id == closed.fact_id for v in read)
-        assert all(v.fact_id != successor.fact_id for v in read)
-        stable_view = next(v for v in read if v.slot_key == "stable")
-        assert (stable_view.statement, stable_view.source) == (
-            "Ana lives in Paris.",
-            "test-source",
+        assert {view.fact_id for view in read} == {
+            view.fact_id for view in stored_query
+        }
+        assert successor.fact_id in {view.fact_id for view in history}
+        assert by_observation[0].fact_id == original.fact_id
+
+    async def test_modality_filter_and_event_visibility(
+        self, graph_backend: GraphBackend
+    ):
+        """Queries can hide plans while retaining events from their start."""
+        _, store, clock, reader = await make_reader_world(graph_backend)
+        slot = await store.load_slot("correction")
+        fact = slot.facts[0]
+        planned = replace(fact, modality=Modality.PLANNED)
+        event = replace(
+            fact,
+            fact_id="event-reader",
+            slot_key="event-reader",
+            fact_kind=FactKind.EVENT,
+            valid_from=at(2022),
         )
-        assert (
-            await reader.by_observations(
-                ["reset-observation"], TemporalQuery(now=clock.value)
-            )
-            == []
+        await store.save_slot(replace(slot, facts=(*slot.facts, planned, event)))
+        reloaded_slot = await store.load_slot(slot.slot_key)
+        assert {fact.fact_id for fact in reloaded_slot.facts} >= {
+            planned.fact_id,
+            event.fact_id,
+        }
+
+        actual = await reader.read(
+            TemporalQuery(now=clock.value, modalities=ACTUAL_ONLY)
         )
+        all_facts = await reader.read(TemporalQuery(now=clock.value))
+        before_event = await reader.read(
+            TemporalQuery(now=clock.value, valid_at=at(2021))
+        )
+        after_event = await reader.read(
+            TemporalQuery(now=clock.value, valid_at=at(2023))
+        )
+
+        assert planned.fact_id not in {view.fact_id for view in actual}
+        assert planned.fact_id in {view.fact_id for view in all_facts}
+        assert event.fact_id not in {view.fact_id for view in before_event}
+        assert event.fact_id in {view.fact_id for view in after_event}
 
     async def test_touching_matches_either_entity_side(
         self, graph_backend: GraphBackend

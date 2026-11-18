@@ -54,6 +54,9 @@ def candidate_fact(
         closed_by=run.closed_by,
         close_kind=run.close_kind,
         inverse=inverse,
+        fact_kind=sample.fact_kind,
+        modality=sample.modality,
+        relation_label=sample.relation_label,
     )
 
 

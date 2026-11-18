@@ -22,8 +22,8 @@ from tests.support.scripted_model import (
 )
 
 
-PAIR_BLOCK = re.compile(r'<pair id="(P\d+)">(.*?)</pair>', re.S)
-STATEMENT = re.compile(r"<statement_([ab])[^>]*>(.*?)</statement_[ab]>", re.S)
+NEW_FACT = re.compile(r"<new_fact>\s*(.*?)\s*</new_fact>", re.S)
+EXISTING = re.compile(r"<existing_facts>\s*(.*?)\s*</existing_facts>", re.S)
 
 
 def _labelled_by_statements(first: str, second: str) -> Labelled:
@@ -33,25 +33,16 @@ def _labelled_by_statements(first: str, second: str) -> Labelled:
 
 
 def _oracle(truth: dict[str, str], call: ScriptedCall) -> dict[str, Any]:
-    """Return the labels for the pair blocks in a scripted model call."""
-    answers = []
-    for pair_id, block in PAIR_BLOCK.findall(call.prompt):
-        sides = dict(STATEMENT.findall(block))
-        shown = [html.unescape(sides[side]) for side in ("a", "b")]
-        item = _labelled_by_statements(*shown)
-        answers.append({"id": pair_id, "verdict": truth[item.id], "confidence": 0.95})
-    return {"pairs": answers}
+    """Return the closure answer for the labelled pair in a prompt."""
+    new = html.unescape(NEW_FACT.search(call.prompt).group(1))
+    existing = json.loads(EXISTING.search(call.prompt).group(1))
+    item = _labelled_by_statements(existing[0]["text"], new)
+    return {"contradicted": ["F1"] if truth[item.id] == "contradicts" else []}
 
 
 def _always_contradicts(call: ScriptedCall) -> dict[str, Any]:
     """Return a contradiction judgment for every pair in a batch."""
-    count = len(PAIR_BLOCK.findall(call.prompt))
-    return {
-        "pairs": [
-            {"id": f"P{number}", "verdict": "contradicts", "confidence": 0.99}
-            for number in range(1, count + 1)
-        ]
-    }
+    return {"contradicted": ["F1"]}
 
 
 def _usage_model(replies: Sequence[dict[str, Any]]) -> FunctionModel:
@@ -104,7 +95,6 @@ def test_a_perfect_judge_scores_perfectly() -> None:
     report = asyncio.run(run_eval(scripted_role_models(model)))
 
     assert (report.precision, report.recall) == (1.0, 1.0)
-    assert report.false_supersession_rate == 0.0
     assert (report.unanswered, report.wrong) == (0, [])
 
 
@@ -116,18 +106,16 @@ def test_a_judge_that_always_contradicts_has_a_high_false_supersession_rate():
 
     assert report.recall == 1.0
     assert report.precision < 0.5
-    assert report.false_supersession_rate == 1.0
-    assert "false-supersession 1.00" in report.render()
 
 
 def test_retry_usage_counts_malformed_and_valid_responses() -> None:
     """Evaluation totals include failed output validation and the final result."""
-    malformed = {"pairs": [{"id": "P1", "verdict": "contradicts"}]}
+    malformed = {"contradicted": [1]}
     model = _usage_model(
         [
             malformed,
-            {"pairs": [{"id": "P1", "verdict": "contradicts", "confidence": 0.9}]},
-            {"pairs": [{"id": "P1", "verdict": "contradicts", "confidence": 0.95}]},
+            {"contradicted": [1]},
+            {"contradicted": ["F1"]},
         ]
     )
 
@@ -145,7 +133,7 @@ def test_retry_usage_counts_malformed_and_valid_responses() -> None:
 
 def test_exhausted_malformed_output_is_reported_as_unanswered_with_all_usage():
     """Three invalid output attempts count as three calls and retain their tokens."""
-    malformed = {"pairs": [{"id": "P1", "verdict": "contradicts"}]}
+    malformed = {"contradicted": [1]}
     model = _usage_model([malformed, malformed, malformed])
 
     report = asyncio.run(

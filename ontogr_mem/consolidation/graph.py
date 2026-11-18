@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from ontogr_mem.consolidation.models import ArchiveRecord, ArchiveState
 from ontogr_mem.consolidation.stage import StageContext
 from ontogr_mem.data_models.entities import Entity
+from ontogr_mem.data_models.facts import Modality
 from ontogr_mem.temporal.query import FactView
 
 
@@ -46,7 +47,9 @@ async def current_facts(ctx: StageContext) -> tuple[FactView, ...]:
         r.target_id for r in await archived_records(ctx) if r.target_kind == "fact"
     }
     views = await ctx.temporal.current_facts()
-    return tuple(v for v in views if v.fact_id not in hidden)
+    return tuple(
+        v for v in views if v.fact_id not in hidden and v.modality is Modality.ACTUAL
+    )
 
 
 async def build_entity_graph(ctx: StageContext) -> EntityGraph:

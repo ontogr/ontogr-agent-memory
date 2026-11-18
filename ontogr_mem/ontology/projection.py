@@ -104,6 +104,7 @@ def project(cat: Ontology, actor_type_label: str = "Person") -> Projection:
                 description=r.description,
                 source_types=frozenset(srcs),
                 target_types=frozenset(tgts),
+                symmetric=r.symmetric,
             )
         )
     old = TypeCatalog(

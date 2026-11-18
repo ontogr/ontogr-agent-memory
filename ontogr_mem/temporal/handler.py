@@ -19,6 +19,7 @@ from ontogr_mem.temporal.cardinality import (
     ConflictPolicy,
     DictRelationPolicy,
     RelationRules,
+    rules_for,
 )
 from ontogr_mem.temporal.classify import (
     Classification,
@@ -215,42 +216,6 @@ def _episodes(
             }
         )
     )
-
-
-def judge_pending_slots(
-    facts: Sequence[Fact],
-    verdicts: Sequence[FactVerdict],
-) -> set[str]:
-    """Return the slots whose facts share an entity with an unjudged fact.
-
-    A pair of facts is judged when a stored verdict names both of them. A
-    slot is judge-pending while one of its facts shares an entity with a fact
-    of another slot and that pair has no verdict. Nothing is stored: the answer
-    comes from the facts and the verdicts as they are now.
-
-    Args:
-        facts: The current facts of the tenant.
-        verdicts: The stored verdicts.
-
-    Returns:
-        The slot keys that still need the judge, unsorted.
-    """
-    judged = {frozenset((verdict.fact_a_id, verdict.fact_b_id)) for verdict in verdicts}
-    by_entity: dict[str, list[Fact]] = {}
-    for fact in facts:
-        for entity in (fact.subject_id, fact.object_id):
-            by_entity.setdefault(entity, []).append(fact)
-    pending: set[str] = set()
-    for bucket in by_entity.values():
-        for index, one in enumerate(bucket):
-            for other in bucket[index + 1 :]:
-                if one.slot_key == other.slot_key:
-                    continue
-                if frozenset((one.fact_id, other.fact_id)) in judged:
-                    continue
-                pending.add(one.slot_key)
-                pending.add(other.slot_key)
-    return pending
 
 
 def _same_slot_pairs(
@@ -501,7 +466,13 @@ def _cross_slot_results(
     for v, x, y, partner in _cross_slot_pairs(inputs, mine, inputs.trust):
         if v.verdict not in (VerdictKind.CONTRADICTS, VerdictKind.UNCERTAIN):
             continue
-        policy = pair_policy(rules, inputs.policy.rules(partner.fact.relation_type_id))
+        partner_rules = rules_for(
+            inputs.policy,
+            partner.fact.relation_type_id,
+            partner.fact.modality,
+            partner.fact.fact_kind,
+        )
+        policy = pair_policy(rules, partner_rules)
         outcome = _decide_pair(
             inputs,
             x,
@@ -565,7 +536,10 @@ def slot_directives(inputs: HandlerInputs) -> HandlerResult:
     if not observations:
         return HandlerResult(SlotDirectives(), (), ())
     obs = {o.obs_id: o for o in observations}
-    rules = inputs.policy.rules(observations[0].relation_type_id)
+    first = observations[0]
+    rules = rules_for(
+        inputs.policy, first.relation_type_id, first.modality, first.fact_kind
+    )
     baseline, runs, mine = _baseline_sides(inputs, rules, obs)
     results = _same_slot_results(inputs, rules, baseline, runs, mine, obs=obs)
     results.extend(_cross_slot_results(inputs, rules, mine, obs))

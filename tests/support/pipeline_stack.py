@@ -146,7 +146,7 @@ class TemporalStack:
             LLMFactExtractor(models), InMemoryFactStore(), view.view
         )
         report = await extraction.extract([episode], {episode.id: entities})
-        stabilized = await stabilize_facts(self.manager, report.results[0].facts, view)
+        stabilized = stabilize_facts(report.results[0].facts, view)
         engine = await self.engine()
         return await engine.ingest(stabilized.typed, episode)
 

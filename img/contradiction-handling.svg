@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg viewBox="0 0 960 472" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="contradiction-handling-title contradiction-handling-desc" id="contradiction-handling-root">
 <title id="contradiction-handling-title">Contradiction handling</title>
-<desc id="contradiction-handling-desc">Observations in one slot go to the rules when the relation is single-valued. Pairs from other slots go to an optional model judge, which stores its verdicts. The handler reads the rules and the stored verdicts, and a person's decision overrides both. The result is a set of slot directives that the engine commits as fact versions.</desc>
+<desc id="contradiction-handling-desc">Rules handle single-valued slots. One optional model call checks candidates for each new actual state fact. The handler applies rules and stored verdicts, and a person's decision overrides both. The engine commits the result as fact versions.</desc>
 <defs>
       <style>#contradiction-handling-root { --color-paper:#f5f5f5; --color-ink:#2d3142; --color-muted:#4f5d75; --color-accent:#bf4520; --font-sans:'Geist', system-ui, sans-serif; --font-serif:'Instrument Serif', serif; --font-mono:'Geist Mono', ui-monospace, monospace; }
       #contradiction-handling-root { font-family: var(--font-sans); color: var(--color-ink); }
@@ -50,11 +50,11 @@
 <text class="al" x="852" y="296" text-anchor="start">COMMIT</text>
 <g><rect class="k-input" x="24" y="168" width="148" height="64" rx="6"/><text class="n-name" x="36" y="198">Observations</text><text class="n-sub" x="36" y="212">in one slot</text></g>
 <g><rect class="k-backend" x="240" y="48" width="192" height="64" rx="6"/><text class="n-name" x="252" y="71">Rules</text><text class="n-sub" x="252" y="85">single-valued relations</text><text class="n-sub" x="252" y="99">same slot</text></g>
-<g><rect class="k-optional" x="240" y="312" width="192" height="72" rx="6"/><text class="n-name" x="252" y="339">Model judge</text><text class="n-sub" x="252" y="353">cross-slot pairs</text><text class="n-sub" x="252" y="367">two passes, sides swapped</text></g>
+<g><rect class="k-optional" x="240" y="312" width="192" height="72" rx="6"/><text class="n-name" x="252" y="339">Model judge</text><text class="n-sub" x="252" y="353">candidate facts</text><text class="n-sub" x="252" y="367">one call per new fact</text></g>
 <g><rect class="k-store" x="496" y="312" width="184" height="64" rx="6"/><text class="n-name" x="508" y="342">Stored verdicts</text><text class="n-sub" x="508" y="356">keyed by pair and inputs</text></g>
 <g><rect class="k-focal" x="752" y="48" width="184" height="64" rx="6"/><text class="n-name" x="764" y="78">Person's decision</text><text class="n-sub" x="764" y="92">record_decision</text></g>
 <g><rect class="k-backend" x="752" y="184" width="184" height="64" rx="6"/><text class="n-name" x="764" y="214">Slot directives</text><text class="n-sub" x="764" y="228">close, open, conflict</text></g>
 <g><rect class="k-store" x="752" y="336" width="184" height="64" rx="6"/><text class="n-name" x="764" y="366">Fact versions</text><text class="n-sub" x="764" y="380">with a ledger entry</text></g>
 <text class="callout" x="24" y="432" text-anchor="start">A verdict is update, correction, dispute, or uncertain.</text>
-<text class="callout" x="24" y="452" text-anchor="start">A failed judge call is retried and never stored as no contradiction.</text>
+<text class="callout" x="24" y="452" text-anchor="start">A failed call leaves both facts live.</text>
 </svg>

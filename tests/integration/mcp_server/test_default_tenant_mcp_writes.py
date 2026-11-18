@@ -24,13 +24,13 @@ from tests.support.text_writes import (
 
 
 STORED = "Ana works at Acme."
-REFUSED = "Ana mentors Ben."
+UNPLACED = "Ana mentors Ben."
 SCRIPT = {
     STORED: (
         [ScriptedEntity("Ana", "Person"), ScriptedEntity("Acme", "Organization")],
         [ScriptedFact("Ana works at Acme", 0, 1, "WORKS_AT", "Ana works at Acme")],
     ),
-    REFUSED: (
+    UNPLACED: (
         [ScriptedEntity("Ana", "Person"), ScriptedEntity("Ben", "Person")],
         [ScriptedFact("Ana mentors Ben", 0, 1, "mentors", "Ana mentors Ben")],
     ),
@@ -108,17 +108,28 @@ class TestDefaultTenantMcpWrites:
         finally:
             await falkordb_store.erase_tenant(tenant)
 
-    async def test_add_memory_counts_a_refused_unknown_relation(
+    async def test_add_memory_keeps_an_unknown_relation_as_an_unplaced_fact(
         self, falkordb_store: FalkorDBGraphStore
     ):
-        """add_memory reports an unknown relation as refused."""
+        """add_memory stores an unknown relation with its text label."""
         tenant = new_tenant()
         try:
             async with open_client(tenant, text_models(SCRIPT)) as client:
-                receipt = await client.call_tool("add_memory", {"content": REFUSED})
+                receipt = await client.call_tool("add_memory", {"content": UNPLACED})
                 job = await _wait_for_job(client, _content(receipt)["job_id"])
                 assert job["status"] == "done"
-                assert job["result"]["ontology_refused"] == 1
-                assert job["result"]["fact_ids"] == []
+                assert job["result"]["unplaced"] == 1
+                assert "ontology_refused" not in job["result"]
+                assert len(job["result"]["fact_ids"]) == 1
+                found = _content(
+                    await client.call_tool(
+                        "search_memory", {"query": "Who does Ana mentor?"}
+                    )
+                )
+                assert len(found["facts"]) == 1
+                assert found["facts"][0]["statement"] == "Ana mentors Ben"
+                assert found["facts"][0]["relation"] == "mentors"
+                assert found["facts"][0]["kind"] == "state"
+                assert found["facts"][0]["modality"] == "actual"
         finally:
             await falkordb_store.erase_tenant(tenant)

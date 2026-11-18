@@ -35,7 +35,7 @@ from ontogr_mem.service.formatting import (
     retrieved_fact_out,
 )
 from ontogr_mem.service.runtime import TenantRuntime
-from ontogr_mem.temporal.query import FactView, TemporalQuery
+from ontogr_mem.temporal.query import ACTUAL_ONLY, FactView, TemporalQuery
 from ontogr_mem.temporal.render import render_context
 
 
@@ -249,7 +249,11 @@ async def get_entity(
     aliases = await runtime.stores.resolver_store.aliases_of(entity.entity_id)
     views = await runtime.reader.touching(
         [entity.entity_id],
-        TemporalQuery(now=now, include_history=request.include_history),
+        TemporalQuery(
+            now=now,
+            include_history=request.include_history,
+            modalities=ACTUAL_ONLY,
+        ),
     )
     latest: dict[str, FactView] = {}
     for view in views:

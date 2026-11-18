@@ -48,7 +48,7 @@ class FactRow(TypedDict):
     version: int
     subject_id: str
     object_id: str
-    relation_type_id: int
+    relation_type_id: int | None
     statement: str
     source: str
     valid_from: str

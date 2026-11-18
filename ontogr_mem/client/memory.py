@@ -30,6 +30,7 @@ from ontogr_mem.service.contracts import (
 )
 from ontogr_mem.service.memory_service import MemoryService
 from ontogr_mem.service.principal import Grant, Principal
+from ontogr_mem.temporal.settings import ClosureSettings
 from ontogr_mem.vectorstore.builtin import (
     EndpointEmbedder,
     LocalEmbedder,
@@ -138,6 +139,7 @@ class Memory:
                         state_settings=state_settings,
                         models=selected_models,
                         embedder=selected_embedder,
+                        closure_settings=ClosureSettings(),
                         ontology=declaration,
                         ontology_tenant=selected_tenant,
                     )

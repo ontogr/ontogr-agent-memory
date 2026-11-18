@@ -107,14 +107,14 @@ class BindInput:
         fact: The host fact.
         subject_ref: Ref of the subject entity.
         object_ref: Ref of the object entity.
-        relation_type_id: Dense relation type id chosen by the caller.
+        relation_type_id: Dense relation type id, or None when unplaced.
     """
 
     index: int
     fact: HostFact
     subject_ref: str
     object_ref: str
-    relation_type_id: int
+    relation_type_id: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -295,6 +295,7 @@ def bind_host_facts(
             polarity=Polarity.AFFIRMED,
             modality=Modality.ACTUAL,
             evidence_quote=fact.evidence_quote,
+            relation_label=fact.relation,
             valid_from=_iso(fact.valid_from),
             valid_to=_iso(fact.valid_to),
             time_expression=(
@@ -302,11 +303,31 @@ def bind_host_facts(
             ),
         )
         bound = bind(episode, entities, [raw], view, default_confidence=1.0)
-        # `bind` records a drop for every raw fact it does not return, so an
-        # empty `dropped` means exactly one fact came back.
-        if bound.dropped:
-            first = bound.dropped[0]
+        # Relation type checks can clear the type while preserving the fact.
+        # Host facts are dropped only when the link is self-referential or its
+        # stated time cannot be bound.
+        drops_for_fact = [
+            dropped
+            for dropped in bound.dropped
+            if dropped.reason
+            in {
+                FactDropReason.SELF_RELATION,
+                FactDropReason.TIME_UNPARSED,
+                FactDropReason.TIME_ORDER,
+                FactDropReason.TIME_EXPRESSION_NOT_FOUND,
+                FactDropReason.EVENT_INTERVAL,
+                FactDropReason.BAD_TYPE_ID,
+                FactDropReason.TYPES_UNAVAILABLE,
+            }
+        ]
+        if drops_for_fact:
+            first = drops_for_fact[0]
             drops.append(Drop(item.index, first.reason, first.detail))
+            continue
+        if not bound.facts:
+            if bound.dropped:
+                first = bound.dropped[0]
+                drops.append(Drop(item.index, first.reason, first.detail))
             continue
         kept = replace(bound.facts[0], method=Method.RECORD)
 

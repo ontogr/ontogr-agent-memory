@@ -9,7 +9,7 @@ import html
 from collections.abc import Callable, Sequence
 from datetime import datetime
 
-from ontogr_mem.data_models.facts import Precision
+from ontogr_mem.data_models.facts import FactKind, Precision, TimeBasis
 from ontogr_mem.temporal.query import FactView
 
 
@@ -31,6 +31,8 @@ def _stamp(at: datetime, precision: Precision | None) -> str:
 def _valid(view: FactView) -> str:
     """Return the valid interval as text, e.g. ``2019 to 2022``."""
     start = _stamp(view.valid_from, view.valid_from_precision)
+    if view.fact_kind is FactKind.EVENT:
+        return start
     end = _stamp(view.valid_to, view.valid_to_precision) if view.valid_to else "open"
     return f"{start} to {end}"
 
@@ -39,8 +41,21 @@ def _text(view: FactView, relation_label: Callable[[int], str] | None) -> str:
     """Return the statement or a readable fallback triple."""
     if view.statement:
         return view.statement
-    relation = relation_label(view.relation_type_id) if relation_label else ""
-    return f"{view.subject_id} {relation or view.relation_type_id} {view.object_id}"
+    relation = (
+        relation_label(view.relation_type_id)
+        if view.relation_type_id is not None and relation_label
+        else None
+    )
+    relation = (
+        relation
+        or view.relation_label
+        or (
+            str(view.relation_type_id)
+            if view.relation_type_id is not None
+            else "related to"
+        )
+    )
+    return f"{view.subject_id} {relation} {view.object_id}"
 
 
 def _tag(
@@ -53,6 +68,7 @@ def _tag(
     Stored text is HTML-escaped, so it cannot close the tag or inject markup.
     """
     status = "disputed" if view.disputed else view.status.value
+    basis = ' basis="reference"' if view.time_basis is TimeBasis.REFERENCE else ""
     episodes = (
         f' episodes="{html.escape(" ".join(episode_ids), quote=True)}"'
         if episode_ids
@@ -61,7 +77,7 @@ def _tag(
     return (
         f'<fact id="{html.escape(view.fact_id, quote=True)}" valid="{_valid(view)}" '
         f'source="{html.escape(view.source or "unknown", quote=True)}" '
-        f'status="{status}"{episodes}>'
+        f'status="{status}"{basis}{episodes}>'
         f"{html.escape(' '.join(_text(view, relation_label).split()))}</fact>"
     )
 

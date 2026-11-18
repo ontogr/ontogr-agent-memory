@@ -15,7 +15,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
 from ontogr_mem.data_models.fact_versions import SupersessionKind
-from ontogr_mem.data_models.facts import Precision
+from ontogr_mem.data_models.facts import FactKind, Modality, Precision
 from ontogr_mem.data_models.ids import stable_id
 from ontogr_mem.data_models.observation import Observation, ObservationKind
 from ontogr_mem.temporal.anchor import anchor_observation
@@ -234,6 +234,10 @@ def _step(
         return _apply_close(state, event)
     if event.kind is ObservationKind.STATED_END:
         return _apply_end(state, event, item.at)
+    if event.fact_kind is FactKind.EVENT or event.modality is not Modality.ACTUAL:
+        return _apply_assertion(
+            state, event, item.at, False, component_of, directives=directives
+        )
     return _apply_assertion(
         state, event, item.at, single, component_of, directives=directives
     )

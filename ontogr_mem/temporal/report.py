@@ -34,18 +34,15 @@ class Outcome(StrEnum):
     EPISODE_RETRACTED = "episode_retracted"
     EPISODE_RESET = "episode_reset"
     SCRUBBED = "scrubbed"
-    CANDIDATES_TRUNCATED = "candidates_truncated"
+    TOKENS_IN = "tokens_in"
+    TOKENS_OUT = "tokens_out"
     JUDGE_ASKED = "judge_asked"
     JUDGE_CACHED = "judge_cached"
     JUDGE_CONTRADICTS = "judge_contradicts"
-    JUDGE_UNCERTAIN = "judge_uncertain"
-    JUDGE_NEGATIVE = "judge_negative"
     JUDGE_FAILED = "judge_failed"
     JUDGE_INVALID_ID = "judge_invalid_id"
     JUDGE_LLM_ERROR = "judge_llm_error"
     JUDGE_PARSE_FAILED = "judge_parse_failed"
-    TOKENS_IN = "tokens_in"
-    TOKENS_OUT = "tokens_out"
 
 
 @dataclass(slots=True)

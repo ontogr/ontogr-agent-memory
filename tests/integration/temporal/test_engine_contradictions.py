@@ -15,19 +15,18 @@ from ontogr_mem.temporal.cardinality import (
     RelationRules,
 )
 from ontogr_mem.temporal.engine import TemporalEngine
-from ontogr_mem.temporal.judge import JudgeOutcome
 from ontogr_mem.temporal.query import TemporalQuery
 from ontogr_mem.temporal.report import Outcome
 from ontogr_mem.temporal.verdicts import (
     ConflictDecision,
     DecisionAction,
-    FactVerdict,
     VerdictKind,
     VerdictSource,
 )
 from tests.support.clock import FixedClock
 from tests.support.graph_backend import GraphBackend
 from tests.support.temporal import open_temporal
+from tests.support.verdicts import verdict
 from tests.unit.temporal.helpers import LocalRefResolver, at, obs
 
 
@@ -38,38 +37,6 @@ RULES = DictRelationPolicy(
         2: RelationRules(Cardinality.MANY),
     }
 )
-
-
-class ScriptedJudge:
-    """A judge that gives one verdict to every pair it is asked about."""
-
-    prompt_version = "scripted-1"
-
-    def __init__(self, verdict: VerdictKind | None) -> None:
-        """Answer every pair with ``verdict``; ``None`` answers nothing."""
-        self._verdict = verdict
-        self.asked: list[str] = []
-
-    async def judge_pairs(self, pairs, *, now: datetime) -> JudgeOutcome:
-        """Record the pairs and return the scripted verdicts."""
-        self.asked.extend(pair.pair_key for pair in pairs)
-        outcome = JudgeOutcome()
-        if self._verdict is None:
-            return outcome
-        for pair in pairs:
-            outcome.verdicts.append(
-                FactVerdict(
-                    pair_key=pair.pair_key,
-                    fact_a_id=pair.a.fact_id,
-                    fact_b_id=pair.b.fact_id,
-                    verdict=self._verdict,
-                    inputs_hash=pair.inputs_hash,
-                    prompt_version=self.prompt_version,
-                    source=VerdictSource.LLM,
-                    decided_at=now,
-                )
-            )
-        return outcome
 
 
 async def build(
@@ -131,7 +98,10 @@ async def test_record_verdicts_then_reconcile_applies_them(graph_backend: GraphB
     await ingest_city_and_employer(engine)
     assert await current_objects(store) == ["acme", "globex"]
 
-    report = await engine.judge_pass(ScriptedJudge(VerdictKind.CONTRADICTS))
+    facts = await store.current_facts()
+    report = await engine.record_verdicts(
+        [verdict(facts[0], facts[1], VerdictKind.CONTRADICTS)]
+    )
 
     assert report.counts[Outcome.JUDGE_CONTRADICTS.value] == 1
     assert await current_objects(store) == ["globex"]
@@ -157,55 +127,9 @@ async def test_person_decision_overrides_rules_and_survives_rerun(
     )
 
     await engine.record_decision(decision)
-    await engine.judge_pass(ScriptedJudge(VerdictKind.CONTRADICTS))
+    facts = await store.current_facts()
+    await engine.record_verdicts([verdict(facts[0], facts[1], VerdictKind.CONTRADICTS)])
     rerun = await engine.reconcile_all()
 
     assert await current_objects(store) == ["acme", "globex"]
     assert rerun.counts[Outcome.SLOT_COMMITTED.value] == 0
-
-
-async def test_judge_pass_judges_only_pending_slots_and_clears_the_flag(
-    graph_backend: GraphBackend,
-):
-    """A pending slot is judged once; a second pass has nothing to ask."""
-    engine, store = await build(graph_backend)
-    await ingest_city_and_employer(engine)
-    judge = ScriptedJudge(VerdictKind.COMPATIBLE)
-
-    await engine.judge_pass(judge)
-    second = await engine.judge_pass(judge)
-
-    assert len(judge.asked) == 1
-    assert await store.pending_slots() == []
-    assert second.counts == {}
-
-
-async def test_unjudged_partner_leaves_the_slot_pending_until_judged(
-    graph_backend: GraphBackend,
-):
-    """A pass that answers nothing leaves the slots with a neighbour pending."""
-    engine, store = await build(graph_backend)
-    await ingest_city_and_employer(engine)
-
-    await engine.judge_pass(ScriptedJudge(None))
-
-    assert await store.pending_slots() == ["other", "slot"]
-
-
-async def test_two_single_valued_slots_are_not_sent_to_the_judge(
-    graph_backend: GraphBackend,
-):
-    """The rules settle one-per-subject relations, so the judge is not asked."""
-    engine, store = await build(graph_backend)
-    judge = ScriptedJudge(VerdictKind.COMPATIBLE)
-    await engine.ingest_observations(
-        [
-            obs("m1", "acme", at(2010)),
-            obs("p1", "globex", at(2015), slot="other"),
-        ]
-    )
-
-    report = await engine.judge_pass(judge)
-
-    assert judge.asked == []
-    assert report.counts == {}

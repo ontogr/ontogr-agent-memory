@@ -227,12 +227,13 @@ class TestBinding:
     def test_plans_conditions_and_wishes_are_kept_and_not_dated(
         self, modality: str
     ) -> None:
-        """A non-actual modality is kept and gets no reference time."""
+        """An undated non-actual modality uses the episode reference time."""
         (f,) = bind_facts(
             fact(fact_kind="state", modality=modality, evidence_quote="I switched")
         ).facts
         assert f.modality.value == modality
-        assert (f.valid_from, f.time_basis) == (None, TimeBasis.NONE)
+        assert f.valid_from == datetime(2026, 10, 8, 12, tzinfo=UTC)
+        assert f.time_basis is TimeBasis.REFERENCE
 
     def test_label_field_parses(self) -> None:
         """A free-text label is kept beside a null dense id."""

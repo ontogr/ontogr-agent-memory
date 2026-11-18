@@ -156,13 +156,10 @@ class TestAdapter:
         assert observations == []
         assert skipped[0].reason is SkipReason.END_ONLY
 
-    async def test_routing_skips_what_cannot_be_reconciled(self):
+    async def test_routing_skips_facts_without_evidence_or_two_refs(self):
         """Each unusable fact is returned with its reason."""
         cases = {
             SkipReason.NO_EVIDENCE: typed(evidence_quote=" "),
-            SkipReason.NOT_STATE: typed(fact_kind=FactKind.EVENT),
-            SkipReason.NOT_ACTUAL: typed(modality=Modality.PLANNED),
-            SkipReason.NO_RELATION: typed(relation_type=None),
             SkipReason.REF_COUNT: typed(entity_refs=("ana",)),
         }
         for reason, fact in cases.items():
@@ -170,12 +167,42 @@ class TestAdapter:
             assert observations == []
             assert skipped[0].reason is reason
 
-    async def test_unknown_time_basis_gives_an_undated_assertion(self):
-        """A fact with no basis is kept as an undated statement."""
+    async def test_event_is_converted_with_start_specific_slot(self):
+        """Events stay open-ended and distinct starts occupy distinct slots."""
+        first, _ = await convert(typed(fact_kind=FactKind.EVENT))
+        second, _ = await convert(typed(fact_kind=FactKind.EVENT, valid_from=at(2021)))
+        assert first[0].fact_kind is FactKind.EVENT
+        assert first[0].valid_to is None
+        assert first[0].slot_key != second[0].slot_key
+
+    async def test_planned_state_keeps_modality_and_separate_slot(self):
+        """A planned state does not share the actual state's slot."""
+        (planned,), _ = await convert(typed(modality=Modality.PLANNED))
+        (actual,), _ = await convert(typed())
+        assert planned.modality is Modality.PLANNED
+        assert planned.slot_key != actual.slot_key
+
+    async def test_unplaced_fact_uses_normalized_relation_words_for_slot(self):
+        """Unplaced facts retain their label and fold case and spacing."""
+        (first,), _ = await convert(
+            typed(relation_type=None, relation_label="works    with")
+        )
+        (second,), _ = await convert(
+            typed(relation_type=None, relation_label="WORKS with")
+        )
+        (placed,), _ = await convert(typed())
+        assert first.relation_type_id is None
+        assert first.relation_label == "works    with"
+        assert first.slot_key == second.slot_key
+        assert first.slot_key != placed.slot_key
+
+    async def test_reference_time_basis_dates_an_undated_assertion(self):
+        """An undated fact starts at the episode time."""
         (observation,), _ = await convert(
             typed(valid_from=None, time_basis=TimeBasis.NONE, precision=None)
         )
-        assert not observation.dated
+        assert observation.dated
+        assert observation.time_basis is TimeBasis.REFERENCE
 
     async def test_unresolved_ref_is_skipped(self):
         """A ref that resolves to nothing cannot become an observation."""

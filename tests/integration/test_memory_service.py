@@ -56,6 +56,8 @@ def _memory_models() -> RoleModels:
 
     def answer(call: ScriptedCall) -> object:
         prompt = call.prompt
+        if "Task: list the existing facts that the new fact contradicts" in prompt:
+            return {"contradicted": []}
         if "Task: list the entities" in prompt:
             text = _prompt_block(prompt, "episode_text")
             entity_types = json.loads(_prompt_block(prompt, "entity_types"))
@@ -734,8 +736,8 @@ class TestMemoryService:
 
         assert job.status.value == "done"
         assert job.result is not None
-        assert job.result["ontology_refused"] == 1
-        assert job.result["skipped"] == {"not_state": 1}
+        assert job.result["unplaced"] == 1
+        assert job.result["skipped"] == {}
         assert job.attempts == 2
         assert vector_attempts == 2
         assert len(job.result["fact_ids"]) == 1
@@ -782,9 +784,9 @@ class TestMemoryService:
             harness.principal, skipped_receipt.job_id
         )
         assert skipped_job.result is not None
-        assert skipped_job.result["ontology_refused"] == 0
-        assert skipped_job.result["skipped"] == {"no_relation": 1}
-        assert skipped_job.result["fact_ids"] == []
+        assert skipped_job.result["unplaced"] == 1
+        assert skipped_job.result["skipped"] == {}
+        assert len(skipped_job.result["fact_ids"]) == 1
         listed = await harness.service.list_episodes(
             harness.principal,
             ListEpisodes(tenant="t1", session_id="all-skipped"),
@@ -840,7 +842,7 @@ class TestMemoryService:
         )
         assert job.status.value == "done"
         assert job.result is not None
-        assert job.result["ontology_refused"] == 1
+        assert job.result["unplaced"] == 1
         assert job.result["skipped"] == {}
         assert len(job.result["fact_ids"]) == 1
         assert first_job.result is not None
@@ -921,14 +923,9 @@ class TestMemoryService:
 
         assert job.status.value == "done"
         assert job.result is not None
-        assert [
-            (item["index"], item["reason"]) for item in job.result.get("dropped", [])
-        ] == [(0, "unknown_relation"), (1, "unknown_relation")]
-        assert [item["detail"] for item in job.result["dropped"]] == [
-            "relation is not in the ontology",
-            "an endpoint type is not in the ontology",
-        ]
-        assert job.result["fact_ids"] == []
+        assert job.result.get("dropped", []) == []
+        assert len(job.result["fact_ids"]) == 2
+        assert job.result["unplaced"] == 2
         assert await manager.catalog() == before
 
     async def test_sourced_known_endpoint_types_with_wrong_pattern_are_dropped(

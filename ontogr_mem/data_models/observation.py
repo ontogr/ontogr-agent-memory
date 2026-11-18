@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
-from ontogr_mem.data_models.facts import Precision, TimeBasis
+from ontogr_mem.data_models.facts import FactKind, Modality, Precision, TimeBasis
 from ontogr_mem.data_models.timestamps import require_utc
 
 
@@ -83,7 +83,7 @@ class Observation:
     slot_key: str
     subject_id: str
     object_id: str
-    relation_type_id: int
+    relation_type_id: int | None
     kind: ObservationKind
     episode_id: str
     occurred_at: datetime
@@ -100,6 +100,9 @@ class Observation:
     source_system: str = ""
     connector: str = ""
     actor_role: str = ""
+    fact_kind: FactKind = FactKind.STATE
+    modality: Modality = Modality.ACTUAL
+    relation_label: str = ""
 
     def __post_init__(self) -> None:
         """Normalize times to UTC and reject impossible intervals."""
