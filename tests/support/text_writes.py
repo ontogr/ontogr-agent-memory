@@ -33,6 +33,7 @@ class ScriptedEntity:
     name: str
     type_label: str | None = None
     proposed_label: str | None = None
+    attributes: Mapping[str, str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +82,8 @@ def _entity_item(prompt: str, entity: ScriptedEntity) -> dict[str, object]:
     }
     if entity.proposed_label is not None:
         item["type_label"] = entity.proposed_label
+    if entity.attributes is not None:
+        item["attributes"] = dict(entity.attributes)
     return item
 
 
