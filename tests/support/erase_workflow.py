@@ -136,6 +136,7 @@ def _entity(entity_id: str, name: str, *, type_label: str = "Person") -> Entity:
         summary=f"Summary mentioning {name}",
         descriptions=[f"Description mentioning {name}"],
         attributes={"note": f"Note mentioning {name}"},
+        identity_attrs={"email": f"{name.lower()}@example.org"},
         created_at=datetime(2026, 10, 22, tzinfo=UTC),
         updated_at=datetime(2026, 10, 22, tzinfo=UTC),
     )

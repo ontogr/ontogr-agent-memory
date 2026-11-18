@@ -7,6 +7,7 @@ import pytest
 from ontogr_mem.relational_store.jobs.erase_journal import ErasureStatus
 from ontogr_mem.service.contracts import ForgetMode
 from ontogr_mem.service.forget.workflow import EraseWorkflow
+from ontogr_mem.service.forget.scan import scan_residue
 from ontogr_mem.service.runtime import TenantRuntime
 from ontogr_mem.vectorstore import EmbeddingGateway, VectorStore
 from ontogr_mem.vectorstore.memory import InMemoryBackend
@@ -18,6 +19,21 @@ from tests.support.graph_backend import GraphBackend
 
 class TestEraseWorkflow:
     """Exercise Erase through live graph stores and their public ports."""
+
+    async def test_identity_attribute_text_is_reported_as_residue(
+        self, graph_backend: GraphBackend
+    ):
+        """Identity values remain discoverable by the erase residue scan."""
+        world = await make_erase_world(graph_backend)
+
+        residue = await scan_residue(
+            world.runtime,
+            world.plan,
+            needles=("person@example.org",),
+            candidate_entity_ids=("person",),
+        )
+
+        assert residue == ("entity_text:person",)
 
     async def test_erase_reports_effects_and_prunes_surviving_entity(
         self, graph_backend: GraphBackend

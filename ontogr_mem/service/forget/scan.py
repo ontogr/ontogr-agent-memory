@@ -106,6 +106,7 @@ async def scan_residue(  # noqa: C901, PLR0912
                     entity.summary,
                     *entity.descriptions,
                     str(entity.attributes),
+                    str(entity.identity_attrs),
                 ]
             )
             if any(needle in text for needle in needles):
