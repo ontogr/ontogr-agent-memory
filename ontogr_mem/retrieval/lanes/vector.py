@@ -73,7 +73,11 @@ async def run_vector_lane(
                 lambda result: result[2] == result[3],
                 start=settings.candidate_factor * limit,
                 want=limit,
-                rechecks=settings.filter_rechecks if gate is not None else 0,
+                rechecks=(
+                    settings.filter_rechecks
+                    if facts is not None and query is not None
+                    else 0
+                ),
             )
         ),
         run_search(

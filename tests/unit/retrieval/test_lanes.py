@@ -312,6 +312,32 @@ class TestFilteredLaneRefill:
         assert [fact.fact_id for fact in result.facts] == ["f3"]
         assert vectors.windows == [2, 4]
 
+    async def test_vector_lane_refills_after_hydration_drops_candidates(self):
+        """Fetch a wider vector window when hydration removes other modalities."""
+
+        class PagingVectors(VectorPort):
+            async def search(self, kind, vector, *, k, filters=None, min_score=None):
+                if kind is VectorKind.EDGE:
+                    self.windows = getattr(self, "windows", []) + [k]
+                    return [Hit(f"f{i}", 1.0, i) for i in range(min(k, 4))]
+                return []
+
+        class PagingFacts(FactPort):
+            async def by_ids(self, ids, query):
+                return [view("f3")] if "f3" in ids else []
+
+        vectors = PagingVectors()
+        result = await run_vector_lane(
+            vectors,
+            [0.1],
+            limit=1,
+            settings=RetrievalSettings(),
+            facts=PagingFacts(),
+            query=TemporalQuery(now=NOW),
+        )
+        assert [fact.fact_id for fact in result.facts] == ["f3"]
+        assert vectors.windows == [2, 4]
+
     async def test_keyword_lane_refills_after_gate_rejects_candidates(self):
         """Fetch a wider keyword window when filtering drops candidates."""
 
