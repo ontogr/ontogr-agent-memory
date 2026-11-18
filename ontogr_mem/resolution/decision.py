@@ -17,6 +17,7 @@ from ontogr_mem.data_models.entities import (
     EntityStatus,
     Outcome,
 )
+from ontogr_mem.ontology.links import TypeLinks, TypeRel
 from ontogr_mem.resolution.blocking import has_high_entropy
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.grouping import Group
@@ -25,8 +26,6 @@ from ontogr_mem.resolution.plan import Plan
 from ontogr_mem.resolution.policy import (
     ResolutionMode,
     ResolutionPolicy,
-    TypeRel,
-    TypeRelations,
     identity_agree,
     identity_conflict,
 )
@@ -63,14 +62,14 @@ def collect_matches(
     *,
     policy: ResolutionPolicy,
     settings: ResolverSettings,
-    relations: TypeRelations,
+    links: TypeLinks,
     settle: bool,
 ) -> Collected:
     """Collect what the rules can say about one group, without asking a model."""
     mode = policy.mode(group.type_label)
 
     def relation(entity: Entity) -> TypeRel:
-        return policy.relation(group.type_label, entity.type_label, relations)
+        return links.relation(group.ontology_type_id, entity.ontology_type_id)
 
     def vetoed(entity: Entity) -> bool:
         if identity_conflict(group.identity, entity.identity_attrs):
@@ -80,12 +79,10 @@ def collect_matches(
     by_uri = _uri_plan(group, view)
     if by_uri is not None:
         return Collected(plan=by_uri, verify=(), reason="")
-    by_key, direct, family = _direct_plan(
-        group, view, mode, relation, vetoed, settle=settle
-    )
+    by_key, direct = _direct_plan(group, view, mode, relation, vetoed, settle=settle)
     if by_key is not None:
         return Collected(plan=by_key, verify=(), reason="")
-    verify, reason = _verify_ids(direct, family, mode)
+    verify, reason = _verify_ids(direct, mode)
     by_fuzzy, verify, reason = _scan_candidates(
         group,
         candidates,
@@ -123,18 +120,15 @@ def _direct_plan(
     vetoed: _Veto,
     *,
     settle: bool,
-) -> tuple[Plan | None, list[tuple[Entity, bool]], list[Entity]]:
-    """Decide from alias hits, or return the direct and family lists."""
+) -> tuple[Plan | None, list[tuple[Entity, bool]]]:
+    """Decide from alias hits, or return the direct hits needing a verdict."""
     direct: list[tuple[Entity, bool]] = []
-    family: list[Entity] = []
     for entity, canonical in view.alias_hits:
         kind = relation(entity)
         if kind in (TypeRel.SAME, TypeRel.NESTED) and not vetoed(entity):
             direct.append((entity, canonical))
-        elif kind is TypeRel.FAMILY and not vetoed(entity):
-            family.append(entity)
     if not direct:
-        return None, direct, family
+        return None, direct
     agree = [
         (entity, canonical)
         for entity, canonical in direct
@@ -150,7 +144,6 @@ def _direct_plan(
                 "key_hit" if canonical else "alias_hit",
             ),
             direct,
-            family,
         )
     if len(agree) == 1:
         entity, canonical = agree[0]
@@ -162,7 +155,6 @@ def _direct_plan(
                 "identity_attr",
             ),
             direct,
-            family,
         )
     if settle and mode is ResolutionMode.AUTO_KEY and len(direct) > 1:
         entity, canonical = min(direct, key=_preference)
@@ -170,9 +162,8 @@ def _direct_plan(
         return (
             Plan(entity.entity_id, method, Outcome.MATCHED, "preferred_hit"),
             direct,
-            family,
         )
-    return None, direct, family
+    return None, direct
 
 
 def _preference(hit: tuple[Entity, bool]) -> tuple[bool, int, datetime, str]:
@@ -183,7 +174,6 @@ def _preference(hit: tuple[Entity, bool]) -> tuple[bool, int, datetime, str]:
 
 def _verify_ids(
     direct: Sequence[tuple[Entity, bool]],
-    family: Sequence[Entity],
     mode: ResolutionMode,
 ) -> tuple[list[str], str]:
     """Return the ids that need verification and the reason for it."""
@@ -193,9 +183,6 @@ def _verify_ids(
         reason = (
             "verify_always" if mode is ResolutionMode.VERIFY_ALWAYS else "ambiguous_key"
         )
-    verify += [entity.entity_id for entity in family]
-    if family and not reason:
-        reason = "cross_type"
     return verify, reason
 
 

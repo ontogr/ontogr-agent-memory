@@ -4,7 +4,7 @@ The entity and its aliases are written first and mentions last. The resolver
 writes mentions after every group, because one episode may span several groups.
 """
 
-from ontogr_mem.data_models import UNKNOWN_LABEL, Clock
+from ontogr_mem.data_models import Clock
 from ontogr_mem.data_models.entities import (
     Alias,
     AliasSource,
@@ -14,13 +14,14 @@ from ontogr_mem.data_models.entities import (
     Outcome,
     ResolutionState,
 )
+from ontogr_mem.ontology.links import TypeLinks
+from ontogr_mem.ontology.models import UNKNOWN_ID
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.errors import NotFoundError
 from ontogr_mem.resolution.grouping import Group
 from ontogr_mem.resolution.ids import alias_id, entity_id, mention_id
 from ontogr_mem.resolution.keys import loose_key, strict_key
 from ontogr_mem.resolution.plan import Plan
-from ontogr_mem.resolution.policy import TypeRelations
 from ontogr_mem.resolution.resolver_store import ResolverStore
 
 
@@ -30,7 +31,7 @@ async def write_group(
     plan: Plan,
     *,
     settings: ResolverSettings,
-    relations: TypeRelations,
+    links: TypeLinks,
     clock: Clock,
     incomplete: bool,
 ) -> tuple[Entity, list[Alias], list[Mention]]:
@@ -44,7 +45,7 @@ async def write_group(
         stored = await store.get_entities([plan.entity_id])
         if not stored:
             raise NotFoundError(f"entity {plan.entity_id!r}")
-        entity = _matched(stored[0], group, settings, relations, clock)
+        entity = _matched(stored[0], group, settings, links, clock)
     else:
         entity = await _created(
             store, group, plan, settings, clock, incomplete=incomplete
@@ -59,22 +60,14 @@ def _matched(
     entity: Entity,
     group: Group,
     settings: ResolverSettings,
-    relations: TypeRelations,
+    links: TypeLinks,
     clock: Clock,
 ) -> Entity:
-    type_label = entity.type_label
-    type_id = entity.ontology_type_id
-    proposed_type = entity.proposed_type
-    if type_label.casefold() != group.type_label.casefold():
-        winner = relations.more_specific(type_label, group.type_label)
-        if winner != type_label:
-            type_label = winner
-            type_id = group.ontology_type_id
-            proposed_type = group.proposed_type
-    elif type_label == UNKNOWN_LABEL:
-        proposed_type = proposed_type or group.proposed_type
-    elif not type_id:
-        type_id = group.ontology_type_id
+    winner = links.more_specific(entity.ontology_type_id, group.ontology_type_id)
+    type_label = links.label(winner)
+    proposed_type = (
+        (entity.proposed_type or group.proposed_type) if winner == UNKNOWN_ID else ""
+    )
     descriptions = list(entity.descriptions)
     for description in group.descriptions:
         if description not in descriptions:
@@ -89,7 +82,7 @@ def _matched(
         update={
             "status": EntityStatus.ACTIVE,
             "type_label": type_label,
-            "ontology_type_id": type_id,
+            "ontology_type_id": winner,
             "proposed_type": proposed_type,
             "descriptions": descriptions,
             "attributes": attributes,

@@ -23,17 +23,14 @@ from ontogr_mem.data_models.entities import (
     VerdictSource,
 )
 from ontogr_mem.data_models.ids import stable_id
+from ontogr_mem.ontology.links import TypeLinks, TypeRel
+from ontogr_mem.ontology.models import UNKNOWN_ID
 from ontogr_mem.resolution.errors import (
     MergeRefusedError,
     NotFoundError,
     SnapshotPurgedError,
 )
-from ontogr_mem.resolution.policy import (
-    ResolutionPolicy,
-    TypeRel,
-    TypeRelations,
-    identity_conflict,
-)
+from ontogr_mem.resolution.policy import identity_conflict
 from ontogr_mem.resolution.resolver_store import (
     MergePlan,
     ResolverStore,
@@ -71,8 +68,7 @@ def _require(entities: Sequence[Entity], entity_id: str) -> Entity:
 
 
 def _check_allowed(
-    policy: ResolutionPolicy,
-    relations: TypeRelations,
+    links: TypeLinks,
     survivor: Entity,
     absorbed: Entity,
     actor: str,
@@ -89,18 +85,17 @@ def _check_allowed(
     if identity_conflict(survivor.identity_attrs, absorbed.identity_attrs):
         raise MergeRefusedError("identity_conflict", absorbed.entity_id)
     if (
-        policy.relation(survivor.type_label, absorbed.type_label, relations)
+        links.relation(survivor.ontology_type_id, absorbed.ontology_type_id)
         is TypeRel.DISTINCT
     ):
         raise MergeRefusedError(
-            "different_family", f"{survivor.type_label} vs {absorbed.type_label}"
+            "different_type", f"{survivor.type_label} vs {absorbed.type_label}"
         )
 
 
 async def build_merge_plan(
     store: ResolverStore,
-    policy: ResolutionPolicy,
-    relations: TypeRelations,
+    links: TypeLinks,
     survivor_id: str,
     absorbed_id: str,
     *,
@@ -112,15 +107,14 @@ async def build_merge_plan(
     entities = await store.get_entities([survivor_id, absorbed_id])
     survivor = _require(entities, survivor_id)
     absorbed = _require(entities, absorbed_id)
-    _check_allowed(policy, relations, survivor, absorbed, actor)
+    _check_allowed(links, survivor, absorbed, actor)
     aliases = await store.aliases_of(absorbed_id)
     mentions = await store.mentions_of(absorbed_id)
     merge_id = stable_id(
         "merge", survivor_id, absorbed_id, actor, reason, str(len(mentions))
     )
     now = clock.now()
-    winner = relations.more_specific(survivor.type_label, absorbed.type_label)
-    adopts = winner != survivor.type_label
+    winner = links.more_specific(survivor.ontology_type_id, absorbed.ontology_type_id)
     snapshot = {
         "entity": absorbed.model_dump(mode="json"),
         "aliases": [alias.model_dump(mode="json") for alias in aliases],
@@ -148,12 +142,12 @@ async def build_merge_plan(
     }
     updated_survivor = survivor.model_copy(
         update={
-            "type_label": winner,
-            "ontology_type_id": (
-                absorbed.ontology_type_id if adopts else survivor.ontology_type_id
-            ),
+            "type_label": links.label(winner),
+            "ontology_type_id": winner,
             "proposed_type": (
-                absorbed.proposed_type if adopts else survivor.proposed_type
+                (survivor.proposed_type or absorbed.proposed_type)
+                if winner == UNKNOWN_ID
+                else ""
             ),
             "descriptions": survivor.descriptions + descriptions_added,
             "attributes": {**absorbed.attributes, **survivor.attributes},
