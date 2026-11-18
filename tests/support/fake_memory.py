@@ -157,7 +157,10 @@ class FakeMemory:
         exclude_entity_types: Sequence[str] | None = None,
         relation_types: Sequence[str] | None = None,
         exclude_relation_types: Sequence[str] | None = None,
-        modalities: Sequence[Modality] | None = None,
+        modalities: Sequence[
+            Modality | Literal["actual", "planned", "conditional", "desired"]
+        ]
+        | None = None,
     ) -> MemoryContext:
         """Record the query and budget, then return the scripted context.
 

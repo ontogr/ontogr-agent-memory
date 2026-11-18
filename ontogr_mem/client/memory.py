@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator, Sequence
 from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontextmanager
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from ontogr_mem.data_models import Role
 from ontogr_mem.data_models.tenant import validate_tenant_id
@@ -322,7 +322,10 @@ class Memory:
         exclude_entity_types: Sequence[str] | None = None,
         relation_types: Sequence[str] | None = None,
         exclude_relation_types: Sequence[str] | None = None,
-        modalities: Sequence[Modality] | None = None,
+        modalities: Sequence[
+            Modality | Literal["actual", "planned", "conditional", "desired"]
+        ]
+        | None = None,
     ) -> MemoryContext:
         """Retrieve facts and a Context block. Returned text is untrusted data.
 
@@ -361,7 +364,10 @@ class Memory:
                 "relation_types": list(relation_types or ()),
                 "exclude_relation_types": list(exclude_relation_types or ()),
                 "modalities": (
-                    [modality.value for modality in modalities]
+                    [
+                        modality.value if isinstance(modality, Modality) else modality
+                        for modality in modalities
+                    ]
                     if modalities is not None
                     else ["actual"]
                 ),
