@@ -129,11 +129,8 @@ class Retriever:
                 episode hydration fails.
         """
         temporal_query = request.to_temporal_query()
-        gate = (
-            FactGate(request.scope, self._entities)
-            if request.scope.filters_facts
-            else None
-        )
+        scope = request.scope
+        gate = FactGate(scope, self._entities) if scope is not None else None
         vector_lane, keyword_lane, entity_lane = await self._initial_lanes(
             request, temporal_query, gate
         )
@@ -168,7 +165,7 @@ class Retriever:
             fact_results, limit=request.limit, settings=self._settings
         )
         fact_results = await self._add_evidence(fact_results, notes)
-        if request.scope.filters_facts:
+        if scope is not None and scope.filters_facts:
             supporting_episode_ids = {
                 episode_id for fact in fact_results for episode_id in fact.episode_ids
             }

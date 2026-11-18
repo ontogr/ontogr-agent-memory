@@ -102,7 +102,12 @@ async def run_vector_lane(
         )
     )
     retained_ids = {view.fact_id for view in fact_views}
-    dropped = len({hit.id for hit in edge_hits} - retained_ids)
+    # Without hydration, every vector hit remains a candidate.
+    dropped = (
+        len({hit.id for hit in edge_hits} - retained_ids)
+        if facts is not None and query is not None
+        else 0
+    )
 
     episode_ids = tuple(dict.fromkeys(hit.id for hit in episode_hits))
     found = bool(fact_views or episode_ids)

@@ -17,7 +17,7 @@ class TestWiden:
         result = await widen(
             run,
             lambda value: max(0, value - 3),
-            lambda value: value < 8,
+            lambda value: value < 16,
             start=2,
             want=5,
             rechecks=3,

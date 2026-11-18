@@ -452,13 +452,6 @@ class ListEntities(ScopedRequest):
     limit: int = Field(default=20, ge=1, le=MAX_RESULTS)
 
 
-class EntityPage(ContractModel):
-    """One page of active entities."""
-
-    entities: list[EntityOut]
-    next_cursor: str | None = None
-
-
 class GetOntology(ScopedRequest):
     """Read the tenant's ontology labels and descriptions."""
 
@@ -667,6 +660,13 @@ class EntityOut(ContractModel):
     summary: str = ""
     aliases: list[str] = Field(default_factory=list)
     proposed_type: str = ""
+
+
+class EntityPage(ContractModel):
+    """One page of active entities."""
+
+    entities: list[EntityOut]
+    next_cursor: str | None = None
 
 
 class MemoryContext(ContractModel):
