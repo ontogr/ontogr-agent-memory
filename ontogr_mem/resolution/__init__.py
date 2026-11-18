@@ -11,7 +11,8 @@ from ontogr_mem.resolution.errors import (
     SnapshotPurgedError,
     UnmergeBlockedError,
 )
-from ontogr_mem.resolution.policy import ResolutionPolicy, TypePolicy, TypeRelations
+from ontogr_mem.ontology.links import TypeRel
+from ontogr_mem.resolution.policy import ResolutionPolicy, TypePolicy
 from ontogr_mem.resolution.resolver import Decision, EntityResolver, ResolutionResult
 from ontogr_mem.resolution.resolver_store import MergePlan, ResolverStore, UnmergePlan
 
@@ -33,7 +34,7 @@ __all__ = [
     "ResolverStore",
     "SnapshotPurgedError",
     "TypePolicy",
-    "TypeRelations",
+    "TypeRel",
     "UnmergeBlockedError",
     "UnmergePlan",
 ]

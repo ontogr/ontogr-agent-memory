@@ -39,6 +39,13 @@ class TestDefaultOntology:
         assert by_kind[RelationKind.JUDGED] == {"PREFERS", "USES"}
         assert len(by_kind[RelationKind.MANY]) == 25
 
+    def test_default_person_declares_an_email_identity(self):
+        """Person declares email as an identity attribute."""
+        person = next(
+            entity for entity in default_ontology().entities if entity.label == "Person"
+        )
+        assert person.identity_attributes == ("email",)
+
     def test_no_two_default_names_are_close_enough_to_be_ambiguous(self):
         """Names of distinct types stay below the fuzzy matching threshold."""
         declaration = default_ontology()

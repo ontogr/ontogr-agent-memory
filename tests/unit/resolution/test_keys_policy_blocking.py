@@ -19,9 +19,11 @@ from ontogr_mem.resolution.policy import (
     ResolutionMode,
     ResolutionPolicy,
     TypePolicy,
-    TypeRel,
-    TypeRelations,
+    identity_agree,
+    identity_conflict,
+    identity_of,
 )
+from tests.support.type_world import WORLD
 
 
 def test_strict_key_folds_case_and_space_but_keeps_punctuation_and_marks():
@@ -116,47 +118,31 @@ def test_policy_override_beats_family_default():
     assert p.mode("person") is ResolutionMode.AUTO_KEY
 
 
-def test_type_relations_keep_distinct_and_family_apart():
-    """Type relation, case folding, nesting and specificity agree."""
-    p = ResolutionPolicy()
-    rel = TypeRelations({"Employee": "Person"})
-    assert p.relation("Java", "City") is TypeRel.DISTINCT
-    assert p.relation("Company", "Organization") is TypeRel.FAMILY
-    assert p.relation("Company", "company") is TypeRel.SAME
-    assert p.relation("Entity", "City") is TypeRel.NESTED
-    assert p.relation("Employee", "Person", rel) is TypeRel.NESTED
-    assert rel.more_specific("Person", "Employee") == "Employee"
-
-
-def test_type_relations_survive_a_parent_cycle():
-    """A parent cycle ends the ancestor walk."""
-    rel = TypeRelations({"A": "B", "B": "A"})
-    assert rel.ancestors("A") == ["b", "a"]
-
-
 def test_policy_and_ancestry_ignore_label_separators():
     """Policy lookup and caller-supplied ancestry share label normalization."""
     policy = ResolutionPolicy(
         types={
             "Data_Model": TypePolicy(
                 mode=ResolutionMode.VERIFY_ALWAYS,
-                identity_attrs=("email",),
                 strip_suffixes=True,
             )
         },
-        families={"Data Model": "domain"},
     )
-    relations = TypeRelations({"Staff Member": "People"})
 
     assert policy.mode("data model") is ResolutionMode.VERIFY_ALWAYS
-    assert policy.family("data_model") == "domain"
-    assert policy.identity_attrs("data model") == ("email",)
     assert policy.strip_suffixes("data_model")
-    assert relations.ancestors("staff_member") == ["people"]
-    assert policy.relation("Staff_Member", "People", relations) is TypeRel.NESTED
-    assert relations.more_specific("People", "Staff_Member") == "Staff_Member"
 
 
-def test_unknown_label_comparison_uses_canonical_label_normalization():
-    """Unknown remains vague when written with label separators."""
-    assert ResolutionPolicy().relation("U_nknown", "City") is TypeRel.NESTED
+def test_identity_values_use_declared_names_and_normalized_values():
+    """Only declared identity names contribute normalized values."""
+    assert identity_of(
+        WORLD.links,
+        WORLD.ids["Person"],
+        {"email": " Ana@Example.org ", "other": "ignored"},
+    ) == {"email": "ana@example.org"}
+
+
+def test_identity_values_conflict_or_agree_on_shared_names():
+    """Shared identity names determine conflicts and agreements."""
+    assert identity_conflict({"email": "one"}, {"email": "two"})
+    assert identity_agree({"email": "one"}, {"email": "one", "phone": "2"})

@@ -510,6 +510,8 @@ def _check_identity(cat: Ontology) -> None:
         for name in entity.identity_attributes:
             check_identifier(name, kind="identity attribute")
             key = normalize(name)
+            if key in {"uri", "actor_id", "role"}:
+                raise InvalidChange("identity attribute name is reserved", item=name)
             if key in seen:
                 raise InvalidChange(
                     "duplicate identity attribute", item=f"{entity.label}.{name}"
