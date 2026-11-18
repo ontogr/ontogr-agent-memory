@@ -17,8 +17,8 @@ from ontogr_mem.graphstore.temporal.store import GraphTemporalStore
 from ontogr_mem.ingestion.store import EpisodeStore
 from ontogr_mem.llm import LLMConfig, build_models
 from ontogr_mem.ontology.extraction_items import stabilize_facts
-from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.links import TypeLinks
+from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import AddRelation, PatternSpec
 from ontogr_mem.ontology.stamp import stamp_types
 from ontogr_mem.resolution import EntityResolver, ResolutionPolicy

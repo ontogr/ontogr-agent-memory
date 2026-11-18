@@ -1,7 +1,7 @@
 """Tests for type compatibility derived from an ontology."""
 
 from ontogr_mem.ontology.links import TypeLinks, TypeRel
-from ontogr_mem.ontology.models import Entity, Ontology, UNKNOWN_ID
+from ontogr_mem.ontology.models import UNKNOWN_ID, Entity, Ontology
 
 
 class TestTypeLinks:

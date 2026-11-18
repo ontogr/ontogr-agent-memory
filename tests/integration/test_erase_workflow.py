@@ -6,8 +6,8 @@ import pytest
 
 from ontogr_mem.relational_store.jobs.erase_journal import ErasureStatus
 from ontogr_mem.service.contracts import ForgetMode
-from ontogr_mem.service.forget.workflow import EraseWorkflow
 from ontogr_mem.service.forget.scan import scan_residue
+from ontogr_mem.service.forget.workflow import EraseWorkflow
 from ontogr_mem.service.runtime import TenantRuntime
 from ontogr_mem.vectorstore import EmbeddingGateway, VectorStore
 from ontogr_mem.vectorstore.memory import InMemoryBackend

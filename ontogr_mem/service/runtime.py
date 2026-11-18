@@ -10,8 +10,8 @@ from ontogr_mem.consolidation import (
 from ontogr_mem.consolidation.config import ConsolidationSettings
 from ontogr_mem.data_models.clock import Clock
 from ontogr_mem.llm import RoleModels
-from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.links import TypeLinks
+from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import Ontology
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionPolicy

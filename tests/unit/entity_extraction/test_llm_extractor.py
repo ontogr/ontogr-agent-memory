@@ -3,8 +3,7 @@
 import pytest
 from pydantic_ai.exceptions import ModelHTTPError
 
-from ontogr_mem.data_models import UNKNOWN_TYPE_ID, Method
-from ontogr_mem.data_models import EntityType, TypeCatalog
+from ontogr_mem.data_models import UNKNOWN_TYPE_ID, EntityType, Method, TypeCatalog
 from ontogr_mem.entity_extraction.extractors import LLMExtractor
 from ontogr_mem.entity_extraction.settings import EntityExtractionSettings
 from ontogr_mem.llm import ModelCallFailedError, ModelOutputError

@@ -8,6 +8,7 @@ from ontogr_mem.ontology.links import TypeLinks
 from ontogr_mem.resolution.config import Budget
 from ontogr_mem.resolution.deduplication import ConsolidationReport
 
+
 if TYPE_CHECKING:
     from ontogr_mem.resolution.resolver import EntityResolver
 

@@ -15,10 +15,10 @@ from ontogr_mem.data_models.entities import (
     VerdictKind,
     VerifyStatus,
 )
+from ontogr_mem.ontology.links import TypeLinks
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.decision import collect_matches
 from ontogr_mem.resolution.grouping import Group
-from ontogr_mem.ontology.links import TypeLinks
 from ontogr_mem.resolution.policy import ResolutionPolicy
 from ontogr_mem.resolution.resolver_store import ResolverStore
 from ontogr_mem.resolution.scoring import Candidate, needs_two_votes
