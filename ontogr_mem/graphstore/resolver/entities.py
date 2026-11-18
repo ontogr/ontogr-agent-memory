@@ -811,25 +811,47 @@ class ResolverEntities:
         if type_ids == frozenset():
             return []
         conditions = ["e.status = $status"]
-        params: dict[str, Any] = {"status": EntityStatus.ACTIVE.value, "limit": limit}
+        params: dict[str, Any] = {"status": EntityStatus.ACTIVE.value}
         if type_ids is not None:
-            conditions.append("e.ontology_type_id IN $types")
+            conditions.append(
+                "(e.ontology_type_id IS NULL OR e.ontology_type_id IN $types)"
+            )
             params["types"] = sorted(type_ids)
-        if after is not None:
-            conditions.append("e.id > $after")
-            params["after"] = after
-        rows = await self._runner.run(
-            QuerySpec(
-                f"MATCH (e:{ENTITY} {self._scope.pattern()}) "
-                f"WHERE {' AND '.join(conditions)} "
-                "RETURN e.json AS value ORDER BY e.id LIMIT $limit",
-                params,
+        query = (
+            f"MATCH (e:{ENTITY} {self._scope.pattern()}) "
+            f"WHERE {' AND '.join(conditions)} AND e.id > $after "
+            "RETURN e.json AS value ORDER BY e.id LIMIT $limit"
+        )
+
+        def page(after_id: str, size: int) -> QuerySpec:
+            return QuerySpec(
+                query,
+                {**params, "after": after_id, "limit": size},
                 read_only=True,
                 idempotent=True,
                 tag="resolver_list_active",
             )
-        )
-        return [Entity.model_validate_json(row["value"]) for row in rows.rows]
+
+        if type_ids is None:
+            rows = await self._runner.run(page(after or "", limit))
+            return [Entity.model_validate_json(row["value"]) for row in rows.rows]
+        result: list[Entity] = []
+        cursor = after or ""
+        batch = max(limit, 1)
+        while len(result) < limit:
+            rows = await self._runner.run(page(cursor, batch))
+            if not rows.rows:
+                break
+            for row in rows.rows:
+                entity = Entity.model_validate_json(row["value"])
+                cursor = entity.entity_id
+                if entity.ontology_type_id in type_ids:
+                    result.append(entity)
+                    if len(result) == limit:
+                        return result
+            if len(rows.rows) < batch:
+                break
+        return result
 
     async def all_entities(self) -> list[Entity]:
         """Return every entity status, ordered by id."""
