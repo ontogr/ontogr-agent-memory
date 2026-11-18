@@ -183,6 +183,9 @@ class TestFactReader:
         by_observation = await reader.by_observations(
             ["stable-1"], TemporalQuery(now=clock.value, include_history=True)
         )
+        by_reset_observation = await reader.by_observations(
+            ["reset-observation"], TemporalQuery(now=NOW, include_history=True)
+        )
         reader_query = TemporalQuery(now=clock.value, valid_at=at(2021))
         read = await reader.read(reader_query)
         stored_query = await store.query(reader_query)
@@ -213,6 +216,7 @@ class TestFactReader:
         ]
         assert all(view.statement == "Ana lives in Paris." for view in by_observation)
         assert all(view.source == "test-source" for view in by_observation)
+        assert by_reset_observation == []
 
     async def test_modality_filter_and_event_visibility(
         self, graph_backend: GraphBackend
@@ -283,12 +287,6 @@ class TestFactReader:
         assert stable_view.statement == "Ana lives in Paris."
         assert stable_view.source == "test-source"
         assert all(view.statement for view in touching if view.slot_key != "stable")
-        assert (
-            await reader.by_observations(
-                ["reset-observation"], TemporalQuery(now=NOW, include_history=True)
-            )
-            == []
-        )
 
     async def test_subset_of_open_dispute_keeps_its_counterpart_annotation(
         self, graph_backend: GraphBackend
