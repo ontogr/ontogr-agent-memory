@@ -857,9 +857,7 @@ class ResolverStoreContract:
                 [],
             )
         )[0]
-        checked_high = (
-            await store.write_entity_batch([entity("checked-high")], [])
-        )[0]
+        checked_high = (await store.write_entity_batch([entity("checked-high")], []))[0]
         archived = (
             await store.write_entity_batch(
                 [entity("archived", status=EntityStatus.ARCHIVED)], []
