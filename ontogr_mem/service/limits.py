@@ -17,6 +17,9 @@ MAX_HOST_FACTS: Final = 1000
 MAX_HOST_FACT_CHARS: Final = 4096
 """Most characters one text field of a host fact may hold."""
 
+MAX_HOST_FACT_ATTRIBUTES: Final = 10
+"""Most identity attributes one side of a host fact may carry."""
+
 MAX_RESULTS: Final = 100
 """Most results a read request may ask for."""
 

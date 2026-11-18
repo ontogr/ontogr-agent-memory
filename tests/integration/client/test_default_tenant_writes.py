@@ -35,7 +35,7 @@ ANA_NONE = "Ana works at Cyd."
 ANA_ONE_AGAIN = "Ana (Ana@One.org) works at Dune."
 ANA_UNSTATED = "Ana works at Elm."
 ANA_NONE_AGAIN = "Ana works at Fig."
-ZETA_ORG = "Ana works at Zeta."
+ZETA_ORG = "Ana works at Zeta Corp."
 EARLIER = datetime(2025, 1, 1, tzinfo=UTC)
 LATER = datetime(2025, 6, 1, tzinfo=UTC)
 SCRIPT = {

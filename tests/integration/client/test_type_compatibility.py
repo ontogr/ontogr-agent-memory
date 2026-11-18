@@ -137,9 +137,10 @@ class TestTypeCompatibility:
         ontology = ontology_file(
             tmp_path, "  - label: Thing\n  - label: Company\n    parent: Thing\n"
         )
-        answers = script(
-            {"Hydra is a thing.": "Thing", "Hydra is a company.": "Company"}
-        )
+        answers = {
+            "Hydra is a thing.": ([ScriptedEntity("Hydra", "Thing")], []),
+            "Hydra is a company.": ([ScriptedEntity("Hydra", "Company")], []),
+        }
         try:
             async with open_memory(tenant, text_models(answers), ontology) as memory:
                 for text in answers:

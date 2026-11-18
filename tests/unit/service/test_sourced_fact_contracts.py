@@ -211,3 +211,55 @@ class TestSourcedFactContracts:
         assert [(fact.valid_from, fact.valid_to) for fact in model.facts or []] == [
             (NOW, NOW - timedelta(days=1))
         ]
+
+    def test_host_fact_accepts_identity_attributes_on_both_sides(self):
+        """A host fact carries identity values for its subject and object."""
+        fact = HostFact.model_validate(
+            {
+                **ANA_FACT,
+                "subject_attributes": {"email": "ana@one.org"},
+                "object_attributes": {"domain": "acme.org"},
+            }
+        )
+
+        assert fact.subject_attributes == {"email": "ana@one.org"}
+        assert fact.object_attributes == {"domain": "acme.org"}
+
+    def test_host_fact_defaults_to_empty_identity_attributes(self):
+        """Identity attributes are optional and default to empty maps."""
+        fact = HostFact.model_validate(ANA_FACT)
+
+        assert fact.subject_attributes == {}
+        assert fact.object_attributes == {}
+
+    @pytest.mark.parametrize("field", ["subject_attributes", "object_attributes"])
+    def test_host_fact_with_eleven_identity_attributes_fails(self, field):
+        """A side with more than ten identity values is refused."""
+        attributes = {f"name{index}": "value" for index in range(11)}
+
+        with pytest.raises(ValidationError, match="more than 10 entries"):
+            HostFact.model_validate({**ANA_FACT, field: attributes})
+
+    @pytest.mark.parametrize("field", ["subject_attributes", "object_attributes"])
+    @pytest.mark.parametrize("part", ["name", "value"])
+    def test_host_fact_identity_part_over_4096_characters_fails(self, field, part):
+        """A name or value one character over the text cap is refused."""
+        text = "a" * 4097
+        attributes = {text: "value"} if part == "name" else {"name": text}
+
+        with pytest.raises(ValidationError) as excinfo:
+            HostFact.model_validate({**ANA_FACT, field: attributes})
+
+        assert [error["loc"] for error in excinfo.value.errors()] == [(field,)]
+
+    def test_eleven_identity_attributes_raise_invalid_argument(self):
+        """Too many identity values reach the caller as an invalid argument."""
+        attributes = {f"name{index}": "value" for index in range(11)}
+
+        with pytest.raises(InvalidArgumentError, match="subject_attributes"):
+            validate_request(
+                AddMemory,
+                _sourced_request(
+                    facts=[{**ANA_FACT, "subject_attributes": attributes}]
+                ),
+            )

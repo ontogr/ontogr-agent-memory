@@ -17,7 +17,7 @@ Use the tools listed by the connected memory server. The host is the application
 
 Keep the source text unchanged. Use names that occur in this source for `subject` and `object`. Supply their entity type labels and the directed relation label. Copy an `evidence_quote` from this same source that supports the link. Do not invent a fact, name, type or timestamp to fill a field.
 
-Each fact has `subject`, `subject_type`, `relation`, `object`, `object_type` and `evidence_quote`. `statement`, `valid_from` and `valid_to` are optional. Use UTC timestamps only when the source supplies their meaning. Omit an unknown validity interval.
+Each fact has `subject`, `subject_type`, `relation`, `object`, `object_type` and `evidence_quote`. `statement`, `valid_from` and `valid_to` are optional. Use UTC timestamps only when the source supplies their meaning. Omit an unknown validity interval. `subject_attributes` and `object_attributes` are optional maps of identity name to value, such as `{"email": "ana@one.org"}`. Each value must appear verbatim in the source, and a name the entity type does not declare as an identity attribute is ignored.
 
 Example arguments for `write_facts`:
 

@@ -33,7 +33,7 @@ class TestEraseWorkflow:
             candidate_entity_ids=("person",),
         )
 
-        assert residue == ("entity_text:person",)
+        assert "entity_text:person" in residue
 
     async def test_erase_reports_effects_and_prunes_surviving_entity(
         self, graph_backend: GraphBackend

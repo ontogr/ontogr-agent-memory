@@ -1021,7 +1021,7 @@ class TestWriteFacts:
                     assert job.status is JobState.DONE
                 context = await memory.search("Ana")
                 people = {
-                    fact.subject.id
+                    fact.subject.entity_id
                     for fact in context.facts
                     if fact.subject.name == "Ana"
                 }

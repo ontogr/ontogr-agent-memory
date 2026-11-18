@@ -13,6 +13,7 @@ from pydantic import (
     ConfigDict,
     Field,
     ValidationError,
+    ValidationInfo,
     field_validator,
     model_validator,
 )
@@ -29,6 +30,7 @@ from ontogr_mem.service.errors import (
 )
 from ontogr_mem.service.limits import (
     MAX_CONTENT_BYTES,
+    MAX_HOST_FACT_ATTRIBUTES,
     MAX_HOST_FACT_CHARS,
     MAX_HOST_FACTS,
     MAX_RESULTS,
@@ -114,6 +116,10 @@ class HostFact(ContractModel):
         object_type: Ontology label for the object type.
         evidence_quote: Verbatim supporting text from this source.
         statement: Optional sentence expressing the fact.
+        subject_attributes: Identity values of the subject, by attribute name.
+            Each value must occur in the source text.
+        object_attributes: Identity values of the object, by attribute name.
+            Each value must occur in the source text.
         valid_from: Optional UTC start of validity.
         valid_to: Optional UTC end of validity.
     """
@@ -125,8 +131,30 @@ class HostFact(ContractModel):
     object_type: str = Field(max_length=MAX_HOST_FACT_CHARS)
     evidence_quote: str = Field(max_length=MAX_HOST_FACT_CHARS)
     statement: str | None = Field(default=None, max_length=MAX_HOST_FACT_CHARS)
+    subject_attributes: dict[str, str] = Field(default_factory=dict)
+    object_attributes: dict[str, str] = Field(default_factory=dict)
     valid_from: UtcDatetime | None = None
     valid_to: UtcDatetime | None = None
+
+    @field_validator("subject_attributes", "object_attributes")
+    @classmethod
+    def _attributes_size(
+        cls, value: dict[str, str], info: ValidationInfo
+    ) -> dict[str, str]:
+        """Cap attribute count and the length of each name and value."""
+        if len(value) > MAX_HOST_FACT_ATTRIBUTES:
+            msg = f"{info.field_name} has more than {MAX_HOST_FACT_ATTRIBUTES} entries"
+            raise ValueError(msg)
+        for name, attribute_value in value.items():
+            if len(name) > MAX_HOST_FACT_CHARS:
+                msg = f"{info.field_name} name is over {MAX_HOST_FACT_CHARS} characters"
+                raise ValueError(msg)
+            if len(attribute_value) > MAX_HOST_FACT_CHARS:
+                msg = (
+                    f"{info.field_name} value is over {MAX_HOST_FACT_CHARS} characters"
+                )
+                raise ValueError(msg)
+        return value
 
 
 class AddMemory(WriteRequest):

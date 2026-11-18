@@ -43,6 +43,8 @@ def host_fact(
     object_type: str = "Company",
     evidence_quote: str = "Ana works at Acme.",
     statement: str | None = None,
+    subject_attributes: dict[str, str] | None = None,
+    object_attributes: dict[str, str] | None = None,
     valid_from: datetime | None = None,
     valid_to: datetime | None = None,
 ) -> HostFact:
@@ -55,6 +57,8 @@ def host_fact(
         object_type=object_type,
         evidence_quote=evidence_quote,
         statement=statement,
+        subject_attributes=subject_attributes or {},
+        object_attributes=object_attributes or {},
         valid_from=valid_from,
         valid_to=valid_to,
     )
@@ -419,6 +423,76 @@ class TestGroundHostFacts:
         assert result.drops == ()
         assert result.facts == (GroundedFact(0, fact, "h0", "h0"),)
         assert result.endpoints == (Endpoint("h0", "Ana", "Person"),)
+
+    @pytest.mark.parametrize("side", ["subject", "object"])
+    def test_drops_a_fact_with_an_attribute_value_absent_from_the_source(
+        self, side: str
+    ) -> None:
+        """An identity value that the source does not state is ungrounded."""
+        fact = host_fact(**{f"{side}_attributes": {"email": "zed@example.org"}})
+
+        result = ground_host_facts(SOURCE, [fact])
+
+        assert [drop.as_result() for drop in result.drops] == [
+            {
+                "index": 0,
+                "reason": "ungrounded",
+                "detail": f"{side} attribute not found in episode",
+            }
+        ]
+
+    def test_drops_a_fact_with_a_blank_attribute_value(self) -> None:
+        """An empty identity value is ungrounded and names the subject side."""
+        fact = host_fact(subject_attributes={"email": "  \n "})
+
+        result = ground_host_facts(SOURCE, [fact])
+
+        assert result.drops == (
+            Drop(
+                0,
+                FactDropReason.UNGROUNDED,
+                "subject attribute not found in episode",
+            ),
+        )
+
+    def test_keeps_a_grounded_attribute_value_on_its_endpoint(self) -> None:
+        """A stated identity value grounds the fact and is trimmed on the endpoint."""
+        source = "Ana (ana@one.org) works at Acme."
+        fact = host_fact(
+            subject_attributes={"email": "  ana@one.org  "},
+            evidence_quote=source,
+        )
+
+        result = ground_host_facts(source, [fact])
+
+        assert result.drops == ()
+        assert result.endpoints[0].attributes == {"email": "ana@one.org"}
+
+    def test_keeps_the_first_attribute_value_of_a_shared_endpoint(self) -> None:
+        """Two facts about one endpoint keep the first value of a name."""
+        source = "Ana (ana@one.org) works at Acme. Ana (ana@two.org) uses Postgres."
+        facts = [
+            host_fact(
+                subject_attributes={"email": "ana@one.org"},
+                evidence_quote="Ana (ana@one.org) works at Acme.",
+            ),
+            host_fact(
+                relation="USES",
+                object_="Postgres",
+                object_type="Database",
+                subject_attributes={"email": "ana@two.org"},
+                evidence_quote="Ana (ana@two.org) uses Postgres.",
+            ),
+        ]
+
+        result = ground_host_facts(source, facts)
+
+        assert result.drops == ()
+        assert [endpoint.attributes for endpoint in result.endpoints] == [
+            {"email": "ana@one.org"},
+            {},
+            {},
+        ]
 
     def test_describes_a_drop_as_a_result_dict(self) -> None:
         """A drop turns into the plain dict returned to callers."""
