@@ -1,12 +1,16 @@
 """Behavior checks for Erase cleanup, residue detection and recovery."""
 
 from collections.abc import Sequence
+from dataclasses import replace
 
 import pytest
 
+from ontogr_mem.data_models.facts import Modality
 from ontogr_mem.relational_store.jobs.erase_journal import ErasureStatus
 from ontogr_mem.service.contracts import ForgetMode
+from ontogr_mem.service.forget.plan import build_plan
 from ontogr_mem.service.forget.scan import scan_residue
+from ontogr_mem.service.forget.selector import ForgetSelector
 from ontogr_mem.service.forget.workflow import EraseWorkflow
 from ontogr_mem.service.runtime import TenantRuntime
 from ontogr_mem.vectorstore import EmbeddingGateway, VectorStore
@@ -42,6 +46,32 @@ class TestEraseWorkflow:
         world = await make_erase_world(
             graph_backend,
         )
+        episode_observation = (
+            await world.runtime.stores.temporal_store.observations_of_episode("e1")
+        )[0]
+        planned_observation = replace(
+            episode_observation,
+            obs_id="obs-e1-planned",
+            slot_key="planned-work",
+            modality=Modality.PLANNED,
+        )
+        ontology = await world.runtime.ontology.catalog()
+        await world.runtime.engine(
+            ontology, world.runtime.resolver.store
+        ).ingest_observations([planned_observation])
+        world.plan = await build_plan(
+            ForgetSelector(episode_ids=("e1",)),
+            episodes=world.runtime.stores.episodes,
+            temporal=world.runtime.stores.temporal_store,
+            resolver=world.runtime.stores.resolver_store,
+        )
+        planned_facts = [
+            fact
+            for fact in await world.runtime.stores.temporal_store.current_facts()
+            if fact.modality is Modality.PLANNED
+        ]
+        assert len(planned_facts) == 1
+        planned_fact_id = planned_facts[0].fact_id
         before_vector = await world.runtime.stores.vectors.fetch_vectors(
             VectorKind.NODE, ["person"]
         )
@@ -66,10 +96,10 @@ class TestEraseWorkflow:
         assert result.text_scanned is True
         assert result.blanked_entity_ids == ("person",)
         assert result.removed.episodes == 1
-        assert result.removed.facts == 1
-        assert result.removed.observations == 1
+        assert result.removed.facts == 2
+        assert result.removed.observations == 2
         assert result.removed.entities == 1
-        assert result.removed.vector_documents == 4
+        assert result.removed.vector_documents == 5
         assert result.removed.entity_text_updates == 1
 
         stores = world.runtime.stores
@@ -77,6 +107,9 @@ class TestEraseWorkflow:
         assert await stores.temporal_store.observations_of_episode("e1") == []
         facts = await stores.temporal_store.facts_by_ids(world.plan.fact_ids)
         assert facts == []
+        assert planned_fact_id not in {
+            fact.fact_id for fact in await stores.temporal_store.current_facts()
+        }
         assert await stores.vectors.exists(VectorKind.EPISODE, ["e1"]) == set()
         assert await stores.resolver_store.has_entity("organization") is False
         assert await stores.vectors.exists(VectorKind.NODE, ["organization"]) == set()

@@ -49,14 +49,16 @@ class EpisodeState:
     Attributes:
         status: Where the episode stands in reconciliation.
         committed_hash: Content hash recorded with the commit, or ``None``.
-        ontology_refused: Rejected extracted facts, or ``None`` when unknown.
+        unplaced: Stored facts without a relation type, or ``None`` when unknown.
+        ontology_version: Ontology version used for extraction, when known.
         skipped: Facts not converted to observations, or ``None`` when unknown.
     """
 
     status: TemporalStatus
     committed_hash: str | None = None
-    ontology_refused: int | None = None
+    unplaced: int | None = None
     skipped: dict[str, int] | None = None
+    ontology_version: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -232,7 +234,8 @@ class TemporalStore(Protocol):
         self,
         episode_id: str,
         *,
-        ontology_refused: int | None = None,
+        unplaced: int | None = None,
+        ontology_version: int | None = None,
         skipped: Mapping[str, int] | None = None,
     ) -> None:
         """Mark the episode as pending and store any known item outcomes.
@@ -311,15 +314,6 @@ class TemporalStore(Protocol):
         """Return the observations, ordered by observation id.
 
         Observation ids that are not stored are left out.
-        """
-        ...
-
-    async def pending_slots(self) -> list[str]:
-        """Return every pending slot key in the tenant, sorted.
-
-        A slot is pending when one of its current facts shares an entity with
-        a fact of another slot and that pair has no verdict. The answer is
-        derived from the facts and the verdicts, so it never goes stale.
         """
         ...
 

@@ -96,10 +96,9 @@ class TestRelationTypeIds:
 
         first = fact(fact_id="f0", relation_type_id=0)
         second = fact(fact_id="f1", relation_type_id=1)
-        result = await stabilize_facts(manager, [first, second], projection)
+        result = stabilize_facts([first, second], projection)
 
         assert [typed.relation_type for typed in result.typed] == [0, 1]
-        assert result.dropped == ()
 
         await manager.apply(
             cs(
@@ -111,7 +110,7 @@ class TestRelationTypeIds:
         assert after.relation_ids == (1,)
 
         moved = fact(fact_id="f2", relation_type_id=0)
-        moved_result = await stabilize_facts(manager, [moved], after)
+        moved_result = stabilize_facts([moved], after)
 
         assert moved_result.typed[0].relation_type == 1
         # Facts stabilized earlier keep the stable id they were given.
@@ -124,6 +123,6 @@ class TestRelationTypeIds:
         await load_catalog(manager, base())
         projection = await manager.extraction_view()
 
-        result = await stabilize_facts(manager, [fact()], projection)
+        result = stabilize_facts([fact()], projection)
 
         assert result.typed[0].catalog_version == str(projection.catalog_version)

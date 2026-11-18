@@ -148,6 +148,9 @@ async def _run_episode(
         "relation_fact_count": sum(
             fact.relation_type_id is not None for fact in fact_items
         ),
+        "unplaced_fact_count": sum(
+            fact.relation_type_id is None for fact in fact_items
+        ),
         "dropped_fact_count": len(getattr(results[-1], "dropped", [])),
         "statuses": [result.status.value for result in results],
         "orphaned_entities": sorted(names - fact_names),

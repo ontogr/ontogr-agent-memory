@@ -10,6 +10,7 @@ from ontogr_mem.consolidation import (
 from ontogr_mem.consolidation.config import ConsolidationSettings
 from ontogr_mem.data_models.clock import Clock
 from ontogr_mem.llm import RoleModels
+from ontogr_mem.llm.roles import ModelRole
 from ontogr_mem.ontology.links import TypeLinks
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import Ontology
@@ -20,8 +21,10 @@ from ontogr_mem.retrieval import Retriever
 from ontogr_mem.retrieval.settings import RetrievalSettings
 from ontogr_mem.service.relations import relation_policy
 from ontogr_mem.temporal.adapter import EntityRefResolver
+from ontogr_mem.temporal.closure import ClosureJudge
 from ontogr_mem.temporal.engine import TemporalEngine
 from ontogr_mem.temporal.reader import FactReader
+from ontogr_mem.temporal.settings import ClosureSettings
 from ontogr_mem.tenant_stores import TenantStores
 from ontogr_mem.vectorstore import Embedder, FactVectorObserver, VectorWriter
 
@@ -42,6 +45,8 @@ class TenantRuntime:
     _links: tuple[str, TypeLinks] | None = field(default=None, init=False, repr=False)
     models: RoleModels = field(kw_only=True)
     extraction: ExtractionSettings = field(kw_only=True)
+    closure: ClosureJudge | None = field(kw_only=True)
+    closure_settings: ClosureSettings = field(kw_only=True)
 
     @property
     def llm_available(self) -> bool:
@@ -102,6 +107,7 @@ def build_tenant_runtime(
     resolver_settings: ResolverSettings,
     retrieval_settings: RetrievalSettings,
     extraction_settings: ExtractionSettings | None = None,
+    closure_settings: ClosureSettings | None = None,
 ) -> TenantRuntime:
     """Wire the memory components around one tenant's stores."""
     writer = VectorWriter(stores.vectors)
@@ -125,6 +131,12 @@ def build_tenant_runtime(
         settings=retrieval_settings,
         relation_label=lambda type_id: labels.get(type_id, ""),
     )
+    selected_closure_settings = closure_settings or ClosureSettings()
+    closure = (
+        ClosureJudge(models, selected_closure_settings)
+        if selected_closure_settings.enabled and models.configured(ModelRole.JUDGE)
+        else None
+    )
     return TenantRuntime(
         stores,
         reader,
@@ -137,4 +149,6 @@ def build_tenant_runtime(
         labels,
         models=models,
         extraction=extraction_settings or ExtractionSettings(),
+        closure=closure,
+        closure_settings=selected_closure_settings,
     )

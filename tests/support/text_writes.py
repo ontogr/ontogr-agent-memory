@@ -13,6 +13,7 @@ from dataclasses import dataclass
 
 from ontogr_mem.client import Memory
 from ontogr_mem.llm import RoleModels
+from ontogr_mem.llm.config import ModelRole
 from ontogr_mem.llm.prompt import fence
 from ontogr_mem.ontology.loader import OntologySource
 from ontogr_mem.relational_store.config import StateSettings
@@ -45,6 +46,11 @@ class ScriptedFact:
     object: int
     relation_label: str
     evidence_quote: str
+    fact_kind: str = "state"
+    modality: str = "actual"
+    polarity: str = "affirmed"
+    valid_from: str | None = None
+    time_expression: str | None = None
 
 
 Script = Mapping[str, tuple[Sequence[ScriptedEntity], Sequence[ScriptedFact]]]
@@ -92,15 +98,19 @@ def _fact_item(prompt: str, fact: ScriptedFact) -> dict[str, object]:
     return {
         "text": fact.text,
         "entity_refs": [f"e{fact.subject}", f"e{fact.object}"],
-        "relation_type_id": _id_of(prompt, "relation_types", fact.relation_label),
+        "relation_type_id": (
+            _id_of(prompt, "relation_types", fact.relation_label)
+            if fact.relation_label
+            else None
+        ),
         "relation_label": fact.relation_label,
-        "fact_kind": "state",
-        "polarity": "affirmed",
-        "modality": "actual",
-        "valid_from": None,
+        "fact_kind": fact.fact_kind,
+        "polarity": fact.polarity,
+        "modality": fact.modality,
+        "valid_from": fact.valid_from,
         "valid_to": None,
-        "precision": None,
-        "time_expression": None,
+        "precision": "day" if fact.valid_from is not None else None,
+        "time_expression": fact.time_expression,
         "evidence_quote": fact.evidence_quote,
         "confidence": 1.0,
     }
@@ -109,7 +119,11 @@ def _fact_item(prompt: str, fact: ScriptedFact) -> dict[str, object]:
 COMBINED_MARKER = "Task: extract the entities and the facts"
 
 
-def _answer(script: Script) -> Callable[[ScriptedCall], object]:
+def _answer(
+    script: Script,
+    closures: Mapping[str, Sequence[str]],
+    closure_error: Exception | None,
+) -> Callable[[ScriptedCall], object]:
     """Return the answer function that follows ``script`` for all prompt shapes."""
     fenced: dict[str, tuple[Sequence[ScriptedEntity], Sequence[ScriptedFact]]] = {}
     for text, value in script.items():
@@ -120,6 +134,15 @@ def _answer(script: Script) -> Callable[[ScriptedCall], object]:
 
     def answer(call: ScriptedCall) -> object:
         prompt = call.prompt
+        if "Task: list the existing facts that the new fact contradicts" in prompt:
+            if closure_error is not None:
+                raise closure_error
+            new_fact = _block(prompt, "new_fact")
+            statement = new_fact.strip()
+            wanted = set(closures.get(statement, ()))
+            existing = json.loads(_block(prompt, "existing_facts"))
+            ids = [item["id"] for item in existing if item["text"] in wanted]
+            return {"contradicted": ids}
         entities, facts = fenced[_block(prompt, "episode_text")]
         if prompt.startswith(COMBINED_MARKER):
             return {
@@ -136,15 +159,35 @@ def _answer(script: Script) -> Callable[[ScriptedCall], object]:
     return answer
 
 
-def counted_text_models(script: Script) -> tuple[RoleModels, Scripted]:
+def counted_text_models(
+    script: Script,
+    *,
+    closures: Mapping[str, Sequence[str]] | None = None,
+    closure_error: Exception | None = None,
+    judge: bool = True,
+) -> tuple[RoleModels, Scripted]:
     """Return a scripted model pool and the recorder of its calls."""
-    model, scripted = scripted_model(answer=_answer(script))
-    return scripted_role_models(model), scripted
+    model, scripted = scripted_model(
+        answer=_answer(script, closures or {}, closure_error)
+    )
+    if judge:
+        return scripted_role_models(model), scripted
+    return scripted_role_models(
+        **{role.value: model for role in ModelRole if role is not ModelRole.JUDGE}
+    ), scripted
 
 
-def text_models(script: Script) -> RoleModels:
+def text_models(
+    script: Script,
+    *,
+    closures: Mapping[str, Sequence[str]] | None = None,
+    closure_error: Exception | None = None,
+    judge: bool = True,
+) -> RoleModels:
     """Return a model pool whose extraction answers follow ``script``."""
-    return counted_text_models(script)[0]
+    return counted_text_models(
+        script, closures=closures, closure_error=closure_error, judge=judge
+    )[0]
 
 
 @asynccontextmanager

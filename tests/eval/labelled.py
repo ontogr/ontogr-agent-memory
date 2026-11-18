@@ -1,9 +1,10 @@
 """A labelled starting set for the model judge.
 
 The pairs were written by the assistant. They are NOT ground truth: review each
-label before any threshold is chosen from a run over this set. Each pair is two
-statements with their valid intervals and sources. The label is what a careful
-reader would answer.
+label before any threshold is chosen from a run over this set. Each pair stores
+two statements, their valid intervals and their sources, but the judge receives
+only the statements. Interval-dependent pairs therefore exercise a limitation
+of statement-only judging. The label is what a careful reader would answer.
 """
 
 from dataclasses import dataclass
@@ -17,8 +18,10 @@ class Labelled:
         id: Stable id of the pair.
         category: What the pair tests.
         label: Expected verdict value.
-        a: Statement, valid interval and source of the first fact.
-        b: Statement, valid interval and source of the second fact.
+        a: Statement, valid interval and source of the first fact. The judge
+            receives only the statement.
+        b: Statement, valid interval and source of the second fact. The judge
+            receives only the statement.
     """
 
     id: str

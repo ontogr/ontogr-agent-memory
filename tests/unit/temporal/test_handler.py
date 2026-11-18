@@ -20,10 +20,9 @@ from ontogr_mem.temporal.handler import (
     HandlerInputs,
     HandlerResult,
     Partner,
-    judge_pending_slots,
     slot_directives,
 )
-from ontogr_mem.temporal.judge import pair_input
+from ontogr_mem.temporal.pairs import pair_input
 from ontogr_mem.temporal.reconcile import Close
 from ontogr_mem.temporal.trust import Trust
 from ontogr_mem.temporal.verdicts import (
@@ -232,25 +231,3 @@ class TestSlotDirectives:
 
         assert result.directives.closes == ()
         assert result.conflicts == ()
-
-    def test_a_partner_without_a_verdict_leaves_the_slot_judge_pending(self):
-        """A slot with an unjudged neighbour is judge-pending."""
-        mine = fact_of("f-m", [obs("m1", "acme", at(2010))])
-        other = fact_of(
-            "f-p", [obs("p1", "globex", at(2015), slot="other", rel=2)], slot="other"
-        )
-
-        pending = judge_pending_slots([mine, other], [])
-        judged = judge_pending_slots(
-            [mine, other], [contradiction("f-m", "f-p", "any")]
-        )
-
-        assert pending == {"slot", "other"}
-        assert judged == set()
-
-    def test_facts_of_one_slot_do_not_make_each_other_pending(self):
-        """Two facts of one slot are settled by the rules of that slot."""
-        first = fact_of("f-1", [obs("m1", "acme", at(2010))])
-        second = fact_of("f-2", [obs("m2", "globex", at(2012))])
-
-        assert judge_pending_slots([first, second], []) == set()

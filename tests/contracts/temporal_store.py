@@ -20,7 +20,7 @@ from ontogr_mem.data_models.fact_versions import (
     Supersession,
     SupersessionKind,
 )
-from ontogr_mem.data_models.facts import Precision, TimeBasis
+from ontogr_mem.data_models.facts import FactKind, Modality, Precision, TimeBasis
 from ontogr_mem.data_models.ledger import LedgerEntry, LedgerOp
 from ontogr_mem.data_models.observation import Observation, ObservationKind
 from ontogr_mem.temporal.classify import ConflictClass, Disposition, RelationToTime
@@ -88,6 +88,10 @@ def observation(
     obj: str = "acme",
     statement: str = "",
     quote: str = "",
+    relation_type_id: int | None = 1,
+    relation_label: str = "",
+    fact_kind: FactKind = FactKind.STATE,
+    modality: Modality = Modality.ACTUAL,
 ) -> Observation:
     """Build an assertion that Ana works at `obj` from 2020."""
     return Observation(
@@ -95,7 +99,7 @@ def observation(
         slot_key=slot_key,
         subject_id="ana",
         object_id=obj,
-        relation_type_id=1,
+        relation_type_id=relation_type_id,
         kind=ObservationKind.ASSERTION,
         episode_id=episode_id,
         occurred_at=START,
@@ -105,6 +109,9 @@ def observation(
         time_basis=TimeBasis.STATED,
         statement=statement,
         quote=quote,
+        relation_label=relation_label,
+        fact_kind=fact_kind,
+        modality=modality,
     )
 
 
@@ -118,6 +125,11 @@ def version(
     recorded: datetime = RECORDED_1,
     valid_from: datetime = START,
     evidence: tuple[str, ...] = ("obs-1",),
+    relation_type_id: int | None = 1,
+    relation_label: str = "",
+    fact_kind: FactKind = FactKind.STATE,
+    modality: Modality = Modality.ACTUAL,
+    time_basis: TimeBasis = TimeBasis.STATED,
 ) -> Fact:
     """Build one open version of a fact between `subject` and `obj`."""
     return Fact(
@@ -126,7 +138,7 @@ def version(
         slot_key=slot_key,
         subject_id=subject,
         object_id=obj,
-        relation_type_id=1,
+        relation_type_id=relation_type_id,
         valid_from=valid_from,
         valid_to=None,
         valid_from_precision=Precision.YEAR,
@@ -136,6 +148,10 @@ def version(
         status=FactStatus.ACTIVE,
         evidence=evidence,
         last_confirmed_at=START,
+        relation_label=relation_label,
+        fact_kind=fact_kind,
+        modality=modality,
+        time_basis=time_basis,
     )
 
 
@@ -533,16 +549,65 @@ class TemporalStoreContract:
         harness = await self._seeded(make_harness)
         assert await harness.store.episode_state("ep-1") is None
 
-        await harness.store.set_episode_pending("ep-1")
+        await harness.store.set_episode_pending("ep-1", unplaced=2, ontology_version=7)
         pending = await harness.store.episode_state("ep-1")
         await harness.store.mark_committed("ep-1", "hash-1")
         committed = await harness.store.episode_state("ep-1")
         await harness.rewrite_episode("ep-1")
         after_rewrite = await harness.store.episode_state("ep-1")
 
-        assert pending == EpisodeState(TemporalStatus.PENDING, None)
-        assert committed == EpisodeState(TemporalStatus.COMMITTED, "hash-1")
+        assert pending == EpisodeState(TemporalStatus.PENDING, None, 2, None, 7)
+        assert committed == EpisodeState(
+            TemporalStatus.COMMITTED, "hash-1", unplaced=2, ontology_version=7
+        )
         assert after_rewrite == committed
+
+    async def test_unplaced_fact_metadata_round_trips(self, make_harness):
+        """A fact without an ontology relation keeps its metadata in storage."""
+        harness = await self._seeded(make_harness)
+        await harness.store.append_observations(
+            [
+                observation(
+                    "obs-unplaced",
+                    relation_type_id=None,
+                    relation_label="works alongside",
+                    fact_kind=FactKind.EVENT,
+                    modality=Modality.CONDITIONAL,
+                )
+            ]
+        )
+        await harness.store.commit_slot(
+            SlotCommit(
+                slot_key=SLOT,
+                base_revision=0,
+                new_facts=(
+                    version(
+                        "fact-unplaced",
+                        1,
+                        relation_type_id=None,
+                        relation_label="works alongside",
+                        fact_kind=FactKind.EVENT,
+                        modality=Modality.CONDITIONAL,
+                        time_basis=TimeBasis.REFERENCE,
+                    ),
+                ),
+            )
+        )
+
+        (stored_observation,) = await harness.store.observations_by_ids(
+            ["obs-unplaced"]
+        )
+        (view,) = await harness.store.query(TemporalQuery(now=NOW))
+
+        assert stored_observation.relation_type_id is None
+        assert stored_observation.relation_label == "works alongside"
+        assert stored_observation.fact_kind is FactKind.EVENT
+        assert stored_observation.modality is Modality.CONDITIONAL
+        assert view.relation_type_id is None
+        assert view.relation_label == "works alongside"
+        assert view.fact_kind is FactKind.EVENT
+        assert view.modality is Modality.CONDITIONAL
+        assert view.time_basis is TimeBasis.REFERENCE
 
     async def test_episode_state_of_a_missing_episode_is_refused(self, make_harness):
         """Temporal state cannot be set on an episode that does not exist."""
@@ -782,37 +847,6 @@ class TemporalStoreContract:
 
         assert len(await harness.store.verdicts_for(["fact-1"])) == 1
         assert len(await harness.store.decisions_for(["fact-1"])) == 1
-
-    async def test_pending_slots_are_derived_from_the_facts_and_the_verdicts(
-        self, make_harness
-    ):
-        """A slot with an unjudged neighbour is pending until it is judged."""
-        harness = await self._seeded(make_harness)
-        other = await self._seeded(make_harness)
-        await harness.store.append_observations(
-            [observation("obs-1"), observation("obs-9", slot_key=OTHER_SLOT)]
-        )
-        await harness.store.commit_slot(
-            SlotCommit(
-                slot_key=SLOT,
-                base_revision=0,
-                new_facts=(version("fact-1", 1),),
-            )
-        )
-        await harness.store.commit_slot(
-            SlotCommit(
-                slot_key=OTHER_SLOT,
-                base_revision=0,
-                new_facts=(version("fact-9", 1, slot_key=OTHER_SLOT),),
-            )
-        )
-
-        assert await harness.store.pending_slots() == sorted([SLOT, OTHER_SLOT])
-        assert await other.store.pending_slots() == []
-
-        await harness.store.put_verdicts([contradiction("fact-1", "fact-9", "hash-1")])
-
-        assert await harness.store.pending_slots() == []
 
     async def test_current_facts_and_facts_touching_return_only_open_versions(
         self, make_harness

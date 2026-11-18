@@ -21,7 +21,6 @@ class FactDropReason(StrEnum):
     AMBIGUOUS_ENTITY_REF = "ambiguous_entity_ref"
     UNGROUNDED = "ungrounded"
     BAD_TYPE_ID = "bad_type_id"
-    UNKNOWN_RELATION = "unknown_relation"
     WRONG_DIRECTION = "wrong_direction"
     SELF_RELATION = "self_relation"
     TYPES_UNAVAILABLE = "types_unavailable"

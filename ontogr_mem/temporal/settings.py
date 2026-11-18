@@ -30,29 +30,27 @@ class TemporalSettings(BaseSettings):
     episode_ttl_s: int = Field(default=3600, ge=1)
 
 
-class JudgeSettings(BaseSettings):
-    """Limits and thresholds of the model judge.
+class ClosureSettings(BaseSettings):
+    """Settings of the step that closes older facts by one model call.
 
-    Environment variables use the prefix ``MEMORY_JUDGE_``.
+    Environment variables use the ``MEMORY_CLOSURE_`` prefix.
 
     Attributes:
-        floor: Confidence a contradiction needs before it is confirmed. Below it
-            the pair is stored as uncertain. Env: ``MEMORY_JUDGE_FLOOR``.
-        prompt_version: Version recorded with each verdict. A new version makes
-            stored verdicts stale. Env: ``MEMORY_JUDGE_PROMPT_VERSION``.
-        max_pairs: Pairs per model call. Env: ``MEMORY_JUDGE_MAX_PAIRS``.
-        token_budget: Estimated input tokens per model call. Env:
-            ``MEMORY_JUDGE_TOKEN_BUDGET``.
+        enabled: Whether the step runs. Env: ``MEMORY_CLOSURE_ENABLED``.
+        max_candidates: Most existing facts sent with one new fact. This count
+            is the only bound on a model call; there is no token budget. Env:
+            ``MEMORY_CLOSURE_MAX_CANDIDATES``.
+        prompt_version: Version stored with each verdict. Env:
+            ``MEMORY_CLOSURE_PROMPT_VERSION``.
     """
 
     model_config = SettingsConfigDict(
-        env_prefix="MEMORY_JUDGE_",
+        env_prefix="MEMORY_CLOSURE_",
         env_file=".env",
         extra="ignore",
         frozen=True,
     )
 
-    floor: float = Field(default=0.8, ge=0.0, le=1.0)
-    prompt_version: str = "judge-1"
-    max_pairs: int = Field(default=4, ge=1)
-    token_budget: int = Field(default=3000, ge=1)
+    enabled: bool = True
+    max_candidates: int = Field(default=20, ge=1)
+    prompt_version: str = "closure-1"

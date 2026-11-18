@@ -35,13 +35,13 @@ Example arguments for `write_facts`:
 }
 ```
 
-The example labels are valid only if this server's ontology accepts them. A fact whose relation is not in the ontology is dropped and appears in dropped. Do not change labels repeatedly to bypass a refusal.
+The example labels are valid only if this server's ontology accepts them. A fact whose relation is not in the ontology is stored as an unplaced fact and counted in `result.unplaced`.
 
 ## Check the outcome
 
 A receipt can describe a queued job. Use `get_job` with its `job_id` until it is terminal before saying the facts were saved. If `get_job` is unavailable, report the job id and that completion is unconfirmed.
 
-Read `result.fact_ids` and `result.dropped`. A dropped `index` is zero-based in your submitted facts list. Explain dropped items and their reasons. The source Episode can be retained even when every fact is dropped. Do not describe that as saving all facts.
+Read `result.fact_ids`, `result.unplaced` and `result.dropped`. A dropped `index` is zero-based in your submitted facts list. Explain dropped items and their reasons. The source Episode can be retained even when every fact is dropped. Do not describe that as saving all facts.
 
 For a retry of the same write, reuse the same `idempotency_key` if you supplied one. Do not resubmit a job merely because it is still queued. If the connection fails after submission, inspect the job before retrying when its id is known.
 

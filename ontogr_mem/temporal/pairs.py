@@ -9,7 +9,6 @@ while both facts still hash the same.
 from dataclasses import dataclass
 
 from ontogr_mem.data_models.fact_versions import Fact
-from ontogr_mem.data_models.observation import Observation
 from ontogr_mem.temporal.handler import Partner, fact_side
 from ontogr_mem.temporal.trust import Trust
 from ontogr_mem.temporal.verdicts import inputs_hash
@@ -50,12 +49,6 @@ class PairInput:
     b: JudgeFact
     episode_ids: tuple[str, ...] = ()
 
-    def swapped(self) -> "PairInput":
-        """Return the same pair with the sides exchanged."""
-        return PairInput(
-            self.pair_key, self.inputs_hash, self.b, self.a, self.episode_ids
-        )
-
 
 def _interval(fact: Fact) -> str:
     """Return the valid interval as the judge reads it, e.g. ``2010-01-01 to open``."""
@@ -81,14 +74,21 @@ def pair_input(
     for partner in (left, right):
         fact, observations = partner.fact, partner.observations
         side = fact_side(fact, observations, trust)
-        first: Observation | None = observations.get(side.first_obs_id)
+        first = observations.get(side.first_obs_id)
+        relation = (
+            fact.relation_label.strip()
+            if fact.relation_label and fact.relation_label.strip()
+            else str(fact.relation_type_id)
+            if fact.relation_type_id is not None
+            else "related to"
+        )
         sides.append(side)
         views.append(
             JudgeFact(
                 fact_id=fact.fact_id,
                 statement=first.statement
                 if first and first.statement
-                else f"{fact.subject_id} {fact.relation_type_id} {fact.object_id}",
+                else (f"{fact.subject_id} {relation} {fact.object_id}"),
                 interval=_interval(fact),
                 source=first.source_system if first else "",
             )

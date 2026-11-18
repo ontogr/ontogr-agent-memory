@@ -575,8 +575,8 @@ class TestBindHostFacts:
             (), (Drop(0, FactDropReason.SELF_RELATION, "h0"),)
         )
 
-    def test_drops_an_item_whose_direction_the_catalog_refuses(self) -> None:
-        """A database cannot be the source of USES, so the item is dropped."""
+    def test_keeps_an_item_whose_direction_the_catalog_refuses_unplaced(self) -> None:
+        """A direction mismatch clears the type and keeps the host fact."""
         item = bind_input(
             fact=uses_postgres(),
             subject_ref="h2",
@@ -586,9 +586,11 @@ class TestBindHostFacts:
 
         result = bind_items(item)
 
-        assert result == BoundHostFacts(
-            (), (Drop(0, FactDropReason.WRONG_DIRECTION, "relation type 0"),)
-        )
+        assert result.drops == ()
+        (fact,) = result.facts
+        assert fact.relation_type_id is None
+        assert fact.relation_label == "USES"
+        assert fact.entity_refs == ("h2", "h0")
 
     @pytest.mark.parametrize(
         ("relation_type_id", "view", "reason", "detail"),

@@ -34,8 +34,9 @@ a specific ("Gamecube" does not become "console").
 episode.
 - "entity_refs" and "relation_type_id" use only ids from the supplied lists. \
 Never match by name or position. A fact may have any number of refs, including \
-none. "relation_type_id" is set only for a typed link between exactly two refs \
-(source first); otherwise null.
+none. "relation_type_id" is set to a supplied id when a type fits a link between \
+exactly two refs (source first); otherwise null. When a link has exactly two refs \
+and no type fits, write its relation in "relation_label".
 - "relation_label" is the relation as the text states it, in a few words, when \
 the fact links exactly two refs; otherwise null. It is a label, not an id. Never \
 invent a label that the text does not support.
@@ -87,12 +88,14 @@ def relation_section(view: TypeView | None) -> list[str]:
     """Render relation guidance and the relation catalog when available."""
     if view is None:
         return [
-            "There are no relation types; set relation_type_id and relation_label "
-            "to null."
+            "There are no relation types. Set relation_type_id to null. When a "
+            "fact links exactly two refs, write its relation in relation_label; "
+            "otherwise set relation_label to null."
         ]
     return [
-        "Relation types are strict: relation_type_id must be one of these ids, "
-        "between two refs in the listed direction.",
+        "Relation types: set relation_type_id to one of these ids when a type "
+        "fits, between two refs in the listed direction. When none fits, set "
+        "relation_type_id to null and write the relation in relation_label.",
         fence("relation_types", _json(view.catalog.relation_types_json())),
     ]
 

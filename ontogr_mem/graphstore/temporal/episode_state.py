@@ -40,7 +40,8 @@ class EpisodeStateStore:
                 f"MATCH (e:{EPISODE} {self._map('id: $id')}) "
                 "RETURN e.temporal_status AS status, "
                 "e.temporal_committed_hash AS committed_hash, "
-                "e.temporal_ontology_refused AS ontology_refused, "
+                "e.temporal_unplaced AS unplaced, "
+                "e.temporal_ontology_version AS ontology_version, "
                 "e.temporal_skipped AS skipped",
                 {"id": episode_id},
                 read_only=True,
@@ -55,23 +56,28 @@ class EpisodeStateStore:
         return EpisodeState(
             status=TemporalStatus(row["status"]),
             committed_hash=row["committed_hash"],
-            ontology_refused=row["ontology_refused"],
+            unplaced=row["unplaced"],
             skipped=skipped,
+            ontology_version=row["ontology_version"],
         )
 
     async def set_episode_pending(
         self,
         episode_id: str,
         *,
-        ontology_refused: int | None = None,
+        unplaced: int | None = None,
+        ontology_version: int | None = None,
         skipped: Mapping[str, int] | None = None,
     ) -> None:
         """Mark the episode as pending and store any known item outcomes."""
         assignments = ["e.temporal_status = $status"]
         params: dict[str, Any] = {"status": TemporalStatus.PENDING.value}
-        if ontology_refused is not None:
-            assignments.append("e.temporal_ontology_refused = $ontology_refused")
-            params["ontology_refused"] = ontology_refused
+        if unplaced is not None:
+            assignments.append("e.temporal_unplaced = $unplaced")
+            params["unplaced"] = unplaced
+        if ontology_version is not None:
+            assignments.append("e.temporal_ontology_version = $ontology_version")
+            params["ontology_version"] = ontology_version
         if skipped is not None:
             assignments.append("e.temporal_skipped = $skipped")
             params["skipped"] = json.dumps(
@@ -114,7 +120,7 @@ class EpisodeStateStore:
         await self._set_episode(
             episode_id,
             "REMOVE e.temporal_status, e.temporal_committed_hash, "
-            "e.temporal_ontology_refused, e.temporal_skipped",
+            "e.temporal_unplaced, e.temporal_ontology_version, e.temporal_skipped",
             {},
         )
 

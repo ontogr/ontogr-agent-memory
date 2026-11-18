@@ -20,13 +20,13 @@ from ontogr_mem.temporal.engine import TemporalEngine
 from ontogr_mem.temporal.verdicts import VerdictKind
 from tests.integration.temporal.test_engine_contradictions import (
     RULES,
-    ScriptedJudge,
     ingest_city_and_employer,
 )
 from tests.support.consolidation import ConsWorld, new_world
 from tests.support.graph_backend import GraphBackend
 from tests.support.scripted_model import scripted_role_models
 from tests.support.type_world import WORLD
+from tests.support.verdicts import verdict
 from tests.unit.temporal.helpers import at
 
 
@@ -87,7 +87,18 @@ async def test_reports_both_facts_of_an_open_dispute(
         world.clock,
     )
     await ingest_city_and_employer(engine)
-    await engine.judge_pass(ScriptedJudge(VerdictKind.UNCERTAIN))
+    facts = await world.temporal_store.facts_of_entities(["ana"])
+    await engine.record_verdicts(
+        [
+            await verdict(
+                world.temporal_store,
+                facts[0],
+                facts[1],
+                VerdictKind.UNCERTAIN,
+                lambda: facts[0].recorded_at,
+            )
+        ]
+    )
 
     result = await ReportStage().run(ctx_for(world))
 

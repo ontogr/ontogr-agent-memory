@@ -48,6 +48,7 @@ from ontogr_mem.service.limits import CallerRateLimiter
 from ontogr_mem.service.memory_service import MemoryService
 from ontogr_mem.service.runtime import TenantRuntime, build_tenant_runtime
 from ontogr_mem.service.tenants import StoresFactory, TenantRuntimeCache
+from ontogr_mem.temporal.settings import ClosureSettings
 from ontogr_mem.tenant_stores import TenantStores
 from ontogr_mem.vectorstore import Embedder
 
@@ -92,6 +93,7 @@ async def build_service(
     resolver_settings: ResolverSettings,
     retrieval_settings: RetrievalSettings,
     extraction_settings: ExtractionSettings | None = None,
+    closure_settings: ClosureSettings | None = None,
     limiter: CallerRateLimiter,
     max_attempts: int = 3,
     tracer: Tracer | None = None,
@@ -119,6 +121,7 @@ async def build_service(
         resolver_settings: Entity resolver configuration.
         retrieval_settings: Retrieval configuration.
         extraction_settings: Combined or two-pass extraction configuration.
+        closure_settings: Configuration for the temporal closure step.
         limiter: Per-principal read and write limiter.
         models: Caller-owned process-wide model pool. The caller closes it.
         ontology: Declaration applied when a tenant opens.
@@ -152,6 +155,7 @@ async def build_service(
             resolver_settings=resolver_settings,
             retrieval_settings=retrieval_settings,
             extraction_settings=extraction_settings,
+            closure_settings=closure_settings,
         )
 
     tenants = TenantRuntimeCache(
@@ -200,6 +204,7 @@ async def open_service(
     resolver_settings: ResolverSettings | None = None,
     retrieval_settings: RetrievalSettings | None = None,
     extraction_settings: ExtractionSettings | None = None,
+    closure_settings: ClosureSettings | None = None,
     limiter: CallerRateLimiter | None = None,
     max_attempts: int = 3,
     tracer: Tracer | None = None,
@@ -224,6 +229,7 @@ async def open_service(
         resolver_settings: Entity resolution settings.
         retrieval_settings: Retrieval settings.
         extraction_settings: Combined or two-pass extraction configuration.
+        closure_settings: Configuration for the temporal closure step.
         limiter: Request limiter; defaults to the standard service limits.
         ontology: Declaration applied when a tenant opens.
         ontology_tenant: Limit the declaration to this tenant when supplied.
@@ -274,6 +280,7 @@ async def open_service(
             resolver_settings=resolver_settings or ResolverSettings(),
             retrieval_settings=retrieval_settings or RetrievalSettings(),
             extraction_settings=extraction_settings or ExtractionSettings(),
+            closure_settings=closure_settings or ClosureSettings(),
             limiter=limiter or CallerRateLimiter(),
             max_attempts=max_attempts,
             tracer=tracer,

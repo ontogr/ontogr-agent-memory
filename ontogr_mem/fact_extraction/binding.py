@@ -193,6 +193,14 @@ def _bind_one(
     )
 
     label = (raw.relation_label or "").strip() or None
+    if (
+        check.problem is not None
+        and raw.relation_type_id is not None
+        and not label
+        and view is not None
+        and view.catalog.has_relation_id(raw.relation_type_id)
+    ):
+        label = view.catalog.relation_label(raw.relation_type_id)
     return ExtractedFact(
         fact_id="",
         text=text,

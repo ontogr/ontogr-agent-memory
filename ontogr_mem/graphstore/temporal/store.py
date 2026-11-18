@@ -33,7 +33,6 @@ from ontogr_mem.temporal.verdicts import ConflictDecision, FactVerdict
 
 from .episode_state import EpisodeStateStore
 from .ledger_store import LedgerStore
-from .pending import pending_slots
 from .slots import SlotStore
 from .snapshot import SnapshotReader, snapshot
 from .verdict_store import VerdictStore
@@ -116,13 +115,15 @@ class GraphTemporalStore:
         self,
         episode_id: str,
         *,
-        ontology_refused: int | None = None,
+        unplaced: int | None = None,
+        ontology_version: int | None = None,
         skipped: Mapping[str, int] | None = None,
     ) -> None:
         """Mark the episode as pending and store any known item outcomes."""
         return await self._episodes.set_episode_pending(
             episode_id,
-            ontology_refused=ontology_refused,
+            unplaced=unplaced,
+            ontology_version=ontology_version,
             skipped=skipped,
         )
 
@@ -227,15 +228,6 @@ class GraphTemporalStore:
     async def observations_by_ids(self, obs_ids: Sequence[str]) -> list[Observation]:
         """Return the observations, ordered by observation id."""
         return await self._reads.observations_by_ids(obs_ids)
-
-    async def pending_slots(self) -> list[str]:
-        """Return every pending slot key in the tenant, sorted.
-
-        A slot is pending when one of its current facts shares an entity with
-        a fact of another slot and that pair has no verdict. The answer is
-        derived from the facts and the verdicts, so it never goes stale.
-        """
-        return await pending_slots(self)
 
     async def snapshot(self) -> TemporalSnapshot:
         """Return every temporal row of the tenant."""

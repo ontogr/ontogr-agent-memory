@@ -36,6 +36,7 @@ class RelationType:
     description: str = ""
     source_types: frozenset[int] = field(default_factory=frozenset)
     target_types: frozenset[int] = field(default_factory=frozenset)
+    symmetric: bool = False
 
 
 class TypeCatalog:
@@ -84,6 +85,10 @@ class TypeCatalog:
         if type_id == UNKNOWN_TYPE_ID:
             return UNKNOWN_LABEL
         return self.entity_types[type_id].label
+
+    def relation_label(self, type_id: int) -> str:
+        """Return the label for a relation type id."""
+        return self.relation_types[type_id].label
 
     def entity_by_label(self, label: str) -> EntityType | None:
         """Look up an entity type by normalized label."""
@@ -134,6 +139,7 @@ class TypeCatalog:
                 "description": t.description,
                 "source_types": sorted(t.source_types),
                 "target_types": sorted(t.target_types),
+                "symmetric": t.symmetric,
             }
             for t in self.relation_types
         ]
@@ -143,8 +149,13 @@ class TypeCatalog:
 
         Unknown entities pass: their type cannot contradict the pattern.
         """
-        return self._side_ok(rel.source_types, source) and self._side_ok(
-            rel.target_types, target
+        return (
+            self._side_ok(rel.source_types, source)
+            and self._side_ok(rel.target_types, target)
+        ) or (
+            rel.symmetric
+            and self._side_ok(rel.source_types, target)
+            and self._side_ok(rel.target_types, source)
         )
 
     @staticmethod

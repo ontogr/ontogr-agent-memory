@@ -20,7 +20,7 @@ from ontogr_mem.data_models.extraction import ExtractedEntity
 from ontogr_mem.data_models.facts import FactKind, Precision, TypedFact
 from ontogr_mem.data_models.observation import Observation
 from ontogr_mem.fact_extraction import FactMapping, FactTemplate, RecordFactMapper
-from ontogr_mem.temporal.adapter import SkipReason, observations_from_facts
+from ontogr_mem.temporal.adapter import observations_from_facts
 from ontogr_mem.temporal.cardinality import Cardinality
 from ontogr_mem.temporal.policy import from_type_view
 from ontogr_mem.temporal.reconcile import derive
@@ -38,7 +38,11 @@ STATE = FactTemplate(
     fact_kind=FactKind.STATE,
     relation_type_label="LIVES_IN",
 )
-EVENT = FactTemplate("{person} visited {city}", ("person", "city"))
+EVENT = FactTemplate(
+    "{person} visited {city}",
+    ("person", "city"),
+    entity_fields=("person", "city"),
+)
 
 
 class NameResolver:
@@ -126,13 +130,14 @@ class TestRecordFacts:
         ]
         assert {run.valid_from_precision for run in derived.runs} == {Precision.TIME}
 
-    async def test_default_event_templates_do_not_reach_reconcile(self):
-        """An event template is skipped and yields no observation."""
+    async def test_default_event_templates_become_observations(self):
+        """An event template yields an event observation."""
         resolver = NameResolver()
         policy = from_type_view(VIEW, (0,))
         episode, facts = record(resolver, 1, 1, "Berlin", EVENT)
         converted, skipped = await observations_from_facts(
             facts, episode, resolver, policy
         )
-        assert converted == []
-        assert [item.reason for item in skipped] == [SkipReason.NOT_STATE]
+        assert len(converted) == 1
+        assert not skipped
+        assert converted[0].fact_kind is FactKind.EVENT

@@ -9,7 +9,7 @@ from ontogr_mem.data_models.fact_versions import FactStatus
 from ontogr_mem.resolution.resolver_store import ResolverStore
 from ontogr_mem.retrieval.errors import RetrievalError
 from ontogr_mem.retrieval.keyword import KeywordKind, KeywordSearch
-from ontogr_mem.temporal.query import FactView, TemporalQuery
+from ontogr_mem.temporal.query import ACTUAL_ONLY, FactView, TemporalQuery
 from ontogr_mem.temporal.reader import FactReader
 from ontogr_mem.temporal.temporal_store import TemporalStore
 
@@ -46,7 +46,7 @@ class GraphEdge:
         version: Version returned by the temporal query.
         subject_id: Subject entity id.
         object_id: Object entity id.
-        relation_type_id: Relation type id.
+        relation_type_id: Relation type id, or None for an unplaced fact.
         statement: Annotated fact statement.
         status: Lifecycle state of this version.
     """
@@ -55,7 +55,7 @@ class GraphEdge:
     version: int
     subject_id: str
     object_id: str
-    relation_type_id: int
+    relation_type_id: int | None
     statement: str
     status: FactStatus
 
@@ -115,7 +115,9 @@ async def neighbourhood(
     if not 1 <= max_nodes <= MAX_NODES:
         raise RetrievalError(f"max_nodes must be between 1 and {MAX_NODES}")
 
-    temporal_query = TemporalQuery(now=now, include_history=include_history)
+    temporal_query = TemporalQuery(
+        now=now, include_history=include_history, modalities=ACTUAL_ONLY
+    )
     views = await store.query(temporal_query)
     adjacency, degree = _graph_index(views)
     valid_seeds = await _select_seeds(seeds, query, keywords, adjacency, degree)

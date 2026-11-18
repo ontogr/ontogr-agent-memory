@@ -24,7 +24,7 @@ OntoGr Agent Memory is an open source Python library that stores what an agent l
 
 - **Facts with sources:** Every fact keeps the verbatim quote and the episode it came from. A hash-chained ledger records each temporal write, so an edited, inserted, or deleted entry can be found.
 - **Facts that change over time:** Each fact has a validity window and a record of when the system learned it. A new value closes the old version, so a read can ask what was true on a date or what the system believed on that date.
-- **Contradictions get a ruling:** Rules, an optional model judge, and a person's decision settle which facts conflict, and a failed judge call is never stored as "no conflict".
+- **Contradictions get a ruling:** Rules, one optional model call per new fact with candidates, and a person's decision settle which facts conflict. A failed call leaves both facts live.
 - **Fits your stack:** The graph runs on FalkorDB or Neo4j, vectors live on the graph or in pgvector, and jobs and audit rows live in SQLite or Postgres. Each tenant is a separate partition.
 
 <p align="center">
@@ -106,7 +106,7 @@ A label that the catalog does not hold is handled by kind:
 | Kind | Behavior |
 | --- | --- |
 | Entity type | The entity is kept with the Unknown type. |
-| Relation type | The fact is dropped and counted. |
+| Relation type | The fact is kept as an unplaced fact and counted in `unplaced`. |
 
 - **Patterns are enforced:** Relation types can declare source and target patterns. The patterns appear in the prompt, and the code also enforces them.
 - **Default ontology.** A new tenant starts with ten entity types and 31 relation types from `ontogr_mem/ontology/default.yaml`.
@@ -182,7 +182,7 @@ include `ontology_type_id`; use `0` for the `Unknown` type.
 
 ### Temporal and consistency engine
 
-*Facts keep two time axes, and conflicts are settled by rules, a judge, or a person.*
+*Facts keep two time axes, and conflicts are settled by rules, a closure judge, or a person.*
 
 #### Bi-temporal model
 
@@ -216,19 +216,19 @@ Three operations look similar but differ:
 
 #### Contradiction handler
 
-*Rules, an optional model judge, and a person's decision settle which facts conflict.*
+*Rules, one optional model call per new fact with candidates, and a person's decision settle which facts conflict.*
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/contradiction-handling.svg" alt="Observations in one slot go to the rules when the relation is single-valued. Pairs from other slots go to an optional model judge, which stores its verdicts. The handler reads the rules and the stored verdicts, and a person's decision overrides both. The result is a set of slot directives that the engine commits as fact versions." width="860">
+  <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/contradiction-handling.svg" alt="New facts with candidates go to one optional model call. The call returns contradiction verdicts for candidate pairs. The handler applies rules and stored verdicts, and a person's decision overrides both. The engine commits the result as fact versions." width="860">
 </p>
 
 When two facts cannot both stand, the handler decides which one is current and keeps the other in the history. A person's decision overrides every rule and every verdict.
 
 - **Rules:** Rules handle single-valued relations, where two values cannot both stand in the same slot.
-- **Model judge:** An optional judge handles the remaining cross-slot pairs.
+- **Closure judge:** For each new actual state fact with candidates, an optional model call checks the candidates for contradictions. A contradiction closes the earlier fact at the later fact's start. A failed call leaves both facts live.
 - **Person's decision:** A decision recorded through `TemporalEngine.record_decision` overrides the rules and the judge.
 - **Conflict classes:** A verdict is one of `update`, `correction`, `dispute`, or `uncertain`.
-- **Verdicts go stale:** A verdict is keyed by the pair, a hash of the inputs, and the prompt version, so a changed fact makes it stale. A failed judge call is counted and retried, and it is never stored as "no contradiction".
+- **Verdicts go stale:** A verdict is keyed by the pair, a hash of the inputs, and the prompt version, so a changed fact makes it stale. Failed calls do not create verdicts.
 
 #### Provenance tracking
 
@@ -526,9 +526,9 @@ The server registers these tools:
 
 `MEMORY_MCP_TOOLS` can only remove tools. It cannot enable `add_memory` or any administrative operation. The server has no hard delete, clear, export or ontology tool. `forget_memory` closes a fact's validity and keeps its history. It does not erase the source.
 
-Writes are queued. The receipt names a job, so call `get_job` until its status is terminal. A finished `write_facts` result has `fact_ids` and `dropped`. Each `dropped` entry has an `index`, a `reason` and a `detail`. The `index` is the zero-based position in the submitted facts. The reasons are `missing_field`, `ungrounded`, `ambiguous_entity_ref`, `unknown_relation`, `wrong_direction`, `self_relation`, the time reasons (for example `time_order`) and `duplicate_merged`. The source Episode is kept even when every fact is dropped.
+Writes are queued. The receipt names a job, so call `get_job` until its status is terminal. A finished `write_facts` result has `fact_ids`, `unplaced` and `dropped`. Each `dropped` entry has an `index`, a `reason` and a `detail`. The `index` is the zero-based position in the submitted facts. Drop reasons include `missing_field`, `ungrounded`, `ambiguous_entity_ref`, `wrong_direction`, `self_relation`, time reasons (for example `time_order`) and `duplicate_merged`. The source Episode is kept even when every fact is dropped.
 
-The tenant's ontology decides what happens to an unknown relation or entity type. An unknown relation is dropped and nothing is recorded. An unknown entity type is kept with the Unknown type, and a relation that declares source and target types is dropped when an endpoint has the Unknown type.
+The tenant's ontology decides how relations and entity types are placed. A fact with an unknown relation or endpoints that violate a relation pattern is stored as an unplaced fact and counted in `unplaced`. An unknown entity type is kept with the Unknown type.
 
 The package ships two skills, `memory-write` and `memory-recall`. Call `get_skill` with either name to read its text. A host that supports the experimental skills extension also lists them. A host does not need that extension.
 
@@ -825,7 +825,7 @@ Writes return a `WriteReceipt` with a job id and status. A positive `wait_second
 
 AddMemory writes accept a `role`, which defaults to `user`, and a `speaker`. The speaker is both the actor id and display name. If it is omitted, the service uses the caller id as the actor id and leaves the display name empty. Episode listings and retrieved episode passages include the actor id, display name, and role.
 
-Completed text and message results include `ontology_refused`, the number of extracted facts rejected by the ontology, and `skipped`, counts keyed by temporal skip reason. Accepted facts remain available even when other extracted facts are refused or skipped. Events, plans, and other skipped items remain in the episode text, but are not stored as structured temporal facts. Explicit fact writes, updates, and invalidations still fail when a required fact is refused or skipped.
+Completed text and message results include `unplaced`, the number of stored facts without a relation type, and `skipped`, counts keyed by remaining temporal skip reason. Events and actual states are visible by default. Planned, conditional and desired facts are stored but hidden from default reads. Facts with no stated time start at the episode time and carry the `reference` time basis. An invalid stated time is cleared and reported as a time issue. Host writes do not call a model judge.
 
 ### Errors
 
@@ -877,7 +877,7 @@ The model pool serves these consumers:
 - `ENTITY_EXTRACTION` handles entity extraction.
 - `FACT_EXTRACTION` handles fact extraction.
 - `RESOLUTION` handles entity-resolution verification.
-- `JUDGE` handles temporal pair judgments.
+- `JUDGE` checks candidate facts for contradictions during text and message writes. Each new actual state fact with candidates gets one call. Host writes do not call the judge.
 - `CONSOLIDATION` handles community summaries, entity descriptions, and reflection.
 
 The `ANSWER` role supplies the model of the default chat agent and of agents that read it from the client. No service pipeline uses it. The model layer has no gate, response cache, model-price table, or input-token cap. Graph stores and the embedding gateway retain their own resilience behavior.
@@ -988,7 +988,7 @@ Settings classes use `pydantic-settings`. They read the `.env` file in the curre
 | `MEMORY_KEYWORD_` | Tenant-scoped fulltext search limits. |
 | `MEMORY_RESOLUTION_` | Entity resolution thresholds and verification budgets. |
 | `MEMORY_TEMPORAL_` | Temporal retries, batch size, and episode pending time. |
-| `MEMORY_JUDGE_` | Conflict judge threshold and token budget. |
+| `MEMORY_CLOSURE_` | Closure judge settings: `ENABLED`, `MAX_CANDIDATES` and `PROMPT_VERSION`. |
 | `MEMORY_CONSOLIDATION_` | Consolidation leases, feedback, scoring, communities, and retention. |
 | `MEMORY_ENTITY_EXTRACTION_` | Entity extractor concurrency, context, and thresholds. |
 | `MEMORY_FACT_EXTRACTION_` | Fact extractor concurrency, context, and version. |
@@ -1002,7 +1002,7 @@ Nested settings join their names with `__`, for example `MEMORY_FALKORDB_RESILIE
 
 ### Named model roles
 
-Each model-backed consumer selects a `ModelRole` from the shared pool. The consumers use `ENTITY_EXTRACTION` for entity extraction, `FACT_EXTRACTION` for fact extraction, `RESOLUTION` for entity-resolution verification, `JUDGE` for temporal pair judgments, and `CONSOLIDATION` for community summaries, entity descriptions, and reflection. The `ANSWER` role is used by the default chat agent, not by a service pipeline. A role-specific setting replaces the global value for that field. Unset role fields inherit the global value.
+Each model-backed consumer selects a `ModelRole` from the shared pool. The consumers use `ENTITY_EXTRACTION` for entity extraction, `FACT_EXTRACTION` for fact extraction, `RESOLUTION` for entity-resolution verification, `JUDGE` for temporal closure checks, and `CONSOLIDATION` for community summaries, entity descriptions, and reflection. The `ANSWER` role is used by the default chat agent, not by a service pipeline. A role-specific setting replaces the global value for that field. Unset role fields inherit the global value.
 
 The global fields are:
 

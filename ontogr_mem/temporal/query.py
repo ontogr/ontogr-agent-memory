@@ -15,11 +15,15 @@ query.
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Final
 
 from ontogr_mem.data_models.fact_versions import Fact, FactStatus
-from ontogr_mem.data_models.facts import Precision
+from ontogr_mem.data_models.facts import FactKind, Modality, Precision, TimeBasis
 from ontogr_mem.data_models.timestamps import to_micros
 from ontogr_mem.temporal.visibility import in_current_view
+
+
+ACTUAL_ONLY: Final = frozenset({Modality.ACTUAL})
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +40,7 @@ class TemporalQuery:
         subject_id: Subject entity to match, or ``None`` for any.
         object_id: Object entity to match, or ``None`` for any.
         relation_type_id: Relation type to match, or ``None`` for any.
+        modalities: Modalities to include, or ``None`` for all.
     """
 
     now: datetime
@@ -46,6 +51,7 @@ class TemporalQuery:
     subject_id: str | None = None
     object_id: str | None = None
     relation_type_id: int | None = None
+    modalities: frozenset[Modality] | None = None
 
     def __post_init__(self) -> None:
         """Reject incompatible time filters."""
@@ -68,6 +74,10 @@ class FactView:
         subject_id: Entity on the subject side of the relation.
         object_id: Entity on the object side of the relation.
         relation_type_id: Stable relation type id.
+        fact_kind: Whether the fact is a state or an event.
+        modality: Whether the fact is actual, planned, conditional or desired.
+        relation_label: Stored relation words for an unplaced fact.
+        time_basis: Whether the start was stated or uses the reference time.
         valid_from: Start of the valid-time interval.
         valid_to: End of the valid-time interval, or ``None`` while open.
         valid_from_precision: Coarsest unit stated for the start.
@@ -88,7 +98,7 @@ class FactView:
     slot_key: str
     subject_id: str
     object_id: str
-    relation_type_id: int
+    relation_type_id: int | None
     valid_from: datetime
     valid_to: datetime | None
     valid_from_precision: Precision | None
@@ -102,6 +112,10 @@ class FactView:
     disputed: bool = False
     counterpart_ids: tuple[str, ...] = ()
     dispute_reason: str = ""
+    fact_kind: FactKind = FactKind.STATE
+    modality: Modality = Modality.ACTUAL
+    relation_label: str = ""
+    time_basis: TimeBasis = TimeBasis.STATED
 
 
 def view_of(fact: Fact) -> FactView:
@@ -121,6 +135,10 @@ def view_of(fact: Fact) -> FactView:
         expired_at=fact.expired_at,
         status=fact.status,
         evidence=fact.evidence,
+        fact_kind=fact.fact_kind,
+        modality=fact.modality,
+        relation_label=fact.relation_label,
+        time_basis=fact.time_basis,
     )
 
 
@@ -151,6 +169,8 @@ def matches(query: TemporalQuery, fact: Fact) -> bool:
 
     if query.known_at is not None or not query.include_history:
         known = to_micros(query.known_at or query.now)
-        if not (to_micros(fact.recorded_at) <= known < to_micros(fact.expired_at)):
+        recorded_at = to_micros(fact.recorded_at)
+        expired_at = to_micros(fact.expired_at)
+        if not (recorded_at <= known < expired_at):
             return False
-    return True
+    return query.modalities is None or fact.modality in query.modalities

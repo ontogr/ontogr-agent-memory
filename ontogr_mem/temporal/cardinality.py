@@ -10,6 +10,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 
+from ontogr_mem.data_models.facts import FactKind, Modality
+
 
 class Cardinality(StrEnum):
     """Which side of a fact a new value replaces.
@@ -44,6 +46,7 @@ class RelationRules:
 
     cardinality: Cardinality = Cardinality.MANY
     conflict_policy: ConflictPolicy = ConflictPolicy.REVIEW
+    judged: bool = False
 
     @property
     def inverse(self) -> bool:
@@ -70,3 +73,19 @@ class DictRelationPolicy:
     def rules(self, relation_type_id: int) -> RelationRules:
         """Return the declared rules, or the many/review defaults."""
         return self._declared.get(relation_type_id, RelationRules())
+
+
+def rules_for(
+    policy: DictRelationPolicy,
+    relation_type_id: int | None,
+    modality: Modality,
+    fact_kind: FactKind,
+) -> RelationRules:
+    """Return many-valued rules unless this is an actual placed state."""
+    if (
+        relation_type_id is None
+        or modality is not Modality.ACTUAL
+        or fact_kind is FactKind.EVENT
+    ):
+        return RelationRules()
+    return policy.rules(relation_type_id)

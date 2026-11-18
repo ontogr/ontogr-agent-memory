@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
-from ontogr_mem.data_models.facts import Precision, TimeBasis
+from ontogr_mem.data_models.facts import FactKind, Modality, Precision, TimeBasis
 from ontogr_mem.data_models.timestamps import require_utc
 
 
@@ -60,7 +60,8 @@ class Observation:
         slot_key: Slot this statement belongs to.
         subject_id: Entity on the subject side of the relation.
         object_id: Entity on the object side of the relation.
-        relation_type_id: Stable relation type id.
+        relation_type_id: Stable relation type id, or None when the relation
+            has no catalog type.
         kind: Whether the statement asserts or ends the relation.
         episode_id: Episode the statement came from.
         occurred_at: When the episode says the statement happened.
@@ -69,7 +70,8 @@ class Observation:
         valid_from_precision: Coarsest unit stated for ``valid_from``.
         valid_to: Stated end, or ``None`` for an open end.
         valid_to_precision: Coarsest unit stated for ``valid_to``.
-        time_basis: Where ``valid_from`` came from.
+        time_basis: Whether ``valid_from`` was stated, inferred from a reference
+            time, or absent.
         provenance: Extractor, model and prompt that produced the statement.
         statement: The claim in plain words.
         quote: The episode text that supports the statement.
@@ -77,13 +79,16 @@ class Observation:
         source_system: Source system the statement came from, for trust rules.
         connector: Connector that brought the statement in, for trust rules.
         actor_role: Role of the person or system behind it, for trust rules.
+        fact_kind: Whether the claim is a state or event.
+        modality: Whether the claim is actual, planned, conditional, or desired.
+        relation_label: Textual relation when no catalog type applies.
     """
 
     obs_id: str
     slot_key: str
     subject_id: str
     object_id: str
-    relation_type_id: int
+    relation_type_id: int | None
     kind: ObservationKind
     episode_id: str
     occurred_at: datetime
@@ -100,6 +105,9 @@ class Observation:
     source_system: str = ""
     connector: str = ""
     actor_role: str = ""
+    fact_kind: FactKind = FactKind.STATE
+    modality: Modality = Modality.ACTUAL
+    relation_label: str = ""
 
     def __post_init__(self) -> None:
         """Normalize times to UTC and reject impossible intervals."""

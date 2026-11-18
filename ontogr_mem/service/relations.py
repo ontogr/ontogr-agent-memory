@@ -12,8 +12,15 @@ def relation_policy(ontology: Ontology) -> DictRelationPolicy:
     """Build stable-id cardinality rules from active ontology relations."""
     return DictRelationPolicy(
         {
-            relation.type_id: RelationRules(Cardinality.ONE)
+            relation.type_id: RelationRules(
+                cardinality=(
+                    Cardinality.ONE
+                    if relation.kind is RelationKind.SINGLE
+                    else Cardinality.MANY
+                ),
+                judged=relation.kind is RelationKind.JUDGED,
+            )
             for relation in ontology.relations
-            if relation.status is Status.ACTIVE and relation.kind is RelationKind.SINGLE
+            if relation.status is Status.ACTIVE
         }
     )

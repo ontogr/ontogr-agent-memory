@@ -9,6 +9,7 @@ from ontogr_mem.data_models import (
     Entity,
     EntityStatus,
     ExtractedEntity,
+    FactStatus,
     Kind,
     Method,
     Source,
@@ -42,13 +43,10 @@ from ontogr_mem.temporal import (
     TemporalEngine,
     TemporalQuery,
 )
-from ontogr_mem.temporal.judge import JudgeOutcome
-from ontogr_mem.temporal.pairs import PairInput
 from ontogr_mem.temporal.temporal_store import TemporalStore
 from ontogr_mem.temporal.verdicts import (
     ConflictDecision,
     DecisionAction,
-    FactVerdict,
     VerdictKind,
     VerdictSource,
 )
@@ -64,6 +62,7 @@ from tests.support.embedder import RecordingEmbedder
 from tests.support.episodes import make_episode as episode_at
 from tests.support.facts import fact, fact_models, reply
 from tests.support.ontology import base, cs, load_catalog
+from tests.support.verdicts import verdict
 
 
 NOW = datetime(2026, 10, 23, 12, 0, tzinfo=UTC)
@@ -209,7 +208,7 @@ async def build_world(backend: RetrievalBackend) -> RetrievalWorld:
         )
         report = await extraction.extract([episode], {spec.episode_id: extracted})
         extracted_facts = report.results[0].facts
-        stabilized = await stabilize_facts(manager, extracted_facts, projection)
+        stabilized = stabilize_facts(extracted_facts, projection)
         await engine.ingest(stabilized.typed, episode)
         await write_episode_vectors(writer, [episode])
         await backend.episodes.record_content_hash(
@@ -276,7 +275,45 @@ async def _finish_scenario(
     links: TypeLinks,
 ) -> tuple[dict[str, str], dict[str, Entity]]:
     """Apply scenario decisions and return stable fact and entity identities."""
-    await engine.judge_pass(_ScenarioJudge())
+    fact_views = await FactReader(backend.temporal_store).read(
+        TemporalQuery(now=NOW, include_history=True)
+    )
+    facts = [
+        fact
+        for fact in await backend.temporal_store.facts_of_entities(
+            [entity.entity_id for entity in stored_entities.values()]
+        )
+        if fact.expired_at is None
+        and fact.status is FactStatus.ACTIVE
+        and fact.valid_to is None
+    ]
+    views_by_fact_id = {view.fact_id: view for view in fact_views}
+    disputed_pairs = {
+        frozenset(("Bob works at Globex", "Bob works at Initech")),
+        frozenset(("Carol works at Alpha", "Carol works at Beta")),
+    }
+    verdicts = []
+    for index, fact_a in enumerate(facts):
+        for fact_b in facts[index + 1 :]:
+            statements = frozenset(
+                (
+                    views_by_fact_id[fact_a.fact_id].statement,
+                    views_by_fact_id[fact_b.fact_id].statement,
+                )
+            )
+            if statements not in disputed_pairs:
+                continue
+            verdicts.append(
+                await verdict(
+                    backend.temporal_store,
+                    fact_a,
+                    fact_b,
+                    VerdictKind.UNCERTAIN,
+                    lambda: NOW,
+                )
+            )
+    if verdicts:
+        await engine.record_verdicts(verdicts)
     all_views = await FactReader(backend.temporal_store).read(
         TemporalQuery(now=NOW, include_history=True)
     )
@@ -333,41 +370,6 @@ async def _finish_scenario(
             links, ana.entity_id, ana_alias.entity_id, reason="same person"
         )
     return fact_ids, stored_entities
-
-
-class _ScenarioJudge:
-    """Mark only the two intended pairs as unresolved disputes."""
-
-    prompt_version = "retrieval-world-1"
-
-    async def judge_pairs(
-        self, pairs: Sequence[PairInput], *, now: datetime
-    ) -> JudgeOutcome:
-        """Return uncertain verdicts for the fixture's conflicting employers."""
-        outcome = JudgeOutcome()
-        disputed_pairs = {
-            frozenset(("Bob works at Globex", "Bob works at Initech")),
-            frozenset(("Carol works at Alpha", "Carol works at Beta")),
-        }
-        for pair in pairs:
-            statements = frozenset((pair.a.statement, pair.b.statement))
-            outcome.verdicts.append(
-                FactVerdict(
-                    pair_key=pair.pair_key,
-                    fact_a_id=pair.a.fact_id,
-                    fact_b_id=pair.b.fact_id,
-                    verdict=(
-                        VerdictKind.UNCERTAIN
-                        if statements in disputed_pairs
-                        else VerdictKind.UNRELATED
-                    ),
-                    inputs_hash=pair.inputs_hash,
-                    prompt_version=self.prompt_version,
-                    source=VerdictSource.LLM,
-                    decided_at=now,
-                )
-            )
-        return outcome
 
 
 def _scenario_specs() -> tuple[EpisodeSpec, ...]:

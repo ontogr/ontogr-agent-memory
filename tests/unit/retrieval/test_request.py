@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from ontogr_mem.data_models.facts import Modality
 from ontogr_mem.retrieval import RetrievalError, RetrievalRequest
 from ontogr_mem.temporal.query import TemporalQuery
 
@@ -120,6 +121,7 @@ class TestRetrievalRequest:
             valid_at=datetime(2020, 1, 1, tzinfo=UTC),
             known_at=datetime(2021, 1, 1, tzinfo=UTC),
             include_history=True,
+            modalities=frozenset({Modality.ACTUAL}),
         )
 
     def test_maps_the_overlap_window_to_a_temporal_query(self) -> None:
@@ -127,10 +129,14 @@ class TestRetrievalRequest:
         window = (datetime(2020, 1, 1, tzinfo=UTC), datetime(2025, 1, 1, tzinfo=UTC))
         request = make_request(overlaps=window)
 
-        assert request.to_temporal_query() == TemporalQuery(now=NOW, overlaps=window)
+        assert request.to_temporal_query() == TemporalQuery(
+            now=NOW, overlaps=window, modalities=frozenset({Modality.ACTUAL})
+        )
 
     def test_maps_a_request_without_time_filters_to_the_present(self) -> None:
         """A request with no time filter asks for what is true now."""
         request = make_request()
 
-        assert request.to_temporal_query() == TemporalQuery(now=NOW)
+        assert request.to_temporal_query() == TemporalQuery(
+            now=NOW, modalities=frozenset({Modality.ACTUAL})
+        )

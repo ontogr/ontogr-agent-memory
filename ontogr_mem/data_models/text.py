@@ -15,6 +15,11 @@ def normalize_name(name: str) -> str:
     return " ".join(normalized.split()).casefold()
 
 
+def normalize_text(text: str) -> str:
+    """Return a canonical text key with NFC, collapsed whitespace and case-folding."""
+    return normalize_name(text)
+
+
 def same_name(first: str, second: str) -> bool:
     """Return whether two names have the same normalized key."""
     return normalize_name(first) == normalize_name(second)

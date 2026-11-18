@@ -5,9 +5,9 @@ episode. Reconciliation wants an observation: a dated statement about a slot,
 with stable entity ids and relation type ids. This module is the translation
 and the only place that knows both shapes.
 
-A fact becomes an observation only when it is a state, actual, typed, has
-exactly two refs, both refs resolve and its interval is valid. Every other fact
-is returned with a ``SkipReason`` and counted, never silently dropped.
+A fact becomes an observation when it has evidence, exactly two refs, both refs
+resolve and its interval is valid. Relation, kind and modality determine slot
+isolation; they do not prevent storage.
 """
 
 from collections.abc import Sequence
@@ -32,10 +32,12 @@ from ontogr_mem.data_models.observation import (
     ObservationKind,
     ProvenanceStamp,
 )
+from ontogr_mem.data_models.text import normalize_text
 from ontogr_mem.temporal.cardinality import (
     Cardinality,
     DictRelationPolicy,
     RelationRules,
+    rules_for,
 )
 from ontogr_mem.temporal.errors import EpisodeMismatchError
 from ontogr_mem.temporal.timeutil import span_end
@@ -58,9 +60,6 @@ class SkipReason(StrEnum):
     """
 
     NO_EVIDENCE = "no_evidence"
-    NOT_STATE = "not_state"
-    NOT_ACTUAL = "not_actual"
-    NO_RELATION = "no_relation"
     REF_COUNT = "ref_count"
     UNRESOLVED_REF = "unresolved_ref"
     END_ONLY = "end_only"
@@ -85,7 +84,7 @@ class Skipped:
 
 def _slot_key(
     subject_id: str,
-    relation_type_id: int,
+    relation_type_id: int | None,
     object_id: str,
     rules: RelationRules,
 ) -> str:
@@ -102,6 +101,40 @@ def _slot_key(
     if rules.cardinality is Cardinality.MANY:
         return stable_id("slot", subject_id, relation, object_id)
     return stable_id("slot", subject_id, relation)
+
+
+def _isolated_slot_key(
+    subject_id: str,
+    object_id: str,
+    *,
+    relation_type_id: int | None,
+    relation_label: str,
+    fact_kind: FactKind,
+    modality: Modality,
+    polarity: Polarity,
+    time_basis: TimeBasis,
+    valid_from: datetime,
+    statement: str,
+) -> str:
+    """Build a many-valued slot for facts outside actual placed states."""
+    relation = (
+        str(relation_type_id)
+        if relation_type_id is not None
+        else normalize_text(relation_label)
+    )
+    if fact_kind is FactKind.EVENT:
+        start = (
+            valid_from.isoformat() if time_basis is TimeBasis.STATED else "reference"
+        )
+        namespace = (
+            "slot-event-negated" if polarity is Polarity.NEGATED else "slot-event"
+        )
+        return stable_id(
+            namespace, subject_id, object_id, relation, modality.value, start
+        )
+    if modality is not Modality.ACTUAL:
+        return stable_id("slot-plan", subject_id, object_id, relation, modality.value)
+    return stable_id("slot-text", subject_id, object_id, normalize_text(statement))
 
 
 async def observations_from_facts(
@@ -145,12 +178,6 @@ async def observations_from_facts(
             raise EpisodeMismatchError(fact.fact_id, fact.episode_id)
         if not fact.evidence_quote.strip():
             skipped.append(Skipped(fact.fact_id, SkipReason.NO_EVIDENCE))
-        elif fact.fact_kind is not FactKind.STATE:
-            skipped.append(Skipped(fact.fact_id, SkipReason.NOT_STATE))
-        elif fact.modality is not Modality.ACTUAL:
-            skipped.append(Skipped(fact.fact_id, SkipReason.NOT_ACTUAL))
-        elif item.relation_type is None:
-            skipped.append(Skipped(fact.fact_id, SkipReason.NO_RELATION))
         elif len(fact.entity_refs) != 2:
             skipped.append(
                 Skipped(
@@ -182,7 +209,7 @@ async def _convert(
     policy: DictRelationPolicy,
     stamp: ProvenanceStamp,
     *,
-    relation_type_id: int,
+    relation_type_id: int | None,
 ) -> Observation | Skipped:
     """Build one observation from a qualifying fact, or say why there is none.
 
@@ -209,6 +236,11 @@ async def _convert(
     precision = fact.precision
     basis = fact.time_basis
     start = fact.valid_from if basis is not TimeBasis.NONE else None
+    if basis is TimeBasis.REFERENCE and start is None:
+        start = episode.occurred_at
+    if basis is TimeBasis.NONE and start is None and not ended:
+        basis = TimeBasis.REFERENCE
+        start = episode.occurred_at
     end: datetime | None = None
     try:
         if basis is not TimeBasis.NONE and start is None:
@@ -229,11 +261,31 @@ async def _convert(
     except (ValueError, OverflowError) as exc:
         return Skipped(fact.fact_id, SkipReason.BAD_INTERVAL, str(exc))
 
-    rules = policy.rules(relation_type_id)
+    rules = rules_for(policy, relation_type_id, fact.modality, fact.fact_kind)
+    slot_key = (
+        typed.slot_key
+        if typed.slot_key is not None
+        else _slot_key(subject, relation_type_id, obj, rules)
+        if fact.fact_kind is FactKind.STATE
+        and fact.modality is Modality.ACTUAL
+        and relation_type_id is not None
+        else _isolated_slot_key(
+            subject,
+            obj,
+            relation_type_id=relation_type_id,
+            relation_label=(fact.relation_label or "").strip()[:128],
+            fact_kind=fact.fact_kind,
+            modality=fact.modality,
+            polarity=fact.polarity,
+            time_basis=fact.time_basis,
+            valid_from=start or episode.occurred_at,
+            statement=fact.text,
+        )
+    )
     try:
         return Observation(
             obs_id=stable_id("obs", episode.id, fact.fact_id, kind.value),
-            slot_key=_slot_key(subject, relation_type_id, obj, rules),
+            slot_key=slot_key,
             subject_id=subject,
             object_id=obj,
             relation_type_id=relation_type_id,
@@ -253,6 +305,9 @@ async def _convert(
             source_system=episode.source.system,
             connector=episode.source.connector,
             actor_role=episode.actor.role.value,
+            fact_kind=fact.fact_kind,
+            modality=fact.modality,
+            relation_label=(fact.relation_label or "").strip()[:128],
         )
     except ValueError as exc:
         return Skipped(fact.fact_id, SkipReason.BAD_INTERVAL, str(exc))

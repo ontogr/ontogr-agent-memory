@@ -154,6 +154,7 @@ async def test_run_compares_modes_on_fact_bearing_input(tmp_path):
         assert result["statuses"] == ["ok", "ok"]
         assert result["bound_fact_count"] == 1
         assert result["relation_fact_count"] == 1
+        assert result["unplaced_fact_count"] == 0
         assert result["dropped_fact_count"] == 0
         assert result["entity_names"] == ["Acme", "Ana", "Postgres"]
         assert result["orphaned_entities"] == ["Postgres"]

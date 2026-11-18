@@ -1,8 +1,7 @@
 """Run the judge over the labelled set and report what it gets wrong and costs.
 
-The report gives precision and recall for ``contradicts``, the false-supersession
-rate, uncertain and unanswered counts, model requests and tokens, and the pairs
-answered wrongly.
+The report gives precision and recall for ``contradicts``, unanswered counts,
+model requests and tokens, and the pairs answered wrongly.
 
 Run against the configured judge model from the repository root:
 
@@ -12,11 +11,10 @@ Run against the configured judge model from the repository root:
 import asyncio
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 
 from ontogr_mem.llm import LLMConfig, ModelRole, RoleModels, build_models
-from ontogr_mem.temporal.judge import JudgeFact, LLMPairJudge, PairInput
-from ontogr_mem.temporal.settings import JudgeSettings
+from ontogr_mem.temporal.closure import ClosureJudge
+from ontogr_mem.temporal.settings import ClosureSettings
 from tests.eval.labelled import LABELLED, Labelled
 
 
@@ -29,9 +27,7 @@ class EvalReport:
     fp: int = 0
     fn: int = 0
     tn: int = 0
-    uncertain: int = 0
     unanswered: int = 0
-    uncertain_negatives: int = 0
     calls: int = 0
     tokens_in: int = 0
     tokens_out: int = 0
@@ -49,20 +45,13 @@ class EvalReport:
         """Share of real contradictions that were found."""
         return self.tp / (self.tp + self.fn) if self.tp + self.fn else 1.0
 
-    @property
-    def false_supersession_rate(self) -> float:
-        """Non-contradictions judged as contradictions, over all non-contradictions."""
-        negatives = self.fp + self.tn + self.uncertain_negatives
-        return self.fp / negatives if negatives else 0.0
-
     def render(self) -> str:
         """Return a short text table."""
         lines = [
             f"pairs {self.n}  calls {self.calls}  tokens in/out "
             f"{self.tokens_in}/{self.tokens_out}",
-            f"precision {self.precision:.2f}  recall {self.recall:.2f}  "
-            f"false-supersession {self.false_supersession_rate:.2f}",
-            f"uncertain {self.uncertain}  unanswered {self.unanswered}",
+            f"precision {self.precision:.2f}  recall {self.recall:.2f}",
+            f"unanswered {self.unanswered}",
         ]
         for cat in sorted(self.category_total):
             lines.append(
@@ -75,49 +64,38 @@ class EvalReport:
         return "\n".join(lines)
 
 
-def to_input(item: Labelled) -> PairInput:
-    """Return a labelled pair as the judge sees it; the pair id is the key."""
-    left = JudgeFact(f"{item.id}-a", item.a[0], item.a[1], item.a[2])
-    right = JudgeFact(f"{item.id}-b", item.b[0], item.b[1], item.b[2])
-    return PairInput(item.id, f"hash-{item.id}", left, right)
-
-
 async def run_eval(
     models: RoleModels,
     items: tuple[Labelled, ...] = LABELLED,
-    settings: JudgeSettings | None = None,
+    settings: ClosureSettings | None = None,
 ) -> EvalReport:
-    """Judge the labelled pairs and report their outcomes and token usage.
+    """Judge statement text and report outcomes and token usage.
+
+    The judge receives statement text only. Intervals and sources remain
+    metadata in the labelled set.
 
     Args:
         models: Shared model pool used by the judge role.
         items: Labelled pairs to judge.
-        settings: Judge batching and threshold settings.
+        settings: Closure settings for the prompt version and candidate count.
 
     Returns:
         Counts, rates and the pairs answered wrongly.
     """
-    judge = LLMPairJudge(models, settings or JudgeSettings())
-    outcome = await judge.judge_pairs(
-        [to_input(item) for item in items], now=datetime.now(UTC)
-    )
-    said_by_id = {v.pair_key: v.verdict.value for v in outcome.verdicts}
-    report = EvalReport(
-        n=len(items),
-        calls=outcome.requests,
-        tokens_in=outcome.tokens_in,
-        tokens_out=outcome.tokens_out,
-    )
+    judge = ClosureJudge(models, settings or ClosureSettings())
+    report = EvalReport(n=len(items))
     for item in items:
-        said = said_by_id.get(item.id)
+        outcome = await judge.judge(item.b[0], [(item.id, item.a[0])])
+        report.calls += outcome.requests
+        report.tokens_in += outcome.input_tokens
+        report.tokens_out += outcome.output_tokens
+        said = "contradicts" if item.id in outcome.contradicted else None
+        if not outcome.failed and said is None:
+            said = "compatible"
         report.category_total[item.category] += 1
-        if said is None:
+        if outcome.failed:
             report.unanswered += 1
         positive = item.label == "contradicts"
-        if said == "uncertain":
-            report.uncertain += 1
-            if not positive:
-                report.uncertain_negatives += 1
         if said == "contradicts" and positive:
             report.tp += 1
         elif said == "contradicts":
@@ -126,7 +104,7 @@ async def run_eval(
             report.fn += 1
         else:
             report.tn += 1
-        if said == item.label or (not positive and said not in (None, "contradicts")):
+        if said == item.label or (not positive and said == "compatible"):
             report.by_category[item.category] += 1
         else:
             report.wrong.append((item.id, item.label, str(said)))

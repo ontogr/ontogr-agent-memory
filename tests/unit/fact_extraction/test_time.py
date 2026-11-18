@@ -89,12 +89,12 @@ class TestTime:
             (FactKind.STATE, Modality.DESIRED),
         ],
     )
-    def test_no_default_for_events_and_non_actual_modalities(
+    def test_undated_facts_use_reference_time(
         self, kind: FactKind, modality: Modality
     ) -> None:
-        """Only an actual state gets the reference time."""
+        """Every fact without a stated time gets the episode reference time."""
         out = resolve(kind=kind, modality=modality)
-        assert (out.valid_from, out.basis) == (None, TimeBasis.NONE)
+        assert (out.valid_from, out.basis) == (T0, TimeBasis.REFERENCE)
 
     def test_unparsed_time_is_cleared_with_reason_and_gets_no_default(self) -> None:
         """A bad time is cleared and the fact keeps no time."""

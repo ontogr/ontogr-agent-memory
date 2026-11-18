@@ -137,3 +137,4 @@ class TypedFact:
     fact: ExtractedFact
     relation_type: int | None
     catalog_version: str
+    slot_key: str | None = None

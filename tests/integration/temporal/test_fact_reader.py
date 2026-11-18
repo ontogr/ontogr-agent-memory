@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import timedelta
 
 from ontogr_mem.data_models.fact_versions import FactStatus
+from ontogr_mem.data_models.facts import FactKind, Modality
 from ontogr_mem.data_models.observation import ObservationKind
 from ontogr_mem.temporal.cardinality import (
     Cardinality,
@@ -11,19 +12,20 @@ from ontogr_mem.temporal.cardinality import (
     RelationRules,
 )
 from ontogr_mem.temporal.engine import TemporalEngine
-from ontogr_mem.temporal.query import TemporalQuery
+from ontogr_mem.temporal.query import ACTUAL_ONLY, TemporalQuery
 from ontogr_mem.temporal.reader import FactReader, ObservationText
+from ontogr_mem.temporal.temporal_store import SlotCommit
 from ontogr_mem.temporal.verdicts import (
     ConflictDecision,
     DecisionAction,
     VerdictKind,
     VerdictSource,
 )
-from tests.integration.temporal.test_engine_contradictions import ScriptedJudge
 from tests.support.clock import FixedClock
 from tests.support.episodes import make_episode
 from tests.support.graph_backend import GraphBackend
 from tests.support.temporal import open_temporal
+from tests.support.verdicts import verdict
 from tests.unit.temporal.helpers import LocalRefResolver, at, obs
 
 
@@ -64,20 +66,26 @@ async def make_reader_world(graph_backend: GraphBackend):
                 slot="withdrawn",
                 episode="reset-episode",
             ),
-            obs(
-                "kept-observation",
-                "paris",
-                at(2020),
-                slot="kept",
-                episode="kept-episode",
+            replace(
+                obs(
+                    "kept-observation",
+                    "paris",
+                    at(2020),
+                    slot="kept",
+                    episode="kept-episode",
+                ),
+                statement="Ana keeps a flat in Paris.",
             ),
-            obs(
-                "inverse-observation",
-                "paris",
-                at(2020),
-                slot="inverse",
-                inverse=True,
-                holder="ana",
+            replace(
+                obs(
+                    "inverse-observation",
+                    "paris",
+                    at(2020),
+                    slot="inverse",
+                    inverse=True,
+                    holder="ana",
+                ),
+                statement="Paris residents include Ana.",
             ),
         ]
     )
@@ -125,7 +133,10 @@ async def make_dispute_world(graph_backend: GraphBackend):
             obs("dispute-b", "globex", at(2020), slot="dispute-b", rel=2),
         ]
     )
-    await engine.judge_pass(ScriptedJudge(VerdictKind.UNCERTAIN))
+    facts = await store.facts_of_entities(["ana"])
+    await engine.record_verdicts(
+        [await verdict(store, facts[0], facts[1], VerdictKind.UNCERTAIN, clock.now)]
+    )
     return engine, store, clock, FactReader(store)
 
 
@@ -166,11 +177,14 @@ class TestFactReader:
         )
         missing = await reader.by_ids(["unknown"], TemporalQuery(now=clock.value))
         history = await reader.by_ids(
-            [original.fact_id, withdrawn.fact_id],
+            [original.fact_id, withdrawn.fact_id, successor.fact_id],
             TemporalQuery(now=clock.value, include_history=True),
         )
         by_observation = await reader.by_observations(
             ["stable-1"], TemporalQuery(now=clock.value, include_history=True)
+        )
+        by_reset_observation = await reader.by_observations(
+            ["reset-observation"], TemporalQuery(now=NOW, include_history=True)
         )
         reader_query = TemporalQuery(now=clock.value, valid_at=at(2021))
         read = await reader.read(reader_query)
@@ -189,26 +203,76 @@ class TestFactReader:
             FactStatus.WITHDRAWN,
             FactStatus.ACTIVE,
         }
-        assert [(v.version, v.evidence) for v in by_observation] == [
-            (1, ("stable-1",)),
-            (2, ("stable-1", "stable-2")),
+        read_ids = {view.fact_id for view in read}
+        assert read_ids == {view.fact_id for view in stored_query}
+        assert closed.fact_id in read_ids
+        assert successor.fact_id not in read_ids
+        assert successor.fact_id in {view.fact_id for view in history}
+        assert [
+            (view.version, view.status, set(view.evidence)) for view in by_observation
+        ] == [
+            (1, FactStatus.ACTIVE, {"stable-1"}),
+            (2, FactStatus.ACTIVE, {"stable-1", "stable-2"}),
         ]
-        assert [(v.fact_id, v.version) for v in read] == [
-            (v.fact_id, v.version) for v in stored_query
-        ]
-        assert any(v.fact_id == closed.fact_id for v in read)
-        assert all(v.fact_id != successor.fact_id for v in read)
-        stable_view = next(v for v in read if v.slot_key == "stable")
-        assert (stable_view.statement, stable_view.source) == (
-            "Ana lives in Paris.",
-            "test-source",
+        assert all(view.statement == "Ana lives in Paris." for view in by_observation)
+        assert all(view.source == "test-source" for view in by_observation)
+        assert by_reset_observation == []
+
+    async def test_modality_filter_and_event_visibility(
+        self, graph_backend: GraphBackend
+    ):
+        """Queries can hide plans while retaining events from their start."""
+        _, store, clock, reader = await make_reader_world(graph_backend)
+        slot = await store.load_slot("correction")
+        fact = slot.facts[0]
+        planned = replace(
+            fact,
+            fact_id="planned-reader",
+            slot_key="planned-reader",
+            modality=Modality.PLANNED,
         )
-        assert (
-            await reader.by_observations(
-                ["reset-observation"], TemporalQuery(now=clock.value)
+        event = replace(
+            fact,
+            fact_id="event-reader",
+            slot_key="event-reader",
+            fact_kind=FactKind.EVENT,
+            valid_from=at(2022),
+        )
+        await store.commit_slot(
+            SlotCommit(
+                slot_key=planned.slot_key,
+                base_revision=0,
+                new_facts=(planned,),
             )
-            == []
         )
+        await store.commit_slot(
+            SlotCommit(
+                slot_key=event.slot_key,
+                base_revision=0,
+                new_facts=(event,),
+            )
+        )
+
+        actual = await reader.read(
+            TemporalQuery(now=clock.value, modalities=ACTUAL_ONLY)
+        )
+        all_facts = await reader.read(TemporalQuery(now=clock.value))
+        before_event = await reader.read(
+            TemporalQuery(now=clock.value, valid_at=at(2021))
+        )
+        after_event = await reader.read(
+            TemporalQuery(now=clock.value, valid_at=at(2023))
+        )
+
+        actual_ids = {view.fact_id for view in actual}
+        all_ids = {view.fact_id for view in all_facts}
+        before_event_ids = {view.fact_id for view in before_event}
+        after_event_ids = {view.fact_id for view in after_event}
+
+        assert planned.fact_id not in actual_ids
+        assert planned.fact_id in all_ids
+        assert event.fact_id not in before_event_ids
+        assert event.fact_id in after_event_ids
 
     async def test_touching_matches_either_entity_side(
         self, graph_backend: GraphBackend
@@ -219,9 +283,10 @@ class TestFactReader:
         touching = await reader.touching(["paris"], TemporalQuery(now=NOW))
 
         assert {view.slot_key for view in touching} == {"stable", "kept", "inverse"}
-        assert all(
-            view.statement or view.slot_key in {"kept", "inverse"} for view in touching
-        )
+        stable_view = next(view for view in touching if view.slot_key == "stable")
+        assert stable_view.statement == "Ana lives in Paris."
+        assert stable_view.source == "test-source"
+        assert all(view.statement for view in touching if view.slot_key != "stable")
 
     async def test_subset_of_open_dispute_keeps_its_counterpart_annotation(
         self, graph_backend: GraphBackend

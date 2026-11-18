@@ -51,8 +51,6 @@ from ontogr_mem.ontology.validate import (
     EntityItem,
     EntityValidation,
     ExtractedItems,
-    RelationItem,
-    RelationValidation,
     ValidationReport,
     validate,
 )
@@ -92,9 +90,7 @@ __all__ = [
     "Ref",
     "Relation",
     "RelationDeclaration",
-    "RelationItem",
     "RelationKind",
-    "RelationValidation",
     "Rename",
     "SetDescription",
     "SetIdentityAttributes",

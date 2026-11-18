@@ -192,6 +192,8 @@ def _hydra_answer(call: ScriptedCall) -> object:
     without declaring a relation first.
     """
     prompt = call.prompt
+    if "Task: list the existing facts that the new fact contradicts" in prompt:
+        return {"contradicted": []}
     if "Task: list the entities" in prompt:
         entity_types = json.loads(_prompt_block(prompt, "entity_types"))
         type_id = next(
@@ -1292,8 +1294,10 @@ class TestWriteFacts:
         finally:
             await falkordb_store.erase_tenant(tenant)
 
-    async def test_wrong_direction_is_dropped(self, falkordb_store: FalkorDBGraphStore):
-        """A WORKS_AT fact with its endpoints swapped is dropped as wrong_direction."""
+    async def test_wrong_direction_is_kept_unplaced(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """A WORKS_AT fact with swapped endpoints is kept without placement."""
         tenant = new_tenant()
         try:
             async with open_memory(tenant) as memory:
@@ -1315,10 +1319,13 @@ class TestWriteFacts:
                 job = await memory.get_job(receipt.job_id)
                 assert job.status is JobState.DONE
                 assert job.result is not None
-                assert job.result["fact_ids"] == []
-                assert [
-                    (drop["index"], drop["reason"]) for drop in job.result["dropped"]
-                ] == [(0, "wrong_direction")]
+                assert len(job.result["fact_ids"]) == 1
+                assert job.result["unplaced"] == 1
+                assert job.result["dropped"] == []
+
+                context = await memory.search("Ana works at Acme")
+                assert len(context.facts) == 1
+                assert context.facts[0].relation == "WORKS_AT"
         finally:
             await falkordb_store.erase_tenant(tenant)
 
@@ -1462,10 +1469,10 @@ class TestWriteFacts:
         finally:
             await falkordb_store.erase_tenant(tenant)
 
-    async def test_unknown_relation_is_dropped_and_not_declared(
+    async def test_unknown_relation_is_kept_unplaced_and_not_declared(
         self, falkordb_store: FalkorDBGraphStore
     ):
-        """A relation outside the ontology is dropped and never stored."""
+        """A relation outside the ontology is stored without a type id."""
         tenant = new_tenant()
         try:
             async with open_memory(tenant) as memory:
@@ -1487,13 +1494,13 @@ class TestWriteFacts:
                 job = await memory.get_job(receipt.job_id)
                 assert job.status is JobState.DONE
                 assert job.result is not None
-                assert job.result["fact_ids"] == []
-                assert [
-                    (drop["index"], drop["reason"]) for drop in job.result["dropped"]
-                ] == [(0, "unknown_relation")]
+                assert len(job.result["fact_ids"]) == 1
+                assert job.result["unplaced"] == 1
+                assert job.result["dropped"] == []
 
                 context = await memory.search("mentor")
-                assert context.facts == []
+                assert len(context.facts) == 1
+                assert context.facts[0].relation == "MENTORS"
         finally:
             await falkordb_store.erase_tenant(tenant)
 

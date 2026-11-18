@@ -4,6 +4,7 @@ Each test ingests observations, then checks the stored history and the current
 view that a reader gets. The judge is a scripted pair judge.
 """
 
+from dataclasses import replace
 from datetime import UTC, datetime
 
 from ontogr_mem.data_models.fact_versions import FactStatus
@@ -15,19 +16,19 @@ from ontogr_mem.temporal.cardinality import (
     RelationRules,
 )
 from ontogr_mem.temporal.engine import TemporalEngine
-from ontogr_mem.temporal.judge import JudgeOutcome
 from ontogr_mem.temporal.query import TemporalQuery
+from ontogr_mem.temporal.reader import FactReader
 from ontogr_mem.temporal.report import Outcome
 from ontogr_mem.temporal.verdicts import (
     ConflictDecision,
     DecisionAction,
-    FactVerdict,
     VerdictKind,
     VerdictSource,
 )
 from tests.support.clock import FixedClock
 from tests.support.graph_backend import GraphBackend
 from tests.support.temporal import open_temporal
+from tests.support.verdicts import verdict
 from tests.unit.temporal.helpers import LocalRefResolver, at, obs
 
 
@@ -38,38 +39,6 @@ RULES = DictRelationPolicy(
         2: RelationRules(Cardinality.MANY),
     }
 )
-
-
-class ScriptedJudge:
-    """A judge that gives one verdict to every pair it is asked about."""
-
-    prompt_version = "scripted-1"
-
-    def __init__(self, verdict: VerdictKind | None) -> None:
-        """Answer every pair with ``verdict``; ``None`` answers nothing."""
-        self._verdict = verdict
-        self.asked: list[str] = []
-
-    async def judge_pairs(self, pairs, *, now: datetime) -> JudgeOutcome:
-        """Record the pairs and return the scripted verdicts."""
-        self.asked.extend(pair.pair_key for pair in pairs)
-        outcome = JudgeOutcome()
-        if self._verdict is None:
-            return outcome
-        for pair in pairs:
-            outcome.verdicts.append(
-                FactVerdict(
-                    pair_key=pair.pair_key,
-                    fact_a_id=pair.a.fact_id,
-                    fact_b_id=pair.b.fact_id,
-                    verdict=self._verdict,
-                    inputs_hash=pair.inputs_hash,
-                    prompt_version=self.prompt_version,
-                    source=VerdictSource.LLM,
-                    decided_at=now,
-                )
-            )
-        return outcome
 
 
 async def build(
@@ -85,7 +54,11 @@ async def ingest_city_and_employer(engine: TemporalEngine) -> None:
     """Ana worked at acme from 2010 (one-valued slot) and globex from 2015 (many)."""
     await engine.ingest_observations(
         [
-            obs("m1", "acme", at(2010)),
+            replace(
+                obs("m1", "acme", at(2010)),
+                statement="Ana worked for Acme",
+                source_system="test-source",
+            ),
             obs("p1", "globex", at(2015), slot="other", rel=2),
         ]
     )
@@ -131,13 +104,27 @@ async def test_record_verdicts_then_reconcile_applies_them(graph_backend: GraphB
     await ingest_city_and_employer(engine)
     assert await current_objects(store) == ["acme", "globex"]
 
-    report = await engine.judge_pass(ScriptedJudge(VerdictKind.CONTRADICTS))
+    facts = await store.current_facts()
+    report = await engine.record_verdicts(
+        [await verdict(store, facts[0], facts[1], VerdictKind.CONTRADICTS, lambda: NOW)]
+    )
 
-    assert report.counts[Outcome.JUDGE_CONTRADICTS.value] == 1
+    assert report.counts[Outcome.SLOT_COMMITTED.value] == 1
     assert await current_objects(store) == ["globex"]
     believed = TemporalQuery(now=NOW, include_history=True, known_at=NOW)
     closed = [v for v in await store.query(believed) if v.object_id == "acme"]
     assert [(v.valid_to, v.status) for v in closed] == [(at(2015), FactStatus.CLOSED)]
+    current_read = await FactReader(store).by_ids(
+        [closed[0].fact_id], TemporalQuery(now=NOW)
+    )
+    assert current_read == []
+    assert closed[0].evidence
+    evidence = await FactReader(store).observation_texts(closed[0].evidence)
+    assert len(evidence) == len(closed[0].evidence)
+    assert {item.episode_id for item in evidence.values()} == {"ep-m1"}
+    observations = await store.observations_by_ids(closed[0].evidence)
+    assert {item.statement for item in observations} == {"Ana worked for Acme"}
+    assert {item.source_system for item in observations} == {"test-source"}
 
 
 async def test_person_decision_overrides_rules_and_survives_rerun(
@@ -157,55 +144,11 @@ async def test_person_decision_overrides_rules_and_survives_rerun(
     )
 
     await engine.record_decision(decision)
-    await engine.judge_pass(ScriptedJudge(VerdictKind.CONTRADICTS))
+    facts = await store.current_facts()
+    await engine.record_verdicts(
+        [await verdict(store, facts[0], facts[1], VerdictKind.CONTRADICTS, lambda: NOW)]
+    )
     rerun = await engine.reconcile_all()
 
     assert await current_objects(store) == ["acme", "globex"]
     assert rerun.counts[Outcome.SLOT_COMMITTED.value] == 0
-
-
-async def test_judge_pass_judges_only_pending_slots_and_clears_the_flag(
-    graph_backend: GraphBackend,
-):
-    """A pending slot is judged once; a second pass has nothing to ask."""
-    engine, store = await build(graph_backend)
-    await ingest_city_and_employer(engine)
-    judge = ScriptedJudge(VerdictKind.COMPATIBLE)
-
-    await engine.judge_pass(judge)
-    second = await engine.judge_pass(judge)
-
-    assert len(judge.asked) == 1
-    assert await store.pending_slots() == []
-    assert second.counts == {}
-
-
-async def test_unjudged_partner_leaves_the_slot_pending_until_judged(
-    graph_backend: GraphBackend,
-):
-    """A pass that answers nothing leaves the slots with a neighbour pending."""
-    engine, store = await build(graph_backend)
-    await ingest_city_and_employer(engine)
-
-    await engine.judge_pass(ScriptedJudge(None))
-
-    assert await store.pending_slots() == ["other", "slot"]
-
-
-async def test_two_single_valued_slots_are_not_sent_to_the_judge(
-    graph_backend: GraphBackend,
-):
-    """The rules settle one-per-subject relations, so the judge is not asked."""
-    engine, store = await build(graph_backend)
-    judge = ScriptedJudge(VerdictKind.COMPATIBLE)
-    await engine.ingest_observations(
-        [
-            obs("m1", "acme", at(2010)),
-            obs("p1", "globex", at(2015), slot="other"),
-        ]
-    )
-
-    report = await engine.judge_pass(judge)
-
-    assert judge.asked == []
-    assert report.counts == {}

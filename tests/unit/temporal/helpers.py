@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 
 from ontogr_mem.data_models.fact_versions import Fact, FactStatus
-from ontogr_mem.data_models.facts import Precision, TimeBasis
+from ontogr_mem.data_models.facts import FactKind, Modality, Precision, TimeBasis
 from ontogr_mem.data_models.observation import Observation, ObservationKind
 
 
@@ -32,7 +32,7 @@ def at(year: int, month: int = 1, day: int = 1) -> datetime:
     return datetime(year, month, day, tzinfo=UTC)
 
 
-INGESTED = datetime(2030, 1, 1, tzinfo=UTC)
+INGESTED = datetime(2025, 1, 1, tzinfo=UTC)
 
 
 def obs(
@@ -51,6 +51,8 @@ def obs(
     inverse: bool = False,
     holder: str = "acme",
     slot: str = "slot",
+    fact_kind: FactKind = FactKind.STATE,
+    modality: Modality = Modality.ACTUAL,
 ) -> Observation:
     """Build an observation for one slot.
 
@@ -78,6 +80,8 @@ def obs(
         valid_to_precision=end_prec,
         time_basis=TimeBasis.STATED if start else TimeBasis.NONE,
         inverse=inverse,
+        fact_kind=fact_kind,
+        modality=modality,
     )
 
 
@@ -111,6 +115,9 @@ def fact_of(
         evidence=tuple(sorted(o.obs_id for o in observations)),
         last_confirmed_at=INGESTED,
         inverse=first.inverse,
+        fact_kind=first.fact_kind,
+        modality=first.modality,
+        relation_label=first.relation_label,
     )
 
 

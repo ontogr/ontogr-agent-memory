@@ -56,6 +56,8 @@ def _memory_models() -> RoleModels:
 
     def answer(call: ScriptedCall) -> object:
         prompt = call.prompt
+        if "Task: list the existing facts that the new fact contradicts" in prompt:
+            return {"contradicted": []}
         if "Task: list the entities" in prompt:
             text = _prompt_block(prompt, "episode_text")
             entity_types = json.loads(_prompt_block(prompt, "entity_types"))
@@ -734,25 +736,26 @@ class TestMemoryService:
 
         assert job.status.value == "done"
         assert job.result is not None
-        assert job.result["ontology_refused"] == 1
-        assert job.result["skipped"] == {"not_state": 1}
+        assert job.result["unplaced"] == 1
+        assert job.result["skipped"] == {}
         assert job.attempts == 2
         assert vector_attempts == 2
-        assert len(job.result["fact_ids"]) == 1
+        assert len(job.result["fact_ids"]) == 3
         entity = await harness.service.get_entity(
             harness.principal, GetEntity(tenant="t1", name="Hydra")
         )
-        assert len(entity.facts) == 2
+        assert len(entity.facts) == 4
         assert any(fact.fact_id in job.result["fact_ids"] for fact in entity.facts)
 
         observations = await stores.temporal_store.observations_of_episode(
             job.result["episode_id"]
         )
-        assert len(observations) == 1
-        assert [
+        assert len(observations) == 3
+        assert all(
             (item.actor_role, item.source_system, item.connector)
+            == ("assistant", "agent-memory", "agent-interface")
             for item in observations
-        ] == [("assistant", "agent-memory", "agent-interface")]
+        )
         episodes = await harness.service.list_episodes(
             harness.principal,
             ListEpisodes(tenant="t1", session_id="mixed-outcomes"),
@@ -782,8 +785,8 @@ class TestMemoryService:
             harness.principal, skipped_receipt.job_id
         )
         assert skipped_job.result is not None
-        assert skipped_job.result["ontology_refused"] == 0
-        assert skipped_job.result["skipped"] == {"no_relation": 1}
+        assert skipped_job.result["unplaced"] == 1
+        assert skipped_job.result["skipped"] == {"ref_count": 1}
         assert skipped_job.result["fact_ids"] == []
         listed = await harness.service.list_episodes(
             harness.principal,
@@ -801,10 +804,10 @@ class TestMemoryService:
             'actor_role="assistant"'
         ) in search.rendered
 
-    async def test_strict_refusal_keeps_known_and_rejects_structured_fact(
+    async def test_unknown_relation_is_stored_unplaced_alongside_known_fact(
         self, graph_backend: GraphBackend
     ):
-        """STRICT drops unknown text links but does not reject the episode."""
+        """An unknown relation is kept unplaced for text and structured writes."""
         harness = await memory_service_harness(graph_backend, models=_memory_models())
         first_receipt = await harness.service.add_memory(
             harness.principal,
@@ -840,12 +843,33 @@ class TestMemoryService:
         )
         assert job.status.value == "done"
         assert job.result is not None
-        assert job.result["ontology_refused"] == 1
+        assert job.result["unplaced"] == 1
         assert job.result["skipped"] == {}
-        assert len(job.result["fact_ids"]) == 1
-        assert first_job.result is not None
+        assert len(job.result["fact_ids"]) == 2
+        message_facts = await stores.temporal_store.facts_of_episode(
+            job.result["episode_id"]
+        )
+        assert {fact.fact_id for fact in message_facts} == set(job.result["fact_ids"])
+        (placed,) = [
+            fact for fact in message_facts if fact.relation_type_id is not None
+        ]
+        (unplaced,) = [fact for fact in message_facts if fact.relation_type_id is None]
         catalog = await manager.catalog()
         assert catalog.relation_by_label("DIRECTS") is None
+        assert placed.relation_label == "OWNS"
+        owns = catalog.relation_by_label("OWNS")
+        if owns is None:
+            raise AssertionError("OWNS is missing from the ontology")
+        assert placed.relation_type_id == owns.type_id
+        assert unplaced.relation_label == "DIRECTS"
+        assert first_job.result is not None
+        entity = await harness.service.get_entity(
+            harness.principal, GetEntity(tenant="t1", name="Hydra")
+        )
+        readback = {fact.fact_id: fact.statement for fact in entity.facts}
+        assert first_job.result["fact_ids"][0] in readback
+        assert readback[placed.fact_id] == "The speaker owns Hydra"
+        assert readback[unplaced.fact_id] == "The speaker directs Hydra"
         episodes = await harness.service.list_episodes(
             harness.principal,
             ListEpisodes(tenant="t1", limit=10),
@@ -863,7 +887,7 @@ class TestMemoryService:
             job.result["episode_id"]: ("speaker-1", "speaker-1", "assistant"),
         }
 
-        rejected = await harness.service.add_memory(
+        structured = await harness.service.add_memory(
             harness.principal,
             AddMemory(
                 tenant="t1",
@@ -874,16 +898,31 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        rejected_job = await wait_for_job(
-            harness.service, harness.principal, rejected.job_id
+        structured_job = await wait_for_job(
+            harness.service, harness.principal, structured.job_id
         )
-        assert rejected_job.status.value == "failed"
-        assert rejected_job.result is None
+        assert structured_job.status.value == "done"
+        assert structured_job.result is not None
+        assert structured_job.result["unplaced"] == 1
+        assert structured_job.result["skipped"] == {}
+        assert len(structured_job.result["fact_ids"]) == 1
+        structured_facts = await stores.temporal_store.facts_of_episode(
+            structured_job.result["episode_id"]
+        )
+        assert len(structured_facts) == 1
+        assert structured_facts[0].fact_id == structured_job.result["fact_ids"][0]
+        assert structured_facts[0].relation_type_id is None
+        assert structured_facts[0].relation_label == "directs"
+        entity = await harness.service.get_entity(
+            harness.principal, GetEntity(tenant="t1", name="Hydra")
+        )
+        assert any(fact.statement == "Ana directs Hydra" for fact in entity.facts)
+        assert (await manager.catalog()).relation_by_label("DIRECTS") is None
 
-    async def test_sourced_unknown_labels_are_dropped_and_not_registered(
+    async def test_sourced_unknown_labels_are_stored_without_registration(
         self, graph_backend: GraphBackend
     ):
-        """Unknown relation and endpoint type labels drop facts and register nothing."""
+        """Unknown labels stay off the catalog while both distinct facts are stored."""
         harness = await memory_service_harness(graph_backend)
         stores = await graph_backend.stores_for("t1")
         manager = _ontology_manager(stores, harness.clock)
@@ -921,20 +960,33 @@ class TestMemoryService:
 
         assert job.status.value == "done"
         assert job.result is not None
-        assert [
-            (item["index"], item["reason"]) for item in job.result.get("dropped", [])
-        ] == [(0, "unknown_relation"), (1, "unknown_relation")]
-        assert [item["detail"] for item in job.result["dropped"]] == [
-            "relation is not in the ontology",
-            "an endpoint type is not in the ontology",
-        ]
-        assert job.result["fact_ids"] == []
-        assert await manager.catalog() == before
+        assert job.result.get("dropped", []) == []
+        assert len(job.result["fact_ids"]) == 2
+        assert job.result["unplaced"] == 1
+        sourced_facts = await stores.temporal_store.facts_of_episode(
+            job.result["episode_id"]
+        )
+        assert {fact.fact_id for fact in sourced_facts} == set(job.result["fact_ids"])
+        unplaced = [fact for fact in sourced_facts if fact.relation_type_id is None]
+        placed = [fact for fact in sourced_facts if fact.relation_type_id is not None]
+        assert len(unplaced) == 1
+        assert len(placed) == 1
+        assert unplaced[0].relation_label == "MENTORS"
+        assert placed[0].relation_label == "WORKS_AT"
+        works_at = before.relation_by_label("WORKS_AT")
+        if works_at is None:
+            raise AssertionError("WORKS_AT missing from the catalog")
+        assert placed[0].relation_type_id == works_at.type_id
+        assert unplaced[0].fact_id != placed[0].fact_id
+        assert unplaced[0].object_id != placed[0].object_id
+        after = await manager.catalog()
+        assert after.relation_by_label("MENTORS") is None
+        assert after == before
 
-    async def test_sourced_known_endpoint_types_with_wrong_pattern_are_dropped(
+    async def test_sourced_wrong_pattern_relation_is_retained_unplaced(
         self, graph_backend: GraphBackend
     ):
-        """Drop sourced facts with known endpoint types outside relation patterns."""
+        """A wrong-pattern sourced fact is retained unplaced with its metadata."""
         harness = await memory_service_harness(graph_backend)
         stores = await graph_backend.stores_for("t1")
         manager = _ontology_manager(stores, harness.clock)
@@ -963,8 +1015,21 @@ class TestMemoryService:
 
         assert job.status.value == "done"
         assert job.result is not None
-        assert [
-            (item["index"], item["reason"], item["detail"])
-            for item in job.result.get("dropped", [])
-        ] == [(0, "wrong_direction", "endpoint types do not fit the relation")]
-        assert job.result["fact_ids"] == []
+        assert job.result.get("dropped", []) == []
+        assert job.result["skipped"] == {}
+        assert job.result["unplaced"] == 1
+        assert len(job.result["fact_ids"]) == 1
+        stored_facts = await stores.temporal_store.facts_of_episode(
+            job.result["episode_id"]
+        )
+        assert len(stored_facts) == 1
+        retained = stored_facts[0]
+        assert retained.fact_id == job.result["fact_ids"][0]
+        assert retained.relation_type_id is None
+        assert retained.relation_label == "WORKS_AT"
+        entity = await harness.service.get_entity(
+            harness.principal, GetEntity(tenant="t1", name="Ana")
+        )
+        assert {fact.fact_id: fact.statement for fact in entity.facts} == {
+            retained.fact_id: "Acme works at Ana"
+        }

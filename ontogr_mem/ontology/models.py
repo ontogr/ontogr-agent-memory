@@ -400,7 +400,3 @@ class Reason(StrEnum):
     FUZZY_MATCH = "fuzzy_match"
     DEPRECATED_TYPE = "deprecated_type"
     AMBIGUOUS_TYPE = "ambiguous_type"
-    UNDECLARED_RELATION = "undeclared_relation"
-    PATTERN_MISMATCH = "pattern_mismatch"
-    UNKNOWN_ENDPOINT = "unknown_endpoint"
-    DIRECTION_SWAPPED = "direction_swapped"

@@ -21,18 +21,17 @@ from ontogr_mem.temporal.cardinality import (
     RelationRules,
 )
 from ontogr_mem.temporal.engine import TemporalEngine
-from ontogr_mem.temporal.judge import JudgeOutcome
 from ontogr_mem.temporal.query import TemporalQuery
 from ontogr_mem.temporal.verdicts import (
     ConflictDecision,
     DecisionAction,
-    FactVerdict,
     VerdictKind,
     VerdictSource,
 )
 from tests.support.clock import FixedClock
 from tests.support.temporal import graph_temporal_harness
 from tests.support.tenants import new_tenant
+from tests.support.verdicts import verdict
 from tests.unit.temporal.helpers import LocalRefResolver, at, obs
 
 
@@ -44,34 +43,6 @@ RULES = DictRelationPolicy(
     }
 )
 ENTITIES = ["ana", "acme", "globex"]
-
-
-class ScriptedJudge:
-    """A judge that answers every pair with one verdict."""
-
-    prompt_version = "scripted-1"
-
-    def __init__(self, verdict: VerdictKind) -> None:
-        """Answer every pair with ``verdict``."""
-        self._verdict = verdict
-
-    async def judge_pairs(self, pairs, *, now: datetime) -> JudgeOutcome:
-        """Return the scripted verdict for each pair."""
-        outcome = JudgeOutcome()
-        for pair in pairs:
-            outcome.verdicts.append(
-                FactVerdict(
-                    pair_key=pair.pair_key,
-                    fact_a_id=pair.a.fact_id,
-                    fact_b_id=pair.b.fact_id,
-                    verdict=self._verdict,
-                    inputs_hash=pair.inputs_hash,
-                    prompt_version=self.prompt_version,
-                    source=VerdictSource.LLM,
-                    decided_at=now,
-                )
-            )
-        return outcome
 
 
 class ScenarioContract:
@@ -116,11 +87,21 @@ class ScenarioContract:
             ]
         )
 
-        await engine.judge_pass(ScriptedJudge(VerdictKind.CONTRADICTS))
+        facts = {fact.object_id: fact for fact in await store.current_facts()}
+        await engine.record_verdicts(
+            [
+                await verdict(
+                    store,
+                    facts["acme"],
+                    facts["globex"],
+                    VerdictKind.CONTRADICTS,
+                    lambda: NOW,
+                )
+            ]
+        )
 
         current = await store.query(TemporalQuery(now=NOW))
         assert [v.object_id for v in current] == ["globex"]
-        assert await store.pending_slots() == []
 
     async def test_a_person_choice_survives_a_judged_contradiction(self, make_store):
         """A CHOOSE decision keeps the chosen fact open after the judge answers."""
@@ -131,20 +112,30 @@ class ScenarioContract:
                 obs("p1", "globex", at(2015), slot="other", rel=2),
             ]
         )
-        facts = {f.object_id: f.fact_id for f in await store.current_facts()}
+        facts = {f.object_id: f for f in await store.current_facts()}
         await engine.record_decision(
             ConflictDecision(
                 decision_id="decision-1",
                 conflict_id="conflict-1",
-                fact_ids=(facts["acme"], facts["globex"]),
+                fact_ids=(facts["acme"].fact_id, facts["globex"].fact_id),
                 action=DecisionAction.CHOOSE,
                 decided_by=VerdictSource.USER,
                 at=datetime(2026, 10, 1, tzinfo=UTC),
-                chosen_fact_id=facts["acme"],
+                chosen_fact_id=facts["acme"].fact_id,
             )
         )
 
-        await engine.judge_pass(ScriptedJudge(VerdictKind.CONTRADICTS))
+        await engine.record_verdicts(
+            [
+                await verdict(
+                    store,
+                    facts["acme"],
+                    facts["globex"],
+                    VerdictKind.CONTRADICTS,
+                    lambda: NOW,
+                )
+            ]
+        )
         await engine.reconcile_all()
 
         current = await store.query(TemporalQuery(now=NOW))

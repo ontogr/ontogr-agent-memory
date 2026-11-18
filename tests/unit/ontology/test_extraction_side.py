@@ -20,7 +20,6 @@ from ontogr_mem.ontology.resolve import How, TypeResolver
 from ontogr_mem.ontology.validate import (
     EntityItem,
     ExtractedItems,
-    RelationItem,
     validate,
 )
 from tests.support.ontology import base, cs
@@ -83,79 +82,6 @@ def test_fuzzy_matches_are_never_silent():
     assert 0.8 <= item.score < 1
     assert Reason.FUZZY_MATCH in item.reasons
     assert result.counters[Reason.FUZZY_MATCH] == 1
-
-
-def _relation_catalog(*, symmetric=False):
-    catalog = base()
-    if symmetric:
-        return apply_changeset(
-            catalog,
-            cs(
-                catalog,
-                AddRelation(
-                    label="partner_of",
-                    symmetric=True,
-                    patterns=[PatternSpec(src="Person", tgt="Organization")],
-                ),
-            ),
-        )
-    return catalog
-
-
-def _validate_relation(catalog, source_type, target_type, label="works_at"):
-    return validate(
-        catalog,
-        ExtractedItems(
-            entities=(EntityItem("s", source_type), EntityItem("t", target_type)),
-            relations=(RelationItem("s", "t", label),),
-        ),
-    ).relations[0]
-
-
-def test_pattern_is_ordered_and_subsumption_accepts_children():
-    """Check a child of the source type fits and a reversed pair is refused."""
-    catalog = _relation_catalog()
-    assert _validate_relation(catalog, "Person", "Organization").kept
-    assert _validate_relation(catalog, "Employee", "Organization").kept
-
-
-def test_pattern_violation_drops_the_relation():
-    """Check pattern violation drops the relation."""
-    relation = _validate_relation(_relation_catalog(), "Employee", "Employee")
-    assert relation.kept is False
-    assert Reason.PATTERN_MISMATCH in relation.reasons
-
-
-def test_relation_with_patterns_is_dropped_when_an_endpoint_is_unknown():
-    """Check relation with patterns is dropped when an endpoint is unknown."""
-    relation = _validate_relation(_relation_catalog(), "Person", "Gadget")
-    assert relation.kept is False
-    assert Reason.UNKNOWN_ENDPOINT in relation.reasons
-
-
-def test_swapped_direction_drops_the_relation():
-    """Check swapped direction drops the relation."""
-    relation = _validate_relation(_relation_catalog(), "Organization", "Person")
-    assert relation.kept is False
-    assert Reason.DIRECTION_SWAPPED in relation.reasons
-
-
-def test_symmetric_relation_matches_in_either_order():
-    """Check symmetric relation matches in either order."""
-    relation = _validate_relation(
-        _relation_catalog(symmetric=True), "Organization", "Person", "partner_of"
-    )
-    assert relation.kept and relation.reasons == ()
-
-
-def test_undeclared_relation_is_dropped_and_counted():
-    """Check undeclared relation is dropped and counted."""
-    result = validate(
-        base(), ExtractedItems(relations=(RelationItem("s", "t", "owns"),))
-    )
-    assert result.relations[0].kept is False
-    assert Reason.UNDECLARED_RELATION in result.relations[0].reasons
-    assert result.counters[Reason.UNDECLARED_RELATION] == 1
 
 
 def test_projection_maps_dense_ids_back_and_is_looser_than_validate():

@@ -10,7 +10,7 @@ from ontogr_mem.data_models.fact_versions import (
     Supersession,
     SupersessionKind,
 )
-from ontogr_mem.data_models.facts import Precision, TimeBasis
+from ontogr_mem.data_models.facts import FactKind, Modality, Precision, TimeBasis
 from ontogr_mem.data_models.ledger import LedgerEntry, LedgerOp
 from ontogr_mem.data_models.observation import (
     Observation,
@@ -37,6 +37,9 @@ _OBSERVATION_COLUMNS = (
     "subject_id",
     "object_id",
     "relation_type_id",
+    "relation_label",
+    "fact_kind",
+    "modality",
     "kind",
     "occurred_at",
     "ingested_at",
@@ -60,6 +63,10 @@ _FACT_COLUMNS = (
     "version",
     "slot_key",
     "relation_type_id",
+    "relation_label",
+    "fact_kind",
+    "modality",
+    "time_basis",
     "valid_from",
     "valid_to",
     "valid_from_precision",
@@ -187,6 +194,9 @@ def _observation_props(observation: Observation) -> dict[str, Any]:
             "subject_id": observation.subject_id,
             "object_id": observation.object_id,
             "relation_type_id": observation.relation_type_id,
+            "relation_label": observation.relation_label,
+            "fact_kind": observation.fact_kind.value,
+            "modality": observation.modality.value,
             "kind": observation.kind.value,
             "occurred_at": to_micros(observation.occurred_at),
             "ingested_at": to_micros(observation.ingested_at),
@@ -214,7 +224,11 @@ def _observation_from(row: dict[str, Any]) -> Observation:
         slot_key=row["slot_key"],
         subject_id=row["subject_id"],
         object_id=row["object_id"],
-        relation_type_id=int(row["relation_type_id"]),
+        relation_type_id=(
+            None
+            if row.get("relation_type_id") is None
+            else int(row["relation_type_id"])
+        ),
         kind=ObservationKind(row["kind"]),
         episode_id=row["episode_id"],
         occurred_at=_required(row["occurred_at"]),
@@ -232,6 +246,9 @@ def _observation_from(row: dict[str, Any]) -> Observation:
         statement=row["statement"] or "",
         quote=row["quote"] or "",
         inverse=bool(row["inverse"]),
+        fact_kind=FactKind(row.get("fact_kind") or "state"),
+        modality=Modality(row.get("modality") or "actual"),
+        relation_label=row.get("relation_label") or "",
         source_system=row["source_system"] or "",
         connector=row["connector"] or "",
         actor_role=row["actor_role"] or "",
@@ -257,6 +274,10 @@ def _fact_props(fact: Fact) -> dict[str, Any]:
             "closed_by": fact.closed_by,
             "close_kind": _enum_value(fact.close_kind),
             "inverse": fact.inverse,
+            "relation_label": fact.relation_label,
+            "fact_kind": fact.fact_kind.value,
+            "modality": fact.modality.value,
+            "time_basis": fact.time_basis.value,
         }
     )
 
@@ -269,7 +290,11 @@ def _fact_from(row: dict[str, Any]) -> Fact:
         slot_key=row["slot_key"],
         subject_id=row["subject_id"],
         object_id=row["object_id"],
-        relation_type_id=int(row["relation_type_id"]),
+        relation_type_id=(
+            None
+            if row.get("relation_type_id") is None
+            else int(row["relation_type_id"])
+        ),
         valid_from=_required(row["valid_from"]),
         valid_to=_instant(row["valid_to"]),
         valid_from_precision=_precision(row["valid_from_precision"]),
@@ -282,6 +307,10 @@ def _fact_from(row: dict[str, Any]) -> Fact:
         closed_by=row["closed_by"],
         close_kind=None if close_kind is None else SupersessionKind(close_kind),
         inverse=bool(row["inverse"]),
+        fact_kind=FactKind(row.get("fact_kind") or "state"),
+        modality=Modality(row.get("modality") or "actual"),
+        relation_label=row.get("relation_label") or "",
+        time_basis=TimeBasis(row.get("time_basis") or "stated"),
     )
 
 
