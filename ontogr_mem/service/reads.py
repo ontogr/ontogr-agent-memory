@@ -8,7 +8,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from ontogr_mem.data_models import Episode, JobState, Kind, require_utc
+from ontogr_mem.data_models import Alias, Episode, JobState, Kind, require_utc
 from ontogr_mem.llm.tokens import estimate_tokens
 from ontogr_mem.ontology.models import UNKNOWN_ID, Status
 from ontogr_mem.resolution.keys import strict_key
@@ -356,12 +356,15 @@ async def list_entities(
         type_ids=family, after=after, limit=request.limit + 1
     )
     page = entities[: request.limit]
+    aliases_by_entity: dict[str, list[Alias]] = {}
+    for alias in await runtime.stores.resolver_store.all_aliases():
+        aliases_by_entity.setdefault(alias.entity_id, []).append(alias)
     return EntityPage(
         entities=[
             entity_out(
                 tenant_id,
                 entity,
-                await runtime.stores.resolver_store.aliases_of(entity.entity_id),
+                aliases_by_entity.get(entity.entity_id, []),
             )
             for entity in page
         ],
