@@ -205,11 +205,12 @@ class TestFactReader:
         assert closed.fact_id in read_ids
         assert successor.fact_id not in read_ids
         assert successor.fact_id in {view.fact_id for view in history}
-        assert [(view.version, view.status) for view in by_observation] == [
-            (1, FactStatus.ACTIVE),
-            (2, FactStatus.ACTIVE),
+        assert [
+            (view.version, view.status, set(view.evidence)) for view in by_observation
+        ] == [
+            (1, FactStatus.ACTIVE, {"stable-1"}),
+            (2, FactStatus.ACTIVE, {"stable-1", "stable-2"}),
         ]
-        assert all("stable-1" in view.evidence for view in by_observation)
         assert all(view.statement == "Ana lives in Paris." for view in by_observation)
         assert all(view.source == "test-source" for view in by_observation)
 
