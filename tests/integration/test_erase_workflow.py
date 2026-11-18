@@ -71,6 +71,7 @@ class TestEraseWorkflow:
         assert person.summary == ""
         assert person.descriptions == []
         assert person.attributes == {}
+        assert person.identity_attrs == {}
         assert person.summary_stale is True
         aliases = await stores.resolver_store.aliases_of("person")
         assert {alias.text for alias in aliases} == {"Bob"}

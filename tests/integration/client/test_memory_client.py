@@ -993,6 +993,74 @@ class TestWriteFacts:
         finally:
             await falkordb_store.erase_tenant(tenant)
 
+    async def test_host_identity_values_keep_two_people_apart(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """Grounded host identity values keep same-name people separate."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant) as memory:
+                for email in ("ana@one.org", "ana@two.org"):
+                    source = f"Ana ({email}) works at Acme."
+                    receipt = await memory.write_facts(
+                        source,
+                        [HostFact(
+                            subject="Ana", subject_type="Person", relation="WORKS_AT",
+                            object="Acme", object_type="Organization",
+                            evidence_quote=source,
+                            subject_attributes={"email": email},
+                        )],
+                    )
+                    await memory.drain()
+                    job = await memory.get_job(receipt.job_id)
+                    assert job.status is JobState.DONE
+                context = await memory.search("Ana")
+                people = {fact.subject.id for fact in context.facts if fact.subject.name == "Ana"}
+                assert len(people) == 2
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_a_host_identity_value_that_the_source_does_not_state_drops_the_fact(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """An ungrounded host identity value drops its fact."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant) as memory:
+                receipt = await memory.write_facts(
+                    "Ana works at Acme.",
+                    [HostFact(subject="Ana", subject_type="Person", relation="WORKS_AT",
+                              object="Acme", object_type="Organization",
+                              evidence_quote="Ana works at Acme",
+                              subject_attributes={"email": "ana@example.org"})],
+                )
+                await memory.drain()
+                job = await memory.get_job(receipt.job_id)
+                assert job.result is not None
+                assert job.result["dropped"][0]["reason"] == "ungrounded"
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_a_host_attribute_the_type_does_not_declare_is_ignored(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """Undeclared identity attributes do not enter stored entities."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant) as memory:
+                source = "Ana wears size 42 and works at Acme."
+                receipt = await memory.write_facts(source, [HostFact(
+                    subject="Ana", subject_type="Person", relation="WORKS_AT",
+                    object="Acme", object_type="Organization", evidence_quote=source,
+                    subject_attributes={"shoe_size": "42"},
+                )])
+                await memory.drain()
+                job = await memory.get_job(receipt.job_id)
+                assert job.result is not None
+                assert job.result["dropped"] == []
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
     async def test_source_text_is_kept_verbatim_not_rebuilt_from_the_fact(
         self, falkordb_store: FalkorDBGraphStore
     ):
