@@ -9,6 +9,11 @@ from ontogr_mem.consolidation.stage import StageContext
 from ontogr_mem.data_models.entities import Entity
 from ontogr_mem.data_models.facts import FactKind, Modality
 from ontogr_mem.temporal.query import FactView
+from tests.unit.consolidation.stage_fakes import (
+    MemoryResolution,
+    MemoryStore,
+    MemoryTemporal,
+)
 
 
 async def test_entity_graph_keeps_actual_facts_and_events_only() -> None:
@@ -51,23 +56,21 @@ async def test_entity_graph_keeps_actual_facts_and_events_only() -> None:
             ),
         )
 
-    temporal = SimpleNamespace(
-        current_facts=lambda: _facts(
-            [
-                fact("actual", Modality.ACTUAL),
-                fact("event", Modality.ACTUAL, FactKind.EVENT),
-                fact("planned", Modality.PLANNED),
-                fact("desired", Modality.DESIRED),
-            ]
+    temporal = MemoryTemporal(
+        (
+            fact("actual", Modality.ACTUAL),
+            fact("event", Modality.ACTUAL, FactKind.EVENT),
+            fact("planned", Modality.PLANNED),
+            fact("desired", Modality.DESIRED),
         )
     )
-    resolution = SimpleNamespace(active_entities=lambda: _entities(entities))
+    resolution = MemoryResolution(*entities)
     ctx = cast(
         StageContext,
         SimpleNamespace(
             temporal=temporal,
             resolution=resolution,
-            store=None,
+            store=MemoryStore(),
             entity_graph=None,
         ),
     )
@@ -75,11 +78,3 @@ async def test_entity_graph_keeps_actual_facts_and_events_only() -> None:
     graph = await build_entity_graph(ctx)
 
     assert {item.fact_id for item in graph.facts} == {"actual", "event"}
-
-
-async def _facts(values: list[FactView]) -> list[FactView]:
-    return values
-
-
-async def _entities(values: list[Entity]) -> list[Entity]:
-    return values
