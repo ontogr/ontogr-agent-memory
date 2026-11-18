@@ -318,7 +318,9 @@ async def _resolve(
 ) -> list[ExtractedEntity]:
     """Stamp the entities with their ontology types, then resolve them."""
     stamped = stamp_types(entities, projection)
-    await tenant.resolver.resolve(stamped, allow_model=allow_model)
+    await tenant.resolver.resolve(
+        stamped, tenant.links(projection.ontology), allow_model=allow_model
+    )
     return stamped
 
 

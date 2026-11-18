@@ -11,6 +11,7 @@ from ontogr_mem.consolidation.config import ConsolidationSettings
 from ontogr_mem.data_models.clock import Clock
 from ontogr_mem.llm import RoleModels
 from ontogr_mem.ontology.manager import OntologyManager
+from ontogr_mem.ontology.links import TypeLinks
 from ontogr_mem.ontology.models import Ontology
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionPolicy
@@ -38,6 +39,7 @@ class TenantRuntime:
     ontology: OntologyManager
     clock: Clock
     _labels: dict[int, str] = field(default_factory=dict)
+    _links: tuple[str, TypeLinks] | None = field(default=None, init=False, repr=False)
     models: RoleModels = field(kw_only=True)
     extraction: ExtractionSettings = field(kw_only=True)
 
@@ -67,6 +69,15 @@ class TenantRuntime:
         """Return a relation label used in service responses."""
         return self._labels.get(type_id, "")
 
+    def links(self, ontology: Ontology) -> TypeLinks:
+        """Return the type links of an ontology snapshot, reusing the last build."""
+        cached = self._links
+        if cached is not None and cached[0] == ontology.content_hash:
+            return cached[1]
+        built = TypeLinks.from_ontology(ontology)
+        self._links = (ontology.content_hash, built)
+        return built
+
     async def consolidation(self) -> ConsolidationRunner:
         """Build a consolidation runner over this tenant's current ports."""
         ontology = await self.ontology.catalog()
@@ -75,7 +86,7 @@ class TenantRuntime:
             self.stores.cons_store,
             self.clock.now,
             ConsolidationSettings(),
-            resolution=self.resolver,
+            resolution=self.resolver.linked(self.links(ontology)),
             temporal=self.engine(ontology, self.resolver.store),
             models=self.models,
         )
