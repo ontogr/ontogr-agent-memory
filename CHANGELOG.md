@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- In text and sourced writes, an entity type that the ontology does not hold is kept with the Unknown type.
 - Facts with unknown relation labels or relation pattern violations are stored as unplaced facts. Facts without a usable stated time start at the episode time with basis `reference`.
 - Custom resolver integrations must accept a `TypeLinks` argument in `resolve`, `deduplicate`, and `merge`, and use `resolver.linked(links)` to bind one snapshot for consolidation; `Entity` construction now requires `ontology_type_id`.
 - People verification is off by default.
@@ -52,8 +53,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `DEFAULT_CATALOG` change set and `OntologyManager.load_catalog`.
 
 - Ontology modes (`strict`, `preferred` and `open`) and the `SetModes` change.
--  In text and sourced writes, an entity type that the ontology does not hold is
-  kept with the Unknown type.
 - Ontology proposals, the drafting model role (`ONTOLOGY`) with its
   `MEMORY_LLM_ONTOLOGY_*` and `MEMORY_ONTOLOGY_*` settings, the stored unmatched
   rows, and `OntologyManager.stale_episodes`.

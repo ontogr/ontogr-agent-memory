@@ -77,7 +77,7 @@ async def run_eval(
     Args:
         models: Shared model pool used by the judge role.
         items: Labelled pairs to judge.
-        settings: Judge batching and threshold settings.
+        settings: Closure settings for the prompt version and candidate count.
 
     Returns:
         Counts, rates and the pairs answered wrongly.

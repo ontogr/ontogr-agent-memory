@@ -723,14 +723,45 @@ class TestDefaultTenantWrites:
     async def test_multi_pattern_relation_places_both_supported_subject_types(
         self, falkordb_store: FalkorDBGraphStore
     ):
-        """LOCATED_IN accepts both Organization and Object subjects."""
+        """LOCATED_IN places both Organization and Object subjects."""
         tenant = new_tenant()
         try:
             async with open_memory(tenant, text_models(SCRIPT)) as memory:
-                await memory.write_fact("Acme", "LOCATED_IN", "Berlin", wait_seconds=10)
+                org = await memory.write_fact(
+                    "Acme", "LOCATED_IN", "Berlin", wait_seconds=10
+                )
+                org_job = await memory.get_job(org.job_id)
+                assert org_job.status is JobState.DONE
+                assert org_job.result is not None
+                assert org_job.result["unplaced"] == 0
+
+                obj = await memory.write_facts(
+                    "Hydra is located in Berlin.",
+                    [
+                        HostFact(
+                            subject="Hydra",
+                            subject_type="Object",
+                            relation="LOCATED_IN",
+                            object="Berlin",
+                            object_type="Location",
+                            evidence_quote="Hydra is located in Berlin",
+                        )
+                    ],
+                    wait_seconds=10,
+                )
+                obj_job = await memory.get_job(obj.job_id)
+                assert obj_job.status is JobState.DONE
+                assert obj_job.result is not None
+                assert obj_job.result["unplaced"] == 0
+
                 await memory.drain()
-                context = await memory.search("Where is Acme located?")
-                assert len(context.facts) == 1
-                assert context.facts[0].relation == "LOCATED_IN"
+                acme = await memory.search("Where is Acme located?")
+                assert [(fact.subject.name, fact.relation) for fact in acme.facts] == [
+                    ("Acme", "LOCATED_IN")
+                ]
+                hydra = await memory.search("Where is Hydra located?")
+                assert [(fact.subject.name, fact.relation) for fact in hydra.facts] == [
+                    ("Hydra", "LOCATED_IN")
+                ]
         finally:
             await falkordb_store.erase_tenant(tenant)

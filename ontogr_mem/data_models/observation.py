@@ -57,11 +57,11 @@ class Observation:
 
     Attributes:
         obs_id: Deterministic id; re-ingesting the same statement is idempotent.
-            May be empty when the source has no observation identifier.
         slot_key: Slot this statement belongs to.
         subject_id: Entity on the subject side of the relation.
         object_id: Entity on the object side of the relation.
-        relation_type_id: Stable relation type id.
+        relation_type_id: Stable relation type id, or None when the relation
+            has no catalog type.
         kind: Whether the statement asserts or ends the relation.
         episode_id: Episode the statement came from.
         occurred_at: When the episode says the statement happened.

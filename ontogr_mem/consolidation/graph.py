@@ -40,7 +40,7 @@ async def archived_records(ctx: StageContext) -> list[ArchiveRecord]:
 
 
 async def current_facts(ctx: StageContext) -> tuple[FactView, ...]:
-    """Return the current facts that are not archived."""
+    """Return current actual-modality facts that are not archived."""
     if ctx.temporal is None:
         return ()
     hidden = {

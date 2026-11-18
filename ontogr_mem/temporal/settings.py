@@ -37,7 +37,8 @@ class ClosureSettings(BaseSettings):
 
     Attributes:
         enabled: Whether the step runs. Env: ``MEMORY_CLOSURE_ENABLED``.
-        max_candidates: Most existing facts sent with one new fact. Env:
+        max_candidates: Most existing facts sent with one new fact. This count
+            is the only bound on a model call; there is no token budget. Env:
             ``MEMORY_CLOSURE_MAX_CANDIDATES``.
         prompt_version: Version stored with each verdict. Env:
             ``MEMORY_CLOSURE_PROMPT_VERSION``.

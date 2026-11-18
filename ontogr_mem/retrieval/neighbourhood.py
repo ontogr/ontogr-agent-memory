@@ -46,7 +46,7 @@ class GraphEdge:
         version: Version returned by the temporal query.
         subject_id: Subject entity id.
         object_id: Object entity id.
-        relation_type_id: Relation type id.
+        relation_type_id: Relation type id, or None for an unplaced fact.
         statement: Annotated fact statement.
         status: Lifecycle state of this version.
     """

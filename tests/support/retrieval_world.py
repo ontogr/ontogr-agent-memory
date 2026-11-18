@@ -9,6 +9,7 @@ from ontogr_mem.data_models import (
     Entity,
     EntityStatus,
     ExtractedEntity,
+    FactStatus,
     Kind,
     Method,
     Source,
@@ -277,9 +278,15 @@ async def _finish_scenario(
     fact_views = await FactReader(backend.temporal_store).read(
         TemporalQuery(now=NOW, include_history=True)
     )
-    facts = await backend.temporal_store.facts_of_entities(
-        [entity.entity_id for entity in stored_entities.values()]
-    )
+    facts = [
+        fact
+        for fact in await backend.temporal_store.facts_of_entities(
+            [entity.entity_id for entity in stored_entities.values()]
+        )
+        if fact.expired_at is None
+        and fact.status is FactStatus.ACTIVE
+        and fact.valid_to is None
+    ]
     views_by_fact_id = {view.fact_id: view for view in fact_views}
     disputed_pairs = {
         frozenset(("Bob works at Globex", "Bob works at Initech")),
@@ -294,13 +301,16 @@ async def _finish_scenario(
                     views_by_fact_id[fact_b.fact_id].statement,
                 )
             )
-            kind = (
-                VerdictKind.UNCERTAIN
-                if statements in disputed_pairs
-                else VerdictKind.UNRELATED
-            )
+            if statements not in disputed_pairs:
+                continue
             verdicts.append(
-                await verdict(backend.temporal_store, fact_a, fact_b, kind, lambda: NOW)
+                await verdict(
+                    backend.temporal_store,
+                    fact_a,
+                    fact_b,
+                    VerdictKind.UNCERTAIN,
+                    lambda: NOW,
+                )
             )
     if verdicts:
         await engine.record_verdicts(verdicts)
