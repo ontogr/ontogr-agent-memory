@@ -981,10 +981,10 @@ class TestMemoryService:
         assert after.relation_by_label("MENTORS") is None
         assert after == before
 
-    async def test_sourced_known_endpoint_types_with_wrong_pattern_are_dropped(
+    async def test_sourced_wrong_pattern_relation_is_retained_unplaced(
         self, graph_backend: GraphBackend
     ):
-        """Drop sourced facts with known endpoint types outside relation patterns."""
+        """A wrong-pattern sourced fact is retained unplaced with its metadata."""
         harness = await memory_service_harness(graph_backend)
         stores = await graph_backend.stores_for("t1")
         manager = _ontology_manager(stores, harness.clock)
@@ -1013,8 +1013,21 @@ class TestMemoryService:
 
         assert job.status.value == "done"
         assert job.result is not None
-        assert [
-            (item["index"], item["reason"], item["detail"])
-            for item in job.result.get("dropped", [])
-        ] == [(0, "wrong_direction", "endpoint types do not fit the relation")]
-        assert job.result["fact_ids"] == []
+        assert job.result.get("dropped", []) == []
+        assert job.result["skipped"] == {}
+        assert job.result["unplaced"] == 1
+        assert len(job.result["fact_ids"]) == 1
+        stored_facts = await stores.temporal_store.facts_of_episode(
+            job.result["episode_id"]
+        )
+        assert len(stored_facts) == 1
+        retained = stored_facts[0]
+        assert retained.fact_id == job.result["fact_ids"][0]
+        assert retained.relation_type_id is None
+        assert retained.relation_label == "WORKS_AT"
+        entity = await harness.service.get_entity(
+            harness.principal, GetEntity(tenant="t1", name="Ana")
+        )
+        assert {fact.fact_id: fact.statement for fact in entity.facts} == {
+            retained.fact_id: "Acme works at Ana"
+        }
