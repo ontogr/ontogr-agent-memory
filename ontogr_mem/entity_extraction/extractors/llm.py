@@ -70,7 +70,21 @@ class LLMExtractor(EntityExtractor):
             models=self._models,
             deps=None,
         )
-        raw = [RawEntity(**item.model_dump()) for item in run.output.entities]
+        raw = [
+            RawEntity(
+                name=item.name,
+                type_id=item.type_id,
+                type_label=item.type_label,
+                description=item.description,
+                attributes={
+                    name: value
+                    for name, value in item.attributes.items()
+                    if isinstance(value, str)
+                },
+                confidence=item.confidence,
+            )
+            for item in run.output.entities
+        ]
         usage = Usage(
             buckets={
                 "entities/entity_extraction": TokenCount(
@@ -93,7 +107,8 @@ def bind_entities(
 
     Names that are not in the episode text and ids outside the catalog are
     discarded and reported as drops. Entities with the same normalized name and
-    effective type collapse into the first, keeping the higher confidence.
+    effective type collapse into the first, keeping the higher confidence, unless
+    they disagree about an identity value.
 
     Returns:
         The bound entities, for each raw item the local id of the entity it
@@ -142,16 +157,21 @@ def bind_entities(
         attributes: dict[str, str] = {}
         for raw_name, raw_value in item.attributes.items():
             declared = identity_names.get(raw_name.strip().casefold())
-            value = raw_value.strip()
             if (
                 declared is not None
-                and value
-                and len(value) <= MAX_ATTRIBUTE_CHARS
-                and find_spans(text, value)
+                and isinstance(raw_value, str)
+                and raw_value.strip()
+                and len(raw_value) <= MAX_ATTRIBUTE_CHARS
+                and raw_value in text
             ):
-                attributes.setdefault(declared, value)
+                attributes.setdefault(declared, raw_value)
         name_key = normalize_name(name)
-        if (index := seen.get((name_key, type_id))) is not None:
+        index = seen.get((name_key, type_id))
+        conflict = index is not None and any(
+            attributes[key] != out[index].attributes[key]
+            for key in attributes.keys() & out[index].attributes.keys()
+        )
+        if index is not None and not conflict:
             prior = out[index]
             out[index] = replace(
                 prior,

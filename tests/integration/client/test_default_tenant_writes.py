@@ -224,7 +224,7 @@ class TestDefaultTenantWrites:
         try:
             async with open_memory(tenant, text_models(SCRIPT)) as memory:
                 await memory.write_text(HYDRA_OBJECT, wait_seconds=10)
-                await memory.write_text(ZETA_ORG, wait_seconds=10)
+                await memory.write_text(HYDRA_ORG, wait_seconds=10)
                 await memory.drain()
                 entities = await _entities_named(memory, "Hydra")
                 assert [entity.type_label for entity in entities] == [
@@ -312,7 +312,7 @@ class TestDefaultTenantWrites:
         try:
             async with open_memory(tenant, text_models(SCRIPT)) as memory:
                 await memory.write_text(MODEL_LABEL, wait_seconds=10)
-                await memory.write_text(HYDRA_ORG, wait_seconds=10)
+                await memory.write_text(ZETA_ORG, wait_seconds=10)
                 await memory.drain()
                 entities = await _entities_named(memory, "Zeta")
                 assert len(entities) == 1

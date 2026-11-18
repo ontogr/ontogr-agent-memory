@@ -540,7 +540,7 @@ async def test_candidate_cap_and_verifier_order_follow_rank_key(
     resolver = await make(
         graph_backend, store, vectors=vector_store, inline=True, models=models
     )
-    groups = build_groups([ex("1", QUERY, "Company")], resolver.policy, WORLD.links)
+    groups = build_groups([ex("1", QUERY, "Company")], WORLD.links)
     candidates, _ = await candidate_pass(
         groups,
         store=store,

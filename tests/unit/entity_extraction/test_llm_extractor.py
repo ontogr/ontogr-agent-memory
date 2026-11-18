@@ -92,10 +92,22 @@ class TestLLMExtractor:
         assert result.entities[0].type_id == UNKNOWN_TYPE_ID
 
     async def test_binds_only_grounded_identity_attributes(self):
+        """Keep declared identity values that appear in the episode text."""
         models, _ = entity_models(
-            [reply({"name": "Ana", "type_id": 0, "confidence": 0.9,
-                    "attributes": {" Email ": "ana@example.com", "role": "admin",
-                                   "email": "missing@example.com"}})]
+            [
+                reply(
+                    {
+                        "name": "Ana",
+                        "type_id": 0,
+                        "confidence": 0.9,
+                        "attributes": {
+                            " Email ": "ana@example.com",
+                            "role": "admin",
+                            "email": "missing@example.com",
+                        },
+                    }
+                )
+            ]
         )
         result = await LLMExtractor(models).extract(
             text_episode("Ana uses ana@example.com."),
@@ -104,20 +116,81 @@ class TestLLMExtractor:
         assert result.entities[0].attributes == {"email": "ana@example.com"}
 
     async def test_demotion_discards_attributes_and_duplicate_keeps_first(self):
+        """A demoted entity loses attributes and a duplicate keeps the first."""
         models, _ = entity_models(
-            [reply(
-                {"name": "Ana", "type_id": 0, "confidence": 0.6,
-                 "attributes": {"email": "ana@example.com"}},
-                {"name": "Ana", "type_id": -1, "confidence": 0.9,
-                 "attributes": {"email": "other@example.com"}},
-            )]
+            [
+                reply(
+                    {
+                        "name": "Ana",
+                        "type_id": 0,
+                        "confidence": 0.6,
+                        "attributes": {"email": "ana@example.com"},
+                    },
+                    {
+                        "name": "Ana",
+                        "type_id": -1,
+                        "confidence": 0.9,
+                        "attributes": {"email": "other@example.com"},
+                    },
+                )
+            ]
         )
         result = await LLMExtractor(models).extract(
             text_episode("Ana uses ana@example.com and other@example.com."),
             TypeCatalog([EntityType(0, "Person", identity_attributes=("email",))], []),
         )
+        assert len(result.entities) == 1
         assert result.entities[0].type_id == UNKNOWN_TYPE_ID
         assert result.entities[0].attributes == {}
+
+    async def test_null_identity_value_is_ignored(self):
+        """A null identity value does not invalidate the entity reply."""
+        models, _ = entity_models(
+            [
+                reply(
+                    {
+                        "name": "Ana",
+                        "type_id": 0,
+                        "confidence": 0.9,
+                        "attributes": {"email": None},
+                    }
+                )
+            ]
+        )
+        result = await LLMExtractor(models).extract(
+            text_episode(TEXT),
+            TypeCatalog([EntityType(0, "Person", identity_attributes=("email",))], []),
+        )
+        assert result.entities[0].attributes == {}
+
+    async def test_conflicting_identity_values_keep_two_entities(self):
+        """Namesakes with different grounded emails stay separate."""
+        models, _ = entity_models(
+            [
+                reply(
+                    {
+                        "name": "Ana",
+                        "type_id": 0,
+                        "confidence": 0.9,
+                        "attributes": {"email": "one@example.com"},
+                    },
+                    {
+                        "name": "Ana",
+                        "type_id": 0,
+                        "confidence": 0.9,
+                        "attributes": {"email": "two@example.com"},
+                    },
+                )
+            ]
+        )
+        result = await LLMExtractor(models).extract(
+            text_episode("Ana uses one@example.com and two@example.com."),
+            TypeCatalog([EntityType(0, "Person", identity_attributes=("email",))], []),
+        )
+        assert [entity.attributes for entity in result.entities] == [
+            {"email": "one@example.com"},
+            {"email": "two@example.com"},
+        ]
 
     async def test_same_name_with_distinct_types_stays_separate(self):
         """Two catalog types keep two entities for the same name."""

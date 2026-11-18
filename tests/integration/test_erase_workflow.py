@@ -29,7 +29,7 @@ class TestEraseWorkflow:
         residue = await scan_residue(
             world.runtime,
             world.plan,
-            needles=("person@example.org",),
+            needles=("robert smith@example.org",),
             candidate_entity_ids=("person",),
         )
 

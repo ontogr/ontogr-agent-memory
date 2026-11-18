@@ -157,9 +157,7 @@ async def test_a_candidate_the_verifier_never_answered_stays_pending(
     """A pair whose call failed keeps the entity on the pending list."""
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await _make_verifying_resolver(store)
-    [group] = build_groups(
-        [ex("1", "John Smith", "Person")], resolver.policy, WORLD.links
-    )
+    [group] = build_groups([ex("1", "John Smith", "Person")], WORLD.links)
     candidates = [
         Candidate(entity_id="e1", signals=PairSignals(jaccard=0.5)),
         Candidate(entity_id="e2", signals=PairSignals(jaccard=0.5)),

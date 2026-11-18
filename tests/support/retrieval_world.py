@@ -23,6 +23,7 @@ from ontogr_mem.ingestion.store import EpisodeStore
 from ontogr_mem.llm import LLMConfig, build_models
 from ontogr_mem.ontology.apply import apply_changeset
 from ontogr_mem.ontology.extraction_items import stabilize_facts
+from ontogr_mem.ontology.links import TypeLinks
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import AddEntity, AddRelation, PatternSpec
 from ontogr_mem.ontology.ontology_store import OntologyStore
@@ -148,6 +149,7 @@ async def build_world(backend: RetrievalBackend) -> RetrievalWorld:
     )
     await load_catalog(manager, apply_changeset(catalog, changes))
     projection = await manager.extraction_view()
+    links = TypeLinks.from_ontology(projection.ontology)
     view = projection.view
     entity_types = {
         label: view.catalog.entity_by_label(label)
@@ -191,7 +193,7 @@ async def build_world(backend: RetrievalBackend) -> RetrievalWorld:
             content_hash=content_hash(spec.content),
         )
         extracted = _extracted_entities(spec, type_ids)
-        resolved = await resolver.resolve(extracted)
+        resolved = await resolver.resolve(extracted, links)
         stored_entities.update(
             {entity.canonical_name: entity for entity in resolved.entities}
         )
@@ -213,7 +215,7 @@ async def build_world(backend: RetrievalBackend) -> RetrievalWorld:
             episode.id, content_hash(episode.content)
         )
     fact_ids, stored_entities = await _finish_scenario(
-        backend, engine, resolver, specs, stored_entities
+        backend, engine, resolver, specs, stored_entities, links=links
     )
 
     retriever = Retriever(
@@ -269,6 +271,8 @@ async def _finish_scenario(
     resolver: EntityResolver,
     specs: tuple[EpisodeSpec, ...],
     stored_entities: dict[str, Entity],
+    *,
+    links: TypeLinks,
 ) -> tuple[dict[str, str], dict[str, Entity]]:
     """Apply scenario decisions and return stable fact and entity identities."""
     await engine.judge_pass(_ScenarioJudge())
@@ -324,7 +328,9 @@ async def _finish_scenario(
     ana = stored_entities.get("Ana")
     ana_alias = stored_entities.get("Ana Marie")
     if ana is not None and ana_alias is not None:
-        await resolver.merge(ana.entity_id, ana_alias.entity_id, reason="same person")
+        await resolver.merge(
+            links, ana.entity_id, ana_alias.entity_id, reason="same person"
+        )
     return fact_ids, stored_entities
 
 

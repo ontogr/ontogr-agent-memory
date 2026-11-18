@@ -25,6 +25,15 @@ class TestParseEntities:
             0.9,
         )
 
+    def test_reads_identity_attributes(self):
+        """Identity attributes are read from the model reply."""
+        (entity,) = parse_entities(
+            '{"entities": [{"name": "Ana", "type_id": 0, '
+            '"attributes": {"email": "ana@example.com"}}]}'
+        )
+
+        assert entity.attributes == {"email": "ana@example.com"}
+
     def test_reports_every_problem_at_once(self):
         """Errors accumulate so one repair round can fix them all."""
         reply = (

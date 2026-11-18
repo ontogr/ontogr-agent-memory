@@ -1,6 +1,6 @@
 """Entity resolution: link extracted names to canonical entities."""
 
-from ontogr_mem.ontology.links import TypeRel
+from ontogr_mem.ontology.links import TypeLinks, TypeRel
 from ontogr_mem.resolution.config import Budget, ResolverSettings
 from ontogr_mem.resolution.errors import (
     ConcurrentEntityWriteError,
@@ -33,6 +33,7 @@ __all__ = [
     "ResolverSettings",
     "ResolverStore",
     "SnapshotPurgedError",
+    "TypeLinks",
     "TypePolicy",
     "TypeRel",
     "UnmergeBlockedError",

@@ -8,6 +8,7 @@ class TestTypeLinks:
     """Compatibility and identity names follow the ontology hierarchy."""
 
     def test_relations_follow_merges_and_distinguish_siblings(self):
+        """Merged types compare equal and unrelated siblings stay distinct."""
         ontology = Ontology(
             entities=[
                 Entity(type_id=UNKNOWN_ID, label="Unknown"),
@@ -28,6 +29,7 @@ class TestTypeLinks:
         assert links.relation(2, 3) is TypeRel.DISTINCT
 
     def test_more_specific_and_identity_names_include_ancestors(self):
+        """A child inherits the identity names of its ancestors."""
         ontology = Ontology(
             entities=[
                 Entity(type_id=UNKNOWN_ID, label="Unknown"),
@@ -46,6 +48,7 @@ class TestTypeLinks:
         assert links.identity_names(3) == ()
 
     def test_unknown_ids_have_unknown_label_and_no_identity_names(self):
+        """An id outside the ontology has no label and no identity names."""
         links = TypeLinks.from_ontology(Ontology.genesis())
 
         assert links.label(99) == "Unknown"

@@ -154,7 +154,7 @@ class EntityResolver:
         if not batch:
             return ResolutionResult()
         async with self._lock:
-            groups = build_groups(batch, self.policy, links)
+            groups = build_groups(batch, links)
             if not groups:
                 return ResolutionResult()
             episode_ids = sorted(

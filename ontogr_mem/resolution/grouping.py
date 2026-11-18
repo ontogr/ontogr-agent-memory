@@ -13,11 +13,7 @@ from ontogr_mem.data_models import ExtractedEntity
 from ontogr_mem.ontology.links import TypeLinks, TypeRel
 from ontogr_mem.ontology.models import UNKNOWN_ID
 from ontogr_mem.resolution.keys import loose_key, strict_key
-from ontogr_mem.resolution.policy import (
-    ResolutionPolicy,
-    identity_conflict,
-    identity_of,
-)
+from ontogr_mem.resolution.policy import identity_conflict, identity_of
 
 
 @dataclass(slots=True)
@@ -90,7 +86,6 @@ def _find_group(
 
 def build_groups(
     entities: Sequence[ExtractedEntity],
-    policy: ResolutionPolicy,
     links: TypeLinks,
 ) -> list[Group]:
     """Collapse same-key, compatible-type, non-conflicting mentions of a batch."""

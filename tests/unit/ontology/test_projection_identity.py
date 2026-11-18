@@ -23,7 +23,10 @@ def _ontology() -> Ontology:
 
 
 class TestProjectionIdentity:
+    """Projected catalog entries carry the identity names of their types."""
+
     def test_child_catalog_entry_includes_own_and_inherited_identity_names(self):
+        """A child lists its own identity names before the inherited ones."""
         projection = project(_ontology())
 
         employee = projection.view.catalog.entity_by_label("Employee")
@@ -32,6 +35,7 @@ class TestProjectionIdentity:
         assert employee.identity_attributes == ("badge", "email")
 
     def test_deprecated_type_is_not_projected(self):
+        """A deprecated type does not reach the projected catalog."""
         projection = project(_ontology())
 
         assert projection.view.catalog.entity_by_label("Former") is None

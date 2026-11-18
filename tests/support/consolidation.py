@@ -22,6 +22,7 @@ from ontogr_mem.temporal.engine import TemporalEngine
 from ontogr_mem.temporal.temporal_store import TemporalStore
 from tests.support.graph_backend import GraphBackend
 from tests.support.tenants import new_tenant
+from tests.support.type_world import WORLD
 
 
 T0 = datetime(2030, 1, 1, tzinfo=UTC)
@@ -98,8 +99,8 @@ class ConsWorld:
         now = self.clock()
         entity = Entity(
             entity_id=entity_id,
-            ontology_type_id=1,
-            type_label="Thing",
+            ontology_type_id=WORLD.ids["Company"],
+            type_label="Company",
             canonical_name=name,
             strict_key=name.lower(),
             loose_key=name.lower(),

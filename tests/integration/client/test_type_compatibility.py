@@ -47,8 +47,9 @@ def script(label_by_text: dict[str, str]):
 class TestTypeCompatibility:
     """Custom ontology relationships determine whether client writes merge."""
 
+    @pytest.mark.parametrize("child_first", [False, True])
     async def test_parent_and_child_merge_in_either_order(
-        self, falkordb_store: FalkorDBGraphStore, tmp_path: Path
+        self, falkordb_store: FalkorDBGraphStore, tmp_path: Path, child_first: bool
     ):
         """A parent and child type resolve to the more specific type."""
         tenant = new_tenant()
@@ -63,9 +64,12 @@ class TestTypeCompatibility:
                 "Hydra deal as a purchase order.": "PurchaseOrder",
             }
         )
+        texts = list(answers)
+        if child_first:
+            texts.reverse()
         try:
             async with open_memory(tenant, text_models(answers), ontology) as memory:
-                for text in answers:
+                for text in texts:
                     await memory.write_text(text, wait_seconds=10)
                 await memory.drain()
                 entities = (await memory.search("Hydra deal")).entities

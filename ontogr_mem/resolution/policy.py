@@ -55,6 +55,7 @@ class ResolutionPolicy:
         explicit = self._types.get(normalize_label(label))
         return bool(explicit and explicit.strip_suffixes)
 
+
 def identity_of(
     links: TypeLinks, type_id: int, attrs: Mapping[str, Any]
 ) -> dict[str, str]:

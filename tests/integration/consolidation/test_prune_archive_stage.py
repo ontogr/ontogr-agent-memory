@@ -301,7 +301,7 @@ async def test_a_mention_that_restored_an_entity_clears_its_archive_record(
 ) -> None:
     """Resolution restores a matched archived entity, so it is no longer archived."""
     world = await new_world(graph_backend, live_settings())
-    created = await world.resolution.resolve([ex("1", "Old", "Thing")], WORLD.links)
+    created = await world.resolution.resolve([ex("1", "Old", "Company")], WORLD.links)
     old_id = created.entities[0].entity_id
     world.clock.advance(days=400)
     await ScoringStage().run(ctx_for(world))
@@ -309,7 +309,7 @@ async def test_a_mention_that_restored_an_entity_clears_its_archive_record(
     assert await entity_status(world, old_id) is EntityStatus.ARCHIVED
 
     again = await world.resolution.resolve(
-        [ex("1", "Old", "Thing", episode_id="e2")], WORLD.links
+        [ex("1", "Old", "Company", episode_id="e2")], WORLD.links
     )
     assert again.entities[0].entity_id == old_id
     await ScoringStage().run(ctx_for(world))

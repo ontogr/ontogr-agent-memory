@@ -21,7 +21,9 @@ def type_world(*types: tuple[str, str | None, tuple[str, ...]]) -> TypeWorld:
     """Build a world from (label, parent label, identity names) rows."""
     declaration = OntologyDeclaration(
         entities=[
-            EntityDeclaration(label=label, parent=parent, identity_attributes=list(names))
+            EntityDeclaration(
+                label=label, parent=parent, identity_attributes=list(names)
+            )
             for label, parent, names in types
         ]
     )
@@ -38,4 +40,6 @@ WORLD = type_world(
     ("Contract", None, ()),
     ("PurchaseOrder", "Contract", ()),
     ("Employee", "Person", ()),
+    ("Language", None, ()),
+    ("Work", None, ()),
 )

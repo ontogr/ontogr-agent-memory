@@ -80,10 +80,7 @@ def _pair(a: str, b: str) -> Pair:
 
 
 def _vetoed(links: TypeLinks, a: Entity, b: Entity) -> bool:
-    if (
-        links.relation(a.ontology_type_id, b.ontology_type_id)
-        is TypeRel.DISTINCT
-    ):
+    if links.relation(a.ontology_type_id, b.ontology_type_id) is TypeRel.DISTINCT:
         return True
     if identity_conflict(a.identity_attrs, b.identity_attrs):
         return True
@@ -225,7 +222,14 @@ async def run_deduplication(
     report.selected = len(selected)
     if not selected:
         return report
-    signals = await _pair_signals(resolver, links, selected, entities, index, alias_loose_keys)
+    signals = await _pair_signals(
+        resolver,
+        links,
+        selected,
+        entities,
+        index,
+        alias_loose_keys=alias_loose_keys,
+    )
     known, to_ask = await _classify(resolver, links, report, signals, entities)
     if plan_only:
         same = {pair for pair, verdict in known.items() if verdict is VerdictKind.SAME}
@@ -280,6 +284,7 @@ async def _pair_signals(
     selected: list[Entity],
     entities: dict[str, Entity],
     index: BlockIndex,
+    *,
     alias_loose_keys: dict[str, tuple[str, ...]],
 ) -> dict[Pair, PairSignals]:
     """Return the signals measured for every candidate pair."""

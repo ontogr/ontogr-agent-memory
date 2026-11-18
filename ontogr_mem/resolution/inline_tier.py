@@ -69,9 +69,8 @@ async def inline_verify(
             if entity is None:
                 continue
             candidate = by_id.get(entity_id)
-            two_votes = (
-                candidate is not None
-                and needs_two_votes(candidate.signals, settings)
+            two_votes = candidate is not None and needs_two_votes(
+                candidate.signals, settings
             )
             pairs.append(
                 PairInput(

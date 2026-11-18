@@ -1004,18 +1004,27 @@ class TestWriteFacts:
                     source = f"Ana ({email}) works at Acme."
                     receipt = await memory.write_facts(
                         source,
-                        [HostFact(
-                            subject="Ana", subject_type="Person", relation="WORKS_AT",
-                            object="Acme", object_type="Organization",
-                            evidence_quote=source,
-                            subject_attributes={"email": email},
-                        )],
+                        [
+                            HostFact(
+                                subject="Ana",
+                                subject_type="Person",
+                                relation="WORKS_AT",
+                                object="Acme",
+                                object_type="Organization",
+                                evidence_quote=source,
+                                subject_attributes={"email": email},
+                            )
+                        ],
                     )
                     await memory.drain()
                     job = await memory.get_job(receipt.job_id)
                     assert job.status is JobState.DONE
                 context = await memory.search("Ana")
-                people = {fact.subject.id for fact in context.facts if fact.subject.name == "Ana"}
+                people = {
+                    fact.subject.id
+                    for fact in context.facts
+                    if fact.subject.name == "Ana"
+                }
                 assert len(people) == 2
         finally:
             await falkordb_store.erase_tenant(tenant)
@@ -1029,10 +1038,17 @@ class TestWriteFacts:
             async with open_memory(tenant) as memory:
                 receipt = await memory.write_facts(
                     "Ana works at Acme.",
-                    [HostFact(subject="Ana", subject_type="Person", relation="WORKS_AT",
-                              object="Acme", object_type="Organization",
-                              evidence_quote="Ana works at Acme",
-                              subject_attributes={"email": "ana@example.org"})],
+                    [
+                        HostFact(
+                            subject="Ana",
+                            subject_type="Person",
+                            relation="WORKS_AT",
+                            object="Acme",
+                            object_type="Organization",
+                            evidence_quote="Ana works at Acme",
+                            subject_attributes={"email": "ana@example.org"},
+                        )
+                    ],
                 )
                 await memory.drain()
                 job = await memory.get_job(receipt.job_id)
@@ -1049,11 +1065,20 @@ class TestWriteFacts:
         try:
             async with open_memory(tenant) as memory:
                 source = "Ana wears size 42 and works at Acme."
-                receipt = await memory.write_facts(source, [HostFact(
-                    subject="Ana", subject_type="Person", relation="WORKS_AT",
-                    object="Acme", object_type="Organization", evidence_quote=source,
-                    subject_attributes={"shoe_size": "42"},
-                )])
+                receipt = await memory.write_facts(
+                    source,
+                    [
+                        HostFact(
+                            subject="Ana",
+                            subject_type="Person",
+                            relation="WORKS_AT",
+                            object="Acme",
+                            object_type="Organization",
+                            evidence_quote=source,
+                            subject_attributes={"shoe_size": "42"},
+                        )
+                    ],
+                )
                 await memory.drain()
                 job = await memory.get_job(receipt.job_id)
                 assert job.result is not None

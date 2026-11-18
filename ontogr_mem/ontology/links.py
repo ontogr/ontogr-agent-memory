@@ -59,9 +59,9 @@ class TypeLinks:
         }
         ancestors: dict[int, frozenset[int]] = {}
         identities: dict[int, tuple[str, ...]] = {}
-        for type_id in parents:
+        for type_id, parent_id in parents.items():
             chain: list[int] = []
-            current = parents[type_id]
+            current = parent_id
             while current is not None and current not in chain and current != type_id:
                 chain.append(current)
                 current = parents.get(current)

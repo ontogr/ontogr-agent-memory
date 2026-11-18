@@ -6,7 +6,6 @@ import pytest
 
 from ontogr_mem.data_models import ExtractedEntity, Method
 from ontogr_mem.resolution.grouping import Group, build_groups
-from ontogr_mem.resolution.policy import ResolutionPolicy
 from tests.support.type_world import WORLD
 
 
@@ -37,7 +36,7 @@ def ex(
 
 def groups(entities: list[ExtractedEntity]) -> list[Group]:
     """Group entities against the shared ontology world."""
-    return build_groups(entities, ResolutionPolicy(), WORLD.links)
+    return build_groups(entities, WORLD.links)
 
 
 class TestGroupTypes:
