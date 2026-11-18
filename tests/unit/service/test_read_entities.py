@@ -37,19 +37,27 @@ def _alias(entity_id: str, text: str) -> Alias:
 
 
 class BoundedResolverStore:
-    """Resolver read port that serves aliases only for requested entities."""
+    """Resolver read port that serves aliases only for the current page."""
 
-    def __init__(self, entities: list[Entity], aliases: dict[str, list[Alias]]):
-        """Hold the id-ordered entities and their aliases by entity id."""
+    def __init__(
+        self,
+        entities: list[Entity],
+        aliases: dict[str, list[Alias]],
+        page_ids: set[str],
+    ):
+        """Hold entities, aliases by entity id, and the ids on the current page."""
         self._entities = entities
         self._aliases = aliases
+        self._page_ids = page_ids
 
     async def list_active_entities(self, *, type_ids, after, limit):
         """Return the fixture entities sliced by the requested page limit."""
         return self._entities[:limit]
 
     async def aliases_of(self, entity_id):
-        """Return the stored aliases for one entity."""
+        """Return a page entity's aliases, refusing lookups for other entities."""
+        if entity_id not in self._page_ids:
+            raise AssertionError(f"alias lookup outside page: {entity_id}")
         return self._aliases.get(entity_id, [])
 
     async def all_aliases(self):
@@ -79,7 +87,7 @@ class TestListEntitiesAliasScope:
             "e1": [_alias("e1", "Annie"), _alias("e1", "A")],
             "e2": [_alias("e2", "Bobby")],
         }
-        store = BoundedResolverStore(entities, aliases)
+        store = BoundedResolverStore(entities, aliases, {"e1", "e2"})
         runtime = SimpleNamespace(
             stores=SimpleNamespace(resolver_store=store),
             ontology=EmptyOntology(),
