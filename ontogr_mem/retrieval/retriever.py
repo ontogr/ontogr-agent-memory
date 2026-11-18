@@ -18,6 +18,7 @@ from ontogr_mem.retrieval.errors import (
     RetrievalError,
 )
 from ontogr_mem.retrieval.fusion import fuse
+from ontogr_mem.retrieval.gate import FactGate
 from ontogr_mem.retrieval.keyword import KeywordSearch
 from ontogr_mem.retrieval.lanes import LaneOutput
 from ontogr_mem.retrieval.lanes.entity import run_entity_lane
@@ -128,8 +129,13 @@ class Retriever:
                 episode hydration fails.
         """
         temporal_query = request.to_temporal_query()
+        gate = (
+            FactGate(request.scope, self._entities)
+            if request.scope.filters_facts
+            else None
+        )
         vector_lane, keyword_lane, entity_lane = await self._initial_lanes(
-            request, temporal_query
+            request, temporal_query, gate
         )
         graph_lane = await run_graph_lane(
             self._facts,
@@ -141,6 +147,7 @@ class Retriever:
             settings=self._settings,
             query_text=request.query,
             disputed=request.disputed,
+            gate=gate,
         )
         fact_results = self._fused_facts(
             (vector_lane, keyword_lane, graph_lane), request.limit
@@ -161,7 +168,18 @@ class Retriever:
             fact_results, limit=request.limit, settings=self._settings
         )
         fact_results = await self._add_evidence(fact_results, notes)
-        entity_cards = await self._entity_cards(entity_lane, fact_results, notes)
+        if request.scope.filters_facts:
+            supporting_episode_ids = {
+                episode_id for fact in fact_results for episode_id in fact.episode_ids
+            }
+            episode_results = [
+                episode
+                for episode in episode_results
+                if episode.episode_id in supporting_episode_ids
+            ]
+        entity_cards = await self._entity_cards(
+            entity_lane, fact_results, notes, gate=gate
+        )
         result = RetrievalResult(
             facts=tuple(fact_results),
             episodes=tuple(episode_results),
@@ -185,7 +203,10 @@ class Retriever:
         )
 
     async def _initial_lanes(
-        self, request: RetrievalRequest, temporal_query: TemporalQuery
+        self,
+        request: RetrievalRequest,
+        temporal_query: TemporalQuery,
+        gate: FactGate | None = None,
     ) -> tuple[LaneOutput, LaneOutput, LaneOutput]:
         """Embed once and run the independent lanes with their own filters."""
         outcome = (await self._vectors.gateway.embed([request.query], purpose="query"))[
@@ -205,6 +226,7 @@ class Retriever:
                 query=temporal_query,
                 disputed=request.disputed,
                 embedding_error=embedding_error,
+                gate=gate,
             ),
             partial(
                 run_keyword_lane,
@@ -215,6 +237,7 @@ class Retriever:
                 limit=request.limit,
                 settings=self._settings,
                 disputed=request.disputed,
+                gate=gate,
             ),
             partial(
                 run_entity_lane,
@@ -455,6 +478,8 @@ class Retriever:
         entity_lane: LaneOutput,
         facts: Sequence[FactResult],
         notes: list[str],
+        *,
+        gate: FactGate | None = None,
     ) -> list[EntityCard]:
         """Load cards for entity-lane hits, then for fact endpoints."""
         source_map = {
@@ -468,6 +493,8 @@ class Retriever:
                 source_map.setdefault(entity_id, [])
                 if "fact" not in source_map[entity_id]:
                     source_map[entity_id].append("fact")
+        if gate is not None:
+            ordered_ids = await gate.admit_entities(ordered_ids)
         if not ordered_ids:
             return []
         try:

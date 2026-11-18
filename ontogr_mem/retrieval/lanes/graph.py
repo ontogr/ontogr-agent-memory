@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 
+from ontogr_mem.retrieval.gate import FactGate
 from ontogr_mem.retrieval.lanes import LaneOutput
 from ontogr_mem.retrieval.lanes._shared import lane_record, run_search
 from ontogr_mem.retrieval.models import LaneRecord, LaneStatus
@@ -20,6 +21,7 @@ async def run_graph_lane(
     settings: RetrievalSettings,
     query_text: str = "",
     disputed: str = "flag",
+    gate: FactGate | None = None,
 ) -> LaneOutput:
     """Walk visible facts breadth-first, abandoning results if any hop fails."""
     if not seeds:
@@ -63,6 +65,8 @@ async def run_graph_lane(
         ),
     )
     views = tuple(view for _, view in ranked)
+    if gate is not None:
+        views = tuple(await gate.admit(views))
     return LaneOutput(
         lane_record("graph", bool(views), [], search_count=1), facts=views
     )

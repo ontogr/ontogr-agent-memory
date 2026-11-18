@@ -112,6 +112,8 @@ class TestSkillsThroughServer:
         assert tool_names == [
             "search_memory",
             "get_entity",
+            "list_entities",
+            "get_ontology",
             "get_job",
             "write_facts",
             "forget_memory",

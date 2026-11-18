@@ -12,7 +12,8 @@ from typing import Final
 
 from ontogr_mem.data_models.timestamps import require_utc
 from ontogr_mem.retrieval.errors import RetrievalError
-from ontogr_mem.temporal.query import ACTUAL_ONLY, FactView, TemporalQuery
+from ontogr_mem.retrieval.scope import SearchScope
+from ontogr_mem.temporal.query import FactView, TemporalQuery
 
 
 GRAPH_DEPTH_CAP: Final = 3
@@ -189,6 +190,12 @@ class RetrievalRequest:
             ``exclude``.
         mentions: Entity names the question names.
         graph_depth: Hops the graph lane walks from its seeds.
+        entity_types: Entity type labels to include.
+        exclude_entity_types: Entity type labels to exclude.
+        relation_types: Relation type labels to include.
+        exclude_relation_types: Relation type labels to exclude.
+        modalities: Fact modalities to return.
+        scope: Resolved filters for this request.
     """
 
     query: str
@@ -202,6 +209,12 @@ class RetrievalRequest:
     disputed: str = "flag"
     mentions: tuple[str, ...] = ()
     graph_depth: int = 1
+    entity_types: tuple[str, ...] = ()
+    exclude_entity_types: tuple[str, ...] = ()
+    relation_types: tuple[str, ...] = ()
+    exclude_relation_types: tuple[str, ...] = ()
+    modalities: tuple[str, ...] = ("actual",)
+    scope: SearchScope = SearchScope()
 
     def __post_init__(self) -> None:
         """Reject a request the retriever cannot serve.
@@ -261,7 +274,7 @@ class RetrievalRequest:
             known_at=self.known_at,
             overlaps=self.overlaps,
             include_history=self.include_history,
-            modalities=ACTUAL_ONLY,
+            modalities=self.scope.modalities,
         )
 
 

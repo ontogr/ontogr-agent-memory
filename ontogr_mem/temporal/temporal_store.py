@@ -365,6 +365,12 @@ class TemporalStore(Protocol):
         """Return every episode in ``PENDING`` state, sorted by episode id."""
         ...
 
+    async def episodes_below_version(
+        self, version: int, *, after: str | None, limit: int, kinds: Sequence[str]
+    ) -> list[tuple[str, int]]:
+        """Return committed episode ids and versions below ``version``."""
+        ...
+
     async def episodes_matching(self, selector: SourceSelector) -> list[str]:
         """Return the ids of episodes whose source matches, sorted."""
         ...

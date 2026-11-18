@@ -25,6 +25,7 @@ def entity_props(entity: Entity) -> dict[str, Any]:
         "loose_key": entity.loose_key,
         "stripped_key": stripped_key(entity.canonical_name),
         "status": entity.status.value,
+        "ontology_type_id": entity.ontology_type_id,
         "merged_into": entity.merged_into or "",
         "mention_count": entity.mention_count,
         "revision": entity.revision,

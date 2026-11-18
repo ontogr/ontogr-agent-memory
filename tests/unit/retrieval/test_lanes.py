@@ -276,3 +276,69 @@ class TestEntityLane:
 
         assert output.record.status is LaneStatus.FAILED
         assert output.record.failed == ("keyword", "node")
+
+
+class TestFilteredLaneRefill:
+    """Filtered fact lanes request more candidates when needed."""
+
+    async def test_vector_lane_refills_after_gate_rejects_candidates(self):
+        """Fetch a wider vector window when filtering drops candidates."""
+
+        class PagingVectors(VectorPort):
+            async def search(self, kind, vector, *, k, filters=None, min_score=None):
+                if kind is VectorKind.EDGE:
+                    self.windows = getattr(self, "windows", []) + [k]
+                    return [Hit(f"f{i}", 1.0, i) for i in range(min(k, 4))]
+                return []
+
+        class PagingFacts(FactPort):
+            async def by_ids(self, ids, query):
+                return [view(fact_id) for fact_id in ids if fact_id == "f3"]
+
+        class Gate:
+            async def admit(self, views):
+                return list(views)
+
+        vectors = PagingVectors()
+        result = await run_vector_lane(
+            vectors,
+            [0.1],
+            limit=1,
+            settings=RetrievalSettings(),
+            facts=PagingFacts(),
+            query=TemporalQuery(now=NOW),
+            gate=Gate(),
+        )
+        assert [fact.fact_id for fact in result.facts] == ["f3"]
+        assert vectors.windows == [2, 4]
+
+    async def test_keyword_lane_refills_after_gate_rejects_candidates(self):
+        """Fetch a wider keyword window when filtering drops candidates."""
+
+        class PagingKeywords(KeywordPort):
+            async def search(self, kind, query, *, limit):
+                if kind is KeywordKind.OBSERVATION:
+                    self.windows = getattr(self, "windows", []) + [limit]
+                    return [KeywordHit(f"o{i}", 1.0, i) for i in range(min(limit, 4))]
+                return []
+
+        class PagingFacts(FactPort):
+            async def by_observations(self, ids, query):
+                return [view("f3", evidence=("o3",))] if "o3" in ids else []
+
+        class Gate:
+            async def admit(self, views):
+                return list(views)
+
+        keywords = PagingKeywords()
+        result = await run_keyword_lane(
+            keywords,
+            PagingFacts(),
+            query="x",
+            temporal_query=TemporalQuery(now=NOW),
+            limit=1,
+            settings=RetrievalSettings(),
+            gate=Gate(),
+        )
+        assert [fact.fact_id for fact in result.facts] == ["f3"]
+        assert keywords.windows == [2, 4]

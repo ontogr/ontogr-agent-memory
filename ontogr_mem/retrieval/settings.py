@@ -31,6 +31,7 @@ class RetrievalSettings(BaseSettings):
         episodes_share: Context budget fraction initially reserved for episodes.
         entities_share: Context budget fraction initially reserved for entities.
         passage_chars: Maximum episode characters in a passage or context item.
+        filter_rechecks: Maximum candidate-window widenings after type filtering.
     """
 
     model_config = SettingsConfigDict(
@@ -55,6 +56,7 @@ class RetrievalSettings(BaseSettings):
     episodes_share: float = Field(default=0.3, ge=0.0, le=1.0)
     entities_share: float = Field(default=0.2, ge=0.0, le=1.0)
     passage_chars: int = Field(default=400, ge=1)
+    filter_rechecks: int = Field(default=3, ge=0)
 
     @model_validator(mode="after")
     def validate_context_shares(self) -> Self:

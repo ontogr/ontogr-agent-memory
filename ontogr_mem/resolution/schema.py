@@ -13,6 +13,7 @@ RANGES = (
     ("Entity", "uri", False),
     ("Entity", "strict_key", False),
     ("Entity", "status", False),
+    ("Entity", "ontology_type_id", False),
     ("Alias", "strict_key", False),
     ("Alias", "loose_key", False),
     ("Alias", "entity_id", False),

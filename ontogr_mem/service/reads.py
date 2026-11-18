@@ -4,24 +4,36 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from ontogr_mem.data_models import Episode, JobState, require_utc
+from ontogr_mem.data_models import Episode, JobState, Kind, require_utc
 from ontogr_mem.llm.tokens import estimate_tokens
+from ontogr_mem.ontology.models import UNKNOWN_ID, Status
 from ontogr_mem.resolution.keys import strict_key
 from ontogr_mem.retrieval.errors import RetrievalError
 from ontogr_mem.retrieval.models import FactResult, RetrievalRequest, RetrievalResult
+from ontogr_mem.retrieval.scope import build_scope
 from ontogr_mem.service.contracts import (
+    EntityPage,
+    EntityTypeOut,
     EntityView,
     EpisodeOut,
     EpisodePage,
     FactOut,
     GetEntity,
+    GetOntology,
+    ListEntities,
     ListEpisodes,
+    ListStaleEpisodes,
     MemoryContext,
+    OntologyView,
+    PatternOut,
+    RelationTypeOut,
     SearchMemory,
+    StaleEpisodeOut,
+    StaleEpisodePage,
 )
 from ontogr_mem.service.errors import (
     InternalError,
@@ -65,6 +77,26 @@ def decode_episode_cursor(cursor: str | None) -> tuple[datetime, str] | None:
         raise ValueError("invalid episode cursor") from exc
 
 
+def encode_id_cursor(entity_id: str) -> str:
+    """Encode an entity id as a url-safe page cursor."""
+    encoded = base64.urlsafe_b64encode(entity_id.encode("utf-8")).decode("ascii")
+    return encoded.rstrip("=")
+
+
+def decode_id_cursor(cursor: str | None) -> str | None:
+    """Decode an entity id cursor, rejecting malformed values."""
+    if cursor is None:
+        return None
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        value = base64.b64decode(padded, altchars=b"-_", validate=True).decode("utf-8")
+        if not value:
+            raise ValueError
+        return value
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise ValueError("invalid cursor") from exc
+
+
 async def _retrieve_tenants(
     tenants: Sequence[tuple[str, TenantRuntime]],
     request: SearchMemory,
@@ -93,9 +125,16 @@ async def _retrieve_tenants(
     except RetrievalError as exc:
         raise InvalidArgumentError(str(exc)) from exc
     results = []
-    for _, runtime in tenants:
+    for tenant_id, runtime in tenants:
         try:
-            results.append(await runtime.retriever.retrieve(retrieval_request))
+            scope = await build_scope(
+                tenant_id, retrieval_request, runtime.links_for_head
+            )
+            results.append(
+                await runtime.retriever.retrieve(
+                    replace(retrieval_request, scope=scope)
+                )
+            )
         except RetrievalError as exc:
             raise InternalError("retrieval failed") from exc
     return results
@@ -292,6 +331,89 @@ async def get_entity(
     )
 
 
+async def list_entities(
+    tenant_id: str, runtime: TenantRuntime, request: ListEntities
+) -> EntityPage:
+    """Return one id-ordered page of active entities."""
+    try:
+        after = decode_id_cursor(request.cursor)
+    except ValueError as exc:
+        raise InvalidArgumentError(str(exc)) from exc
+    ontology = await runtime.ontology.catalog()
+    family = None
+    if request.entity_type is not None:
+        family = runtime.links(ontology).entity_family(request.entity_type)
+        if family is None:
+            raise InvalidArgumentError(f"unknown entity type: {request.entity_type}")
+    entities = await runtime.stores.resolver_store.list_active_entities(
+        type_ids=family, after=after, limit=request.limit + 1
+    )
+    page = entities[: request.limit]
+    return EntityPage(
+        entities=[
+            entity_out(
+                tenant_id,
+                entity,
+                await runtime.stores.resolver_store.aliases_of(entity.entity_id),
+            )
+            for entity in page
+        ],
+        next_cursor=(
+            encode_id_cursor(page[-1].entity_id)
+            if len(entities) > request.limit and page
+            else None
+        ),
+    )
+
+
+async def get_ontology(
+    tenant_id: str, runtime: TenantRuntime, request: GetOntology
+) -> OntologyView:
+    """Return the tenant's ontology labels and descriptions."""
+    ontology = await runtime.ontology.catalog()
+    entity_labels = {item.type_id: item.label for item in ontology.entities}
+    relation_labels = {item.type_id: item.label for item in ontology.relations}
+    return OntologyView(
+        tenant=tenant_id,
+        version=ontology.version,
+        entity_types=[
+            EntityTypeOut(
+                label=item.label,
+                description=item.description,
+                parent=entity_labels.get(item.parent_id),
+                aliases=item.aliases,
+                identity_attributes=item.identity_attributes,
+                status=item.status.value,
+                merged_into=entity_labels.get(item.merged_into),
+            )
+            for item in ontology.entities
+            if item.type_id != UNKNOWN_ID
+            and (request.include_deprecated or item.status is Status.ACTIVE)
+        ],
+        relation_types=[
+            RelationTypeOut(
+                label=item.label,
+                description=item.description,
+                aliases=item.aliases,
+                kind=item.kind.value,
+                symmetric=item.symmetric,
+                patterns=[
+                    PatternOut(
+                        source=entity_labels.get(pattern.src, "Unknown"),
+                        target=entity_labels.get(pattern.tgt, "Unknown"),
+                    )
+                    for pattern in item.patterns
+                    if request.include_deprecated or pattern.status is Status.ACTIVE
+                ],
+                status=item.status.value,
+                merged_into=relation_labels.get(item.merged_into),
+            )
+            for item in ontology.relations
+            if request.include_deprecated or item.status is Status.ACTIVE
+        ],
+    )
+
+
 async def list_episodes(
     tenant_id: str, runtime: TenantRuntime, request: ListEpisodes
 ) -> EpisodePage:
@@ -314,6 +436,47 @@ async def list_episodes(
     return EpisodePage(
         episodes=[await _episode_out(tenant_id, runtime, episode) for episode in page],
         next_cursor=cursor,
+    )
+
+
+async def stale_episodes(
+    tenant_id: str, runtime: TenantRuntime, request: ListStaleEpisodes
+) -> StaleEpisodePage:
+    """Return one page of message and document episodes from older ontologies."""
+    try:
+        after = decode_id_cursor(request.cursor)
+    except ValueError as exc:
+        raise InvalidArgumentError(str(exc)) from exc
+    current_version = (await runtime.ontology.catalog()).version
+    stale = await runtime.stores.temporal_store.episodes_below_version(
+        current_version,
+        after=after,
+        limit=request.limit + 1,
+        kinds=(Kind.MESSAGE.value, Kind.DOCUMENT.value),
+    )
+    page = stale[: request.limit]
+    stored_episodes = await runtime.stores.episodes.get_episodes(
+        [episode_id for episode_id, _ in page]
+    )
+    episodes_by_id = {episode.id: episode for episode in stored_episodes}
+    return StaleEpisodePage(
+        tenant=tenant_id,
+        current_version=current_version,
+        episodes=[
+            StaleEpisodeOut(
+                episode_id=episode_id,
+                kind=episodes_by_id[episode_id].kind.value,
+                ingested_at=episodes_by_id[episode_id].ingested_at,
+                ontology_version=version,
+            )
+            for episode_id, version in page
+            if episode_id in episodes_by_id
+        ],
+        next_cursor=(
+            encode_id_cursor(page[-1][0])
+            if len(stale) > request.limit and page
+            else None
+        ),
     )
 
 

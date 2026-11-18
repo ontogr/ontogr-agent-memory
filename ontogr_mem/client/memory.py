@@ -3,6 +3,7 @@
 from collections.abc import AsyncGenerator, Sequence
 from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontextmanager
 from datetime import datetime
+from enum import StrEnum
 from typing import Any
 
 from ontogr_mem.data_models import Role
@@ -14,17 +15,23 @@ from ontogr_mem.relational_store.config import StateSettings
 from ontogr_mem.service.bootstrap import ServiceSettings, open_service
 from ontogr_mem.service.contracts import (
     AddMemory,
+    EntityPage,
     EntityView,
     ForgetMemory,
     ForgetMode,
     ForgetResult,
     GetEntity,
+    GetOntology,
     HostFact,
     InvalidateMemory,
     JobView,
+    ListEntities,
+    ListStaleEpisodes,
     MemoryContext,
     MemoryKind,
+    OntologyView,
     SearchMemory,
+    StaleEpisodePage,
     WriteReceipt,
     validate_request,
 )
@@ -37,6 +44,15 @@ from ontogr_mem.vectorstore.builtin import (
     select_embedder,
 )
 from ontogr_mem.vectorstore.embedder import Embedder
+
+
+class Modality(StrEnum):
+    """A fact state that search can return."""
+
+    ACTUAL = "actual"
+    PLANNED = "planned"
+    CONDITIONAL = "conditional"
+    DESIRED = "desired"
 
 
 class Memory:
@@ -302,6 +318,11 @@ class Memory:
         include_history: bool = False,
         limit: int = 10,
         budget_tokens: int = 2000,
+        entity_types: Sequence[str] | None = None,
+        exclude_entity_types: Sequence[str] | None = None,
+        relation_types: Sequence[str] | None = None,
+        exclude_relation_types: Sequence[str] | None = None,
+        modalities: Sequence[Modality] | None = None,
     ) -> MemoryContext:
         """Retrieve facts and a Context block. Returned text is untrusted data.
 
@@ -313,6 +334,13 @@ class Memory:
             include_history: Include closed fact history.
             limit: Maximum facts, between 1 and 100.
             budget_tokens: Context budget, between 100 and 32000 tokens.
+            entity_types: Include facts with these types or their child types.
+                Old labels resolve to their current type; unknown labels raise.
+            exclude_entity_types: Exclude facts with these types or child types.
+            relation_types: Include these relations or their aliases.
+            exclude_relation_types: Exclude these relations or their aliases.
+            modalities: Fact states to return. Planned facts appear only when
+                ``Modality.PLANNED`` is named. None uses actual facts only.
 
         Returns:
             MemoryContext with facts and rendered text. State distinguishes
@@ -328,9 +356,54 @@ class Memory:
                 "limit": limit,
                 "budget_tokens": budget_tokens,
                 "format": "both",
+                "entity_types": list(entity_types or ()),
+                "exclude_entity_types": list(exclude_entity_types or ()),
+                "relation_types": list(relation_types or ()),
+                "exclude_relation_types": list(exclude_relation_types or ()),
+                "modalities": (
+                    [modality.value for modality in modalities]
+                    if modalities is not None
+                    else ["actual"]
+                ),
             },
         )
         return await self._service.search_memory(self._principal, request)
+
+    async def list_entities(
+        self,
+        *,
+        entity_type: str | None = None,
+        cursor: str | None = None,
+        limit: int = 20,
+    ) -> EntityPage:
+        """Return a page of active entities, optionally filtered by type."""
+        request = validate_request(
+            ListEntities,
+            {
+                "tenant": self.tenant,
+                "entity_type": entity_type,
+                "cursor": cursor,
+                "limit": limit,
+            },
+        )
+        return await self._service.list_entities(self._principal, request)
+
+    async def get_ontology(self, *, include_deprecated: bool = False) -> OntologyView:
+        """Return the ontology vocabulary accepted by this tenant."""
+        request = validate_request(
+            GetOntology,
+            {"tenant": self.tenant, "include_deprecated": include_deprecated},
+        )
+        return await self._service.get_ontology(self._principal, request)
+
+    async def stale_episodes(
+        self, *, cursor: str | None = None, limit: int = 20
+    ) -> StaleEpisodePage:
+        """Return episodes that need extraction under the current ontology."""
+        request = validate_request(
+            ListStaleEpisodes, {"tenant": self.tenant, "cursor": cursor, "limit": limit}
+        )
+        return await self._service.stale_episodes(self._principal, request)
 
     async def get_entity(
         self, name: str, *, include_history: bool = False

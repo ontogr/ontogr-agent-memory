@@ -199,6 +199,14 @@ class GraphResolverStore:
         """Return the active entities, ordered by id."""
         return await self._entities.active_entities()
 
+    async def list_active_entities(
+        self, *, type_ids: frozenset[int] | None, after: str | None, limit: int
+    ) -> list[Entity]:
+        """Return active entities by id, after ``after``, of the given types."""
+        return await self._entities.list_active_entities(
+            type_ids=type_ids, after=after, limit=limit
+        )
+
     async def all_entities(self) -> list[Entity]:
         """Return every entity status, ordered by id."""
         return await self._entities.all_entities()

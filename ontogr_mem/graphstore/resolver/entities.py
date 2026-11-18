@@ -804,6 +804,33 @@ class ResolverEntities:
         )
         return [Entity.model_validate_json(r["value"]) for r in rows.rows]
 
+    async def list_active_entities(
+        self, *, type_ids: frozenset[int] | None, after: str | None, limit: int
+    ) -> list[Entity]:
+        """Return active entities by id, after ``after``, of the given types."""
+        if type_ids == frozenset():
+            return []
+        conditions = ["e.status = $status"]
+        params: dict[str, Any] = {"status": EntityStatus.ACTIVE.value, "limit": limit}
+        if type_ids is not None:
+            conditions.append("e.ontology_type_id IN $types")
+            params["types"] = sorted(type_ids)
+        if after is not None:
+            conditions.append("e.id > $after")
+            params["after"] = after
+        rows = await self._runner.run(
+            QuerySpec(
+                f"MATCH (e:{ENTITY} {self._scope.pattern()}) "
+                f"WHERE {' AND '.join(conditions)} "
+                "RETURN e.json AS value ORDER BY e.id LIMIT $limit",
+                params,
+                read_only=True,
+                idempotent=True,
+                tag="resolver_list_active",
+            )
+        )
+        return [Entity.model_validate_json(row["value"]) for row in rows.rows]
+
     async def all_entities(self) -> list[Entity]:
         """Return every entity status, ordered by id."""
         rows = await self._runner.run(

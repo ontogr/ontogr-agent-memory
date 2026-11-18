@@ -83,6 +83,10 @@ class TenantRuntime:
         self._links = (ontology.content_hash, built)
         return built
 
+    async def links_for_head(self) -> TypeLinks:
+        """Return the type links for the tenant's current ontology."""
+        return self.links(await self.ontology.catalog())
+
     async def consolidation(self) -> ConsolidationRunner:
         """Build a consolidation runner over this tenant's current ports."""
         ontology = await self.ontology.catalog()

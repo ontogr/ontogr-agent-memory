@@ -20,13 +20,19 @@ from ontogr_mem.relational_store.audit import (
 from ontogr_mem.retrieval.errors import KeywordSearchError, RetrievalError
 from ontogr_mem.retrieval.neighbourhood import Neighbourhood, neighbourhood
 from ontogr_mem.service.contracts import (
+    EntityPage,
     EntityView,
     EpisodePage,
     GetEntity,
+    GetOntology,
+    ListEntities,
     ListEpisodes,
+    ListStaleEpisodes,
     MemoryContext,
     MemoryFeedback,
+    OntologyView,
     SearchMemory,
+    StaleEpisodePage,
     StatusOut,
 )
 from ontogr_mem.service.dependencies import ServiceDeps
@@ -37,8 +43,11 @@ from ontogr_mem.service.errors import (
 from ontogr_mem.service.operation_context import OperationRecorder
 from ontogr_mem.service.principal import Grant, Principal
 from ontogr_mem.service.reads import get_entity as read_entity
+from ontogr_mem.service.reads import get_ontology as read_ontology
+from ontogr_mem.service.reads import list_entities as read_entities
 from ontogr_mem.service.reads import list_episodes as read_episodes
 from ontogr_mem.service.reads import search as read_search
+from ontogr_mem.service.reads import stale_episodes as read_stale_episodes
 from ontogr_mem.service.runtime import TenantRuntime
 from ontogr_mem.summaries import EntityCard, entity_card, tenant_stats
 from ontogr_mem.temporal.lineage import FactHistory, fact_history
@@ -160,6 +169,63 @@ class ServiceQueries:
             )
             runtime = await self._deps.tenants.get(tenant_id, create=False)
             return await read_episodes(tenant_id, runtime, request)
+
+    async def list_entities(
+        self,
+        principal: Principal,
+        request: ListEntities,
+        *,
+        trace_id: str | None = None,
+    ) -> EntityPage:
+        """List active tenant entities after checking read access."""
+        self._deps.limiter.check(principal.id, "read")
+        tenant_id = request.tenant or principal.default_tenant
+        async with self._recorder.track(
+            OperationKind.RETRIEVE, principal.id, tenant_id, trace_id=trace_id
+        ):
+            tenant_id = await self._deps.tenants.require(
+                principal, tenant_id, Grant.READ, "memory.list_entities"
+            )
+            runtime = await self._deps.tenants.get(tenant_id, create=False)
+            return await read_entities(tenant_id, runtime, request)
+
+    async def get_ontology(
+        self,
+        principal: Principal,
+        request: GetOntology,
+        *,
+        trace_id: str | None = None,
+    ) -> OntologyView:
+        """Read the tenant ontology after checking read access."""
+        self._deps.limiter.check(principal.id, "read")
+        tenant_id = request.tenant or principal.default_tenant
+        async with self._recorder.track(
+            OperationKind.RETRIEVE, principal.id, tenant_id, trace_id=trace_id
+        ):
+            tenant_id = await self._deps.tenants.require(
+                principal, tenant_id, Grant.READ, "memory.ontology"
+            )
+            runtime = await self._deps.tenants.get(tenant_id, create=False)
+            return await read_ontology(tenant_id, runtime, request)
+
+    async def stale_episodes(
+        self,
+        principal: Principal,
+        request: ListStaleEpisodes,
+        *,
+        trace_id: str | None = None,
+    ) -> StaleEpisodePage:
+        """List episodes extracted under an older ontology version."""
+        self._deps.limiter.check(principal.id, "read")
+        tenant_id = request.tenant or principal.default_tenant
+        async with self._recorder.track(
+            OperationKind.RETRIEVE, principal.id, tenant_id, trace_id=trace_id
+        ):
+            tenant_id = await self._deps.tenants.require(
+                principal, tenant_id, Grant.READ, "memory.stale_episodes"
+            )
+            runtime = await self._deps.tenants.get(tenant_id, create=False)
+            return await read_stale_episodes(tenant_id, runtime, request)
 
     async def memory_feedback(
         self, principal: Principal, request: MemoryFeedback

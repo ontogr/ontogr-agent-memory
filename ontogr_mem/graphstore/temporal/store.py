@@ -173,6 +173,14 @@ class GraphTemporalStore:
         """Return every episode in ``PENDING`` state, sorted by episode id."""
         return await self._episodes.incomplete_episodes()
 
+    async def episodes_below_version(
+        self, version: int, *, after: str | None, limit: int, kinds: list[str]
+    ) -> list[tuple[str, int]]:
+        """Return committed episode ids and versions below ``version``."""
+        return await self._episodes.episodes_below_version(
+            version, after=after, limit=limit, kinds=kinds
+        )
+
     async def episodes_matching(self, selector: SourceSelector) -> list[str]:
         """Return the ids of episodes whose source matches, sorted."""
         return await self._episodes.episodes_matching(selector)

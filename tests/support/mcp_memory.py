@@ -13,13 +13,19 @@ from ontogr_mem.llm.roles import ModelRole
 from ontogr_mem.service.contracts import (
     AddMemory,
     EntityOut,
+    EntityPage,
     EntityView,
     ErrorInfo,
     GetEntity,
+    GetOntology,
     InvalidateMemory,
     JobView,
+    ListEntities,
+    ListStaleEpisodes,
     MemoryContext,
+    OntologyView,
     SearchMemory,
+    StaleEpisodePage,
     WriteReceipt,
 )
 from tests.support.scripted_model import scripted_model, scripted_role_models
@@ -65,6 +71,13 @@ class FakeMemoryService:
         self.entity = EntityView(
             entity=EntityOut(entity_id="entity-1", tenant=TENANT, name="Ada")
         )
+        self.entity_page = EntityPage(entities=[])
+        self.ontology = OntologyView(
+            tenant=TENANT, version=1, entity_types=[], relation_types=[]
+        )
+        self.stale_episode_page = StaleEpisodePage(
+            tenant=TENANT, current_version=1, episodes=[]
+        )
         self.receipt = WriteReceipt(
             job_id="job-1", status=JobState.QUEUED, tenant=TENANT
         )
@@ -95,6 +108,30 @@ class FakeMemoryService:
         if self.failure is not None:
             raise self.failure
         return self.entity
+
+    async def list_entities(
+        self, principal: object, request: ListEntities
+    ) -> EntityPage:
+        """Return the canned entity page or raise the configured failure."""
+        if self.failure is not None:
+            raise self.failure
+        return self.entity_page
+
+    async def get_ontology(
+        self, principal: object, request: GetOntology
+    ) -> OntologyView:
+        """Return the canned ontology or raise the configured failure."""
+        if self.failure is not None:
+            raise self.failure
+        return self.ontology
+
+    async def stale_episodes(
+        self, principal: object, request: ListStaleEpisodes
+    ) -> StaleEpisodePage:
+        """Return the canned stale episode page or raise the configured failure."""
+        if self.failure is not None:
+            raise self.failure
+        return self.stale_episode_page
 
     async def invalidate(
         self, principal: object, request: InvalidateMemory

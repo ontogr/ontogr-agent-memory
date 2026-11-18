@@ -965,6 +965,29 @@ class TemporalStoreContract:
         ) == ["ep-2"]
         assert await harness.store.episodes_matching(SourceSelector("mail")) == []
 
+    async def test_lists_only_committed_episodes_below_ontology_version(
+        self, make_harness
+    ):
+        """Stale pages exclude pending and retracted episodes and honor cursors."""
+        harness = await self._seeded(make_harness)
+        await harness.store.set_episode_pending("ep-1", ontology_version=3)
+        await harness.store.mark_committed("ep-1", "hash-1")
+        await harness.store.set_episode_pending("ep-2", ontology_version=3)
+        await harness.store.mark_committed("ep-2", "hash-2")
+        await harness.store.mark_retracted("ep-2")
+        await harness.seed_episode("ep-3")
+        await harness.store.set_episode_pending("ep-3", ontology_version=3)
+
+        first_page = await harness.store.episodes_below_version(
+            4, after=None, limit=1, kinds=["message", "document"]
+        )
+        next_page = await harness.store.episodes_below_version(
+            4, after=first_page[0][0], limit=10, kinds=["message", "document"]
+        )
+
+        assert first_page == [("ep-1", 3)]
+        assert next_page == []
+
     async def test_snapshot_lists_every_version_observation_and_slot(
         self, make_harness
     ):

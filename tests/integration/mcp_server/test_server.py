@@ -33,6 +33,8 @@ SOURCE = "Ana works at Acme."
 WITHOUT_ADD_MEMORY = [
     "search_memory",
     "get_entity",
+    "list_entities",
+    "get_ontology",
     "get_job",
     "write_facts",
     "forget_memory",
@@ -42,6 +44,8 @@ WITHOUT_ADD_MEMORY = [
 WITH_ADD_MEMORY = [
     "search_memory",
     "get_entity",
+    "list_entities",
+    "get_ontology",
     "get_job",
     "add_memory",
     "write_facts",

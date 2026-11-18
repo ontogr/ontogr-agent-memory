@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   accept `--ontology`, and MCP also reads `MEMORY_MCP_ONTOLOGY`.
 - A default ontology with ten entity types and 31 relation types.
 - Relation kinds (`single`, `many`, `judged`) and entity identity attributes.
+- Search accepts entity type, relation type, and modality filters. Entity type filters include descendants, and ontology labels and aliases resolve per tenant.
+- `Memory.list_entities()` pages through entities by type, and `Memory.get_ontology()` returns the tenant's type catalog. MCP exposes both read tools.
+- `Memory.stale_episodes()` reports message and document episodes extracted under an older ontology version. Refresh an episode by writing its text again and forgetting the old episode.
+- `MEMORY_RETRIEVAL_FILTER_RECHECKS` bounds extra candidate windows fetched to fill search results after type filtering. Set it to `0` to disable refills.
 
 ### Changed
 

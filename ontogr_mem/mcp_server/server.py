@@ -45,6 +45,14 @@ def build_server(memory: Memory, *, settings: McpSettings | None = None) -> Fast
         server.tool(guard_errors(memory.search), name="search_memory", tags={"read"})
     if "get_entity" in enabled:
         server.tool(guard_errors(memory.get_entity), name="get_entity", tags={"read"})
+    if "list_entities" in enabled:
+        server.tool(
+            guard_errors(memory.list_entities), name="list_entities", tags={"read"}
+        )
+    if "get_ontology" in enabled:
+        server.tool(
+            guard_errors(memory.get_ontology), name="get_ontology", tags={"read"}
+        )
     if "get_job" in enabled:
         server.tool(guard_errors(memory.get_job), name="get_job", tags={"read"})
     if "add_memory" in enabled:
