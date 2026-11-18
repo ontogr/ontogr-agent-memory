@@ -33,6 +33,16 @@ class FactGate:
         """Return the views that pass, in their order."""
         if not self._scope.filters_facts or not views:
             return list(views)
+        if self._scope.entity_types is None and not self._scope.exclude_entity_types:
+            return [
+                view
+                for view in views
+                if (
+                    self._scope.relation_types is None
+                    or view.relation_type_id in self._scope.relation_types
+                )
+                and view.relation_type_id not in self._scope.exclude_relation_types
+            ]
         ids = list(
             dict.fromkeys(
                 entity_id
@@ -99,7 +109,37 @@ class FactGate:
         ):
             return list(ids)
         entities = await self._entities.get_entities(ids, follow_merged=False)
-        types = {entity.entity_id: entity.ontology_type_id for entity in entities}
+        by_id = {entity.entity_id: entity for entity in entities}
+        while True:
+            missing = sorted(
+                {
+                    entity.merged_into
+                    for entity in by_id.values()
+                    if entity.merged_into is not None
+                    and entity.merged_into not in by_id
+                }
+            )
+            if not missing:
+                break
+            by_id.update(
+                {
+                    entity.entity_id: entity
+                    for entity in await self._entities.get_entities(
+                        missing, follow_merged=False
+                    )
+                }
+            )
+        types: dict[str, int | None] = {}
+        for entity_id in ids:
+            entity = by_id.get(entity_id)
+            seen: set[str] = set()
+            while entity is not None and entity.merged_into is not None:
+                if entity.entity_id in seen:
+                    entity = None
+                    break
+                seen.add(entity.entity_id)
+                entity = by_id.get(entity.merged_into)
+            types[entity_id] = entity.ontology_type_id if entity is not None else None
         return [
             entity_id
             for entity_id in ids

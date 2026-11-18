@@ -6,7 +6,7 @@ from typing import Protocol
 
 from ontogr_mem.data_models.facts import Modality
 from ontogr_mem.ontology.links import TypeLinks
-from ontogr_mem.service.errors import InvalidArgumentError
+from ontogr_mem.retrieval.errors import UnknownFilterLabelError
 from ontogr_mem.temporal.query import ACTUAL_ONLY
 
 
@@ -77,7 +77,7 @@ async def build_scope(
         for label in labels:
             found = family(label)
             if found is None:
-                raise InvalidArgumentError(
+                raise UnknownFilterLabelError(
                     f"unknown {kind} type {label!r} in tenant {tenant_id}"
                 )
             result.update(found)

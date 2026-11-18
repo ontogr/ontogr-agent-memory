@@ -3,10 +3,10 @@
 from collections.abc import AsyncGenerator, Sequence
 from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontextmanager
 from datetime import datetime
-from enum import StrEnum
 from typing import Any, Literal
 
 from ontogr_mem.data_models import Role
+from ontogr_mem.data_models.facts import Modality
 from ontogr_mem.data_models.tenant import validate_tenant_id
 from ontogr_mem.llm.config import LLMConfig
 from ontogr_mem.llm.models import RoleModels, build_models
@@ -44,15 +44,6 @@ from ontogr_mem.vectorstore.builtin import (
     select_embedder,
 )
 from ontogr_mem.vectorstore.embedder import Embedder
-
-
-class Modality(StrEnum):
-    """A fact state that search can return."""
-
-    ACTUAL = "actual"
-    PLANNED = "planned"
-    CONDITIONAL = "conditional"
-    DESIRED = "desired"
 
 
 class Memory:

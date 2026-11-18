@@ -46,6 +46,7 @@ def entity(
     *,
     name: str | None = None,
     uri: str | None = None,
+    ontology_type_id: int = 2,
     status: EntityStatus = EntityStatus.ACTIVE,
     merged_into: str | None = None,
 ) -> Entity:
@@ -53,7 +54,7 @@ def entity(
     canonical_name = name or entity_id
     return Entity(
         entity_id=entity_id,
-        ontology_type_id=2,
+        ontology_type_id=ontology_type_id,
         type_label="Company",
         canonical_name=canonical_name,
         strict_key=canonical_name.casefold(),
@@ -929,6 +930,9 @@ class ResolverStoreContract:
         await harness.store.save_entity(
             entity("entity-2", status=EntityStatus.ARCHIVED), bump_revision=False
         )
+        await harness.store.save_entity(
+            entity("entity-2.5", ontology_type_id=3), bump_revision=False
+        )
         await harness.store.save_entity(entity("entity-3"), bump_revision=False)
 
         first_page = await harness.store.list_active_entities(
@@ -940,6 +944,14 @@ class ResolverStoreContract:
 
         assert [item.entity_id for item in first_page] == ["entity-1"]
         assert [item.entity_id for item in next_page] == ["entity-3"]
+        all_active = await harness.store.list_active_entities(
+            type_ids=None, after=None, limit=10
+        )
+        assert [item.entity_id for item in all_active] == [
+            "entity-1",
+            "entity-2.5",
+            "entity-3",
+        ]
         assert (
             await harness.store.list_active_entities(
                 type_ids=frozenset(), after=None, limit=10

@@ -66,7 +66,13 @@ async def run_graph_lane(
     )
     views = tuple(view for _, view in ranked)
     if gate is not None:
-        views = tuple(await gate.admit(views))
+        result = await run_search(lambda: gate.admit(views))
+        if result.error is not None:
+            record = lane_record(
+                "graph", False, [("touching", result.error)], search_count=1
+            )
+            return LaneOutput(record, error=result.error)
+        views = tuple(result.value or [])
     return LaneOutput(
         lane_record("graph", bool(views), [], search_count=1), facts=views
     )

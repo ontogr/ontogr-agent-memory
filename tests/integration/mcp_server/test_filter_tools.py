@@ -37,7 +37,17 @@ class TestFilterTools:
         try:
             async with open_client(tenant) as client:
                 job = await _write_and_wait(
-                    client, "Ana works at Acme.", [GROUNDED_FACT]
+                    client,
+                    "Ana works at Acme. Bob works at Globex.",
+                    [
+                        GROUNDED_FACT,
+                        {
+                            **GROUNDED_FACT,
+                            "subject": "Bob",
+                            "object": "Globex",
+                            "evidence_quote": "Bob works at Globex",
+                        },
+                    ],
                 )
                 assert job["status"] == "done"
 
@@ -49,6 +59,9 @@ class TestFilterTools:
                 )
                 assert search["state"] == "found"
                 assert any("Acme" in fact["statement"] for fact in search["facts"])
+                assert all(
+                    "Globex" not in fact["statement"] for fact in search["facts"]
+                )
 
                 entities = _content(
                     await client.call_tool("list_entities", {"entity_type": "Person"})

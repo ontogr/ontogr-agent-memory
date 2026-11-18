@@ -10,6 +10,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Final
 
+from ontogr_mem.data_models.facts import Modality
 from ontogr_mem.data_models.timestamps import require_utc
 from ontogr_mem.retrieval.errors import RetrievalError
 from ontogr_mem.retrieval.scope import SearchScope
@@ -214,9 +215,9 @@ class RetrievalRequest:
     relation_types: tuple[str, ...] = ()
     exclude_relation_types: tuple[str, ...] = ()
     modalities: tuple[str, ...] = ("actual",)
-    scope: SearchScope = SearchScope()
+    scope: SearchScope | None = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self) -> None:  # noqa: PLR0912
         """Reject a request the retriever cannot serve.
 
         Raises:
@@ -260,6 +261,14 @@ class RetrievalRequest:
         if any(not mention.strip() for mention in self.mentions):
             msg = "mentions must not hold a blank name"
             raise RetrievalError(msg)
+        if self.scope is None:
+            object.__setattr__(
+                self,
+                "scope",
+                SearchScope(
+                    modalities=frozenset(Modality(value) for value in self.modalities)
+                ),
+            )
 
     def to_temporal_query(self) -> TemporalQuery:
         """Build the temporal query that matches the time filters of the request.
@@ -274,7 +283,7 @@ class RetrievalRequest:
             known_at=self.known_at,
             overlaps=self.overlaps,
             include_history=self.include_history,
-            modalities=self.scope.modalities,
+            modalities=self.scope.modalities if self.scope is not None else frozenset(),
         )
 
 

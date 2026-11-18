@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from ontogr_mem.service.contracts import ListEntities, SearchMemory
-from ontogr_mem.service.limits import MAX_FILTER_LABELS
+from ontogr_mem.service.limits import MAX_FILTER_LABELS, MAX_RESULTS
 
 
 class TestReadFilterContracts:
@@ -28,4 +28,4 @@ class TestReadFilterContracts:
     def test_list_entities_enforces_page_bounds(self) -> None:
         """Reject entity list pages above the configured bound."""
         with pytest.raises(ValidationError):
-            ListEntities(limit=MAX_FILTER_LABELS + 100)
+            ListEntities(limit=MAX_RESULTS + 1)

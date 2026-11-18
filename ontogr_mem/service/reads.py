@@ -12,7 +12,7 @@ from ontogr_mem.data_models import Episode, JobState, Kind, require_utc
 from ontogr_mem.llm.tokens import estimate_tokens
 from ontogr_mem.ontology.models import UNKNOWN_ID, Status
 from ontogr_mem.resolution.keys import strict_key
-from ontogr_mem.retrieval.errors import RetrievalError
+from ontogr_mem.retrieval.errors import RetrievalError, UnknownFilterLabelError
 from ontogr_mem.retrieval.models import FactResult, RetrievalRequest, RetrievalResult
 from ontogr_mem.retrieval.scope import build_scope
 from ontogr_mem.service.contracts import (
@@ -140,6 +140,8 @@ async def _retrieve_tenants(
                     replace(retrieval_request, scope=scope)
                 )
             )
+        except UnknownFilterLabelError as exc:
+            raise InvalidArgumentError(str(exc)) from exc
         except RetrievalError as exc:
             raise InternalError("retrieval failed") from exc
     return results

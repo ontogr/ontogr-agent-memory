@@ -473,7 +473,7 @@ class Retriever:
             )
         return result
 
-    async def _entity_cards(
+    async def _entity_cards(  # noqa: PLR0912
         self,
         entity_lane: LaneOutput,
         facts: Sequence[FactResult],
@@ -493,11 +493,13 @@ class Retriever:
                 source_map.setdefault(entity_id, [])
                 if "fact" not in source_map[entity_id]:
                     source_map[entity_id].append("fact")
-        if gate is not None:
-            ordered_ids = await gate.admit_entities(ordered_ids)
         if not ordered_ids:
             return []
         try:
+            if gate is not None:
+                ordered_ids = await gate.admit_entities(ordered_ids)
+                if not ordered_ids:
+                    return []
             entities = await self._ordered_entities(ordered_ids)
         except Exception as exc:
             if not _port_error(exc):

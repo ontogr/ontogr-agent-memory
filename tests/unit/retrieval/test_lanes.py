@@ -293,11 +293,11 @@ class TestFilteredLaneRefill:
 
         class PagingFacts(FactPort):
             async def by_ids(self, ids, query):
-                return [view(fact_id) for fact_id in ids if fact_id == "f3"]
+                return [view(fact_id) for fact_id in ids]
 
         class Gate:
             async def admit(self, views):
-                return list(views)
+                return [item for item in views if item.fact_id == "f3"]
 
         vectors = PagingVectors()
         result = await run_vector_lane(
@@ -324,11 +324,15 @@ class TestFilteredLaneRefill:
 
         class PagingFacts(FactPort):
             async def by_observations(self, ids, query):
-                return [view("f3", evidence=("o3",))] if "o3" in ids else []
+                return [
+                    view(f"f{index}", evidence=(f"o{index}",))
+                    for index in range(4)
+                    if f"o{index}" in ids
+                ]
 
         class Gate:
             async def admit(self, views):
-                return list(views)
+                return [item for item in views if item.fact_id == "f3"]
 
         keywords = PagingKeywords()
         result = await run_keyword_lane(
@@ -342,3 +346,36 @@ class TestFilteredLaneRefill:
         )
         assert [fact.fact_id for fact in result.facts] == ["f3"]
         assert keywords.windows == [2, 4]
+
+    async def test_keyword_refill_error_keeps_the_previous_page(self):
+        """A typed refill failure keeps prior facts and reports its cause."""
+
+        class FailingRefillKeywords(KeywordPort):
+            async def search(self, kind, query, *, limit):
+                if kind is KeywordKind.OBSERVATION:
+                    if limit > 2:
+                        raise KeywordTimeoutError("refill timed out")
+                    return [KeywordHit("o0", 1.0, 0), KeywordHit("o1", 0.9, 1)]
+                return []
+
+        class RejectedGate:
+            async def admit(self, views):
+                return [item for item in views if item.fact_id == "f0"]
+
+        class RefillFacts(FactPort):
+            async def by_observations(self, ids, query):
+                return [view("f0", evidence=("o0",)), view("f1", evidence=("o1",))]
+
+        result = await run_keyword_lane(
+            FailingRefillKeywords(),
+            RefillFacts(),
+            query="x",
+            temporal_query=TemporalQuery(now=NOW),
+            limit=2,
+            settings=RetrievalSettings(candidate_factor=1),
+            gate=RejectedGate(),
+        )
+
+        assert [fact.fact_id for fact in result.facts] == ["f0"]
+        assert result.record.failed == ("observation",)
+        assert "refill timed out" in result.record.detail

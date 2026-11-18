@@ -23,8 +23,10 @@ async def run_keyword_lane(
     gate: FactGate | None = None,
 ) -> LaneOutput:
     """Find observations and episodes, mapping evidence hits to facts."""
+    last_success = None
 
     async def observation_candidates(window: int):
+        nonlocal last_success
         hits = await keywords.search(KeywordKind.OBSERVATION, query, limit=window)
         observation_ids = tuple(dict.fromkeys(hit.id for hit in hits))
         views = (
@@ -51,7 +53,9 @@ async def run_keyword_lane(
             views = await gate.admit(views)
         if disputed == "exclude":
             views = [view for view in views if not view.disputed]
-        return hits, views, len(hits), window
+        result = (hits, views, len(hits), window)
+        last_success = result
+        return result
 
     candidate_limit = settings.candidate_factor * limit
     observations, episodes = await asyncio.gather(
@@ -75,6 +79,8 @@ async def run_keyword_lane(
         if result.error is not None
     ]
     observation_result = observations.value
+    if observation_result is None and observations.error is not None:
+        observation_result = last_success
     observation_hits = observation_result[0] if observation_result else []
     episode_hits = episodes.value or []
     observation_ids = tuple(dict.fromkeys(hit.id for hit in observation_hits))

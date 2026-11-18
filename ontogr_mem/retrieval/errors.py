@@ -7,6 +7,10 @@ class RetrievalError(AgentMemoryError):
     """Base class for every error the retrieval component raises."""
 
 
+class UnknownFilterLabelError(RetrievalError, ValueError):
+    """A requested type filter label is absent from the ontology snapshot."""
+
+
 class RerankerError(RetrievalError):
     """Optional passage scoring could not complete."""
 

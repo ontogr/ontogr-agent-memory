@@ -1,13 +1,16 @@
 """Scope resolution and retrieval gate behavior."""
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
 
+from ontogr_mem.data_models.entities import Entity
 from ontogr_mem.data_models.facts import Modality
+from ontogr_mem.retrieval.errors import UnknownFilterLabelError
 from ontogr_mem.retrieval.gate import FactGate
+from ontogr_mem.retrieval.models import RetrievalRequest
 from ontogr_mem.retrieval.scope import SearchScope, build_scope
-from ontogr_mem.service.errors import InvalidArgumentError
 
 
 class TestBuildScope:
@@ -74,8 +77,33 @@ class TestBuildScope:
             exclude_relation_types=(),
             modalities=("actual",),
         )
-        with pytest.raises(InvalidArgumentError, match="Missing.*tenant"):
+        with pytest.raises(UnknownFilterLabelError, match="Missing.*tenant"):
             await build_scope("tenant", request, load_links)
+
+
+class TestRetrievalRequestModalities:
+    """Use request modalities unless a resolved scope supplies them."""
+
+    def test_uses_direct_modalities_without_scope(self) -> None:
+        """Use direct modalities when no scope has been resolved."""
+        request = RetrievalRequest(
+            query="query",
+            now=datetime.now(UTC),
+            modalities=("planned",),
+        )
+
+        assert request.to_temporal_query().modalities == frozenset({Modality.PLANNED})
+
+    def test_preserves_scope_modalities(self) -> None:
+        """Use modalities from the resolved scope."""
+        request = RetrievalRequest(
+            query="query",
+            now=datetime.now(UTC),
+            modalities=("planned",),
+            scope=SearchScope(modalities=frozenset({Modality.ACTUAL})),
+        )
+
+        assert request.to_temporal_query().modalities == frozenset({Modality.ACTUAL})
 
 
 class TestFactGate:
@@ -107,18 +135,34 @@ class TestFactGate:
 
     async def test_filters_cards_by_own_type(self) -> None:
         """Filter entity cards by each entity's own type."""
+        now = datetime.now(UTC)
 
         class Reader:
             async def get_entities(
                 self, ids: list[str], *, follow_merged: bool
             ) -> list[object]:
                 return [
-                    SimpleNamespace(entity_id="a", ontology_type_id=1),
-                    SimpleNamespace(entity_id="b", ontology_type_id=2),
+                    Entity(
+                        entity_id="a",
+                        type_label="",
+                        ontology_type_id=1,
+                        canonical_name="a",
+                        strict_key="a",
+                        loose_key="a",
+                        created_at=now,
+                        updated_at=now,
+                    ),
+                    Entity(
+                        entity_id="b",
+                        type_label="",
+                        ontology_type_id=2,
+                        canonical_name="b",
+                        strict_key="b",
+                        loose_key="b",
+                        created_at=now,
+                        updated_at=now,
+                    ),
                 ]
 
         gate = FactGate(SearchScope(entity_types=frozenset({1})), Reader())
         assert await gate.admit_entities(["a", "b"]) == ["a"]
-
-
-"""Scope resolution and retrieval gate behavior."""

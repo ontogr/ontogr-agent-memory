@@ -321,7 +321,7 @@ Lanes fuse by reciprocal rank fusion. The top fact in one result scores 1.0, and
 
 - **Time filters apply in every lane:** `valid_at`, `known_at`, overlap windows, and `include_history` shape all results the same way.
 - **Requests can narrow the search:** A request can limit results to one session, flag or exclude disputed facts, and search several tenants the caller may read.
-- **Type filters use ontology labels:** `entity_types`, `exclude_entity_types`, `relation_types`, and `exclude_relation_types` narrow search. Entity type filters include descendants, and old labels and aliases resolve through the tenant's ontology. An unknown label raises `invalid_argument`. Include filters keep facts with at least one matching endpoint; exclude filters remove facts with either matching endpoint. Relation filters match the relation type. Filters combine with AND, and they do not call a model.
+- **Type filters use ontology labels:** `entity_types`, `exclude_entity_types`, `relation_types`, and `exclude_relation_types` narrow search. Entity type filters include descendants, and old labels and aliases resolve through the tenant's ontology. An unknown label raises `invalid_argument`. Include filters keep facts with at least one matching endpoint; exclude filters remove facts with either matching endpoint. Relation filters match the relation type. Labels within a filter are alternatives (OR); filter categories combine with AND. Filters do not call a model.
 - **Modality filters are opt-in:** `modalities` accepts `actual`, `planned`, `conditional`, and `desired`. Search defaults to `actual`; name other modalities to include them. Episode passages remain raw source text.
 - **The context block is budgeted:** It has a time frame, a token budget, facts, entities, and episodes. Items are placed whole within section shares, and unused space moves to the next section. Stored text is escaped, so it cannot break the frame. The block reports how many items were dropped and which lanes failed.
 
@@ -520,6 +520,8 @@ The server registers these tools:
 
 - `search_memory`
 - `get_entity`
+- `list_entities`
+- `get_ontology`
 - `get_job`
 - `write_facts`
 - `forget_memory`
@@ -549,7 +551,7 @@ Set the server with these `MEMORY_MCP_*` variables. The CLI flags `--transport`,
 | `MEMORY_MCP_TOOLS` | All tools | Comma list of tools to register. An empty value removes every tool. An unknown name is an error. |
 | `MEMORY_MCP_SKILLS_EXTENSION` | `true` | Whether the server advertises the skills extension. |
 
-To narrow the tools, set `MEMORY_MCP_TOOLS=search_memory,get_entity,get_job,get_skill`.
+To narrow the tools, set `MEMORY_MCP_TOOLS=search_memory,get_entity,list_entities,get_ontology,get_job,get_skill`.
 
 Compose stops the MCP service with a grace period of five minutes. Unfinished jobs resume on the next start. Keep one MCP process per state volume.
 
@@ -602,7 +604,9 @@ from ontogr_mem.client import Memory
 async def main() -> None:
     async with Memory.open() as memory:
         receipt = await memory.write_fact(
-            "Ana", "works_at", "Acme",
+            "Ana",
+            "works_at",
+            "Acme",
             valid_from=datetime(2024, 1, 1, tzinfo=UTC),
             wait_seconds=10,
         )
@@ -614,6 +618,12 @@ async def main() -> None:
         result = await memory.search("Where does Ana work?")
         print(result.state)
         print(result.rendered)
+
+        result = await memory.search(
+            "Where does Ana work?",
+            entity_types=["Person", "Organization"],
+            relation_types=["works_at", "employed_by"],
+        )
 
 
 asyncio.run(main())
@@ -814,7 +824,7 @@ A read does not create a job. A search that finds nothing reports an `indexing` 
 
 The Python `Memory` client exposes the same search filters and the `list_entities` and
 `get_ontology` methods. MCP exposes search filters, `list_entities`, and
-`get_ontology`. `stale_episodes` is available on the Python client only.
+`get_ontology` when that tool is enabled. `stale_episodes` is available on the Python client only.
 
 `list_entities(entity_type=...)` accepts an ontology label and includes entities of
 that type and its descendants. `get_ontology(include_deprecated=True)` can include
