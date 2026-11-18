@@ -117,6 +117,7 @@ class EntityCard:
         aliases: Alternate names of the entity.
         summary: Short description of the entity.
         lanes: Names of the lanes that found the entity.
+        proposed_type: Type name the model gave while the type is Unknown.
     """
 
     entity_id: str
@@ -125,6 +126,7 @@ class EntityCard:
     aliases: tuple[str, ...] = ()
     summary: str = ""
     lanes: tuple[str, ...] = ()
+    proposed_type: str = ""
 
 
 @dataclass(frozen=True, slots=True)

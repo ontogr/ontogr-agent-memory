@@ -1,10 +1,13 @@
 """Behavior tests for the optional inline verification tier."""
 
+from functools import partial
+
 from pydantic_ai.exceptions import ModelAPIError
 
 from ontogr_mem.data_models.entities import DecisionMethod, Outcome, VerdictKind
 from ontogr_mem.resolution.decision import collect_matches
 from ontogr_mem.resolution.grouping import build_groups
+from ontogr_mem.resolution.policy import ResolutionMode, ResolutionPolicy, TypePolicy
 from ontogr_mem.resolution.scoring import Candidate, PairSignals
 from ontogr_mem.resolution.verdicts import apply_verdicts
 from ontogr_mem.resolution.views import DecisionView
@@ -19,13 +22,21 @@ from tests.support.scripted_model import scripted_model, scripted_role_models
 from tests.unit.resolution.helpers import entity, oracle_models
 
 
+_make_verifying_resolver = partial(
+    make,
+    policy=ResolutionPolicy(
+        types={"Person": TypePolicy(mode=ResolutionMode.VERIFY_ALWAYS)}
+    ),
+)
+
+
 async def test_flag_off_by_default_means_no_llm_call_in_resolve(
     graph_backend: GraphBackend,
 ):
     """The inline tier stays off unless the settings turn it on."""
     models, scripted = oracle_models(lambda a, b: True)
     store = (await graph_backend.open_stores()).resolver_store
-    resolver = await make(store, models=models)
+    resolver = await _make_verifying_resolver(store, models=models)
 
     await resolver.resolve([ex("1", "John Smith", "Person")])
     await resolver.resolve([ex("1", "John Smith", "Person", episode_id="e2")])
@@ -41,7 +52,7 @@ async def test_inline_yes_links_the_mention_to_the_existing_person(
     """A YES from the verifier links the second mention to the first entity."""
     models, _ = oracle_models(lambda a, b: True)
     store = (await graph_backend.open_stores()).resolver_store
-    resolver = await make(store, models=models, inline=True)
+    resolver = await _make_verifying_resolver(store, models=models, inline=True)
 
     await resolver.resolve([ex("1", "John Smith", "Person")])
     await resolver.resolve([ex("1", "John Smith", "Person", episode_id="e2")])
@@ -60,7 +71,7 @@ async def test_inline_no_creates_a_resolved_entity_with_no_candidates_left(
     """A NO settles the pair, so the new entity is not provisional."""
     models, _ = oracle_models(lambda a, b: False)
     store = (await graph_backend.open_stores()).resolver_store
-    resolver = await make(store, models=models, inline=True)
+    resolver = await _make_verifying_resolver(store, models=models, inline=True)
 
     await resolver.resolve([ex("1", "John Smith", "Person")])
     await resolver.resolve([ex("1", "John Smith", "Person", episode_id="e2")])
@@ -77,7 +88,7 @@ async def test_inline_llm_outage_never_fails_the_job_it_falls_back_to_provisiona
     """A failed verification leaves the pair pending, not merged."""
     store = (await graph_backend.open_stores()).resolver_store
     model, _ = scripted_model([ModelAPIError("test", "down")])
-    resolver = await make(
+    resolver = await _make_verifying_resolver(
         store, models=scripted_role_models(resolution=model), inline=True
     )
 
@@ -93,7 +104,7 @@ async def test_inline_cross_type_yes_needs_two_votes(graph_backend: GraphBackend
     """A company and an organization need a swapped second YES."""
     models, scripted = oracle_models(lambda a, b: True)
     store = (await graph_backend.open_stores()).resolver_store
-    resolver = await make(store, models=models, inline=True)
+    resolver = await _make_verifying_resolver(store, models=models, inline=True)
 
     await resolver.resolve([ex("1", "Acme", "Company")])
     await resolver.resolve([ex("1", "Acme", "Organization", episode_id="e2")])
@@ -109,7 +120,7 @@ async def test_inline_one_call_per_resolve_for_many_ambiguous_groups(
     """Two ambiguous groups share one batched verification request."""
     models, scripted = oracle_models(lambda a, b: False)
     store = (await graph_backend.open_stores()).resolver_store
-    resolver = await make(store, models=models, inline=True)
+    resolver = await _make_verifying_resolver(store, models=models, inline=True)
 
     await resolver.resolve(
         [ex("1", "John Smith", "Person"), ex("2", "Mary Jones", "Person")]
@@ -129,7 +140,7 @@ async def test_a_candidate_the_verifier_never_answered_stays_pending(
 ):
     """A pair whose call failed keeps the entity on the pending list."""
     store = (await graph_backend.open_stores()).resolver_store
-    resolver = await make(store)
+    resolver = await _make_verifying_resolver(store)
     [group] = build_groups(
         [ex("1", "John Smith", "Person")], resolver.policy, resolver.relations
     )
@@ -151,6 +162,7 @@ async def test_a_candidate_the_verifier_never_answered_stays_pending(
         policy=resolver.policy,
         settings=resolver.settings,
         relations=resolver.relations,
+        settle=False,
     )
     plan = apply_verdicts(collected, {"e1": VerdictKind.DISTINCT}, False)
 

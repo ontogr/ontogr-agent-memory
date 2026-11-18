@@ -18,13 +18,12 @@ from ontogr_mem.data_models.type_catalog import UNKNOWN_LABEL
 from ontogr_mem.resolution.keys import strict_key
 
 
-PERSON = "person"
 GENERIC_LABELS = frozenset({"entity", "thing", "concept", "other", "object"})
 
 DEFAULT_FAMILIES: dict[str, str] = {
     **dict.fromkeys(
         ("person", "human", "employee", "patient", "author", "user", "customer"),
-        PERSON,
+        "person",
     ),
     **dict.fromkeys(
         (
@@ -169,16 +168,11 @@ class ResolutionPolicy:
     def mode(self, label: str) -> ResolutionMode:
         """Return how a key hit on this type is treated.
 
-        An explicit per-type setting wins. Otherwise types in the person family
-        default to ``VERIFY_ALWAYS``, because two real people can share a name
-        and nothing in the extractor output tells them apart. Every other type
-        defaults to ``AUTO_KEY``.
+        An explicit per-type setting wins. Every other type is keyed on its name.
         """
         explicit = self._types.get(normalize_label(label))
         if explicit and explicit.mode:
             return explicit.mode
-        if self.family(label) == PERSON:
-            return ResolutionMode.VERIFY_ALWAYS
         return ResolutionMode.AUTO_KEY
 
     def identity_attrs(self, label: str) -> tuple[str, ...]:

@@ -9,6 +9,7 @@ applied to what this module collected.
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 
 from ontogr_mem.data_models.entities import (
     DecisionMethod,
@@ -63,6 +64,7 @@ def collect_matches(
     policy: ResolutionPolicy,
     settings: ResolverSettings,
     relations: TypeRelations,
+    settle: bool,
 ) -> Collected:
     """Collect what the rules can say about one group, without asking a model."""
     mode = policy.mode(group.type_label)
@@ -78,7 +80,9 @@ def collect_matches(
     by_uri = _uri_plan(group, view)
     if by_uri is not None:
         return Collected(plan=by_uri, verify=(), reason="")
-    by_key, direct, family = _direct_plan(group, view, mode, relation, vetoed)
+    by_key, direct, family = _direct_plan(
+        group, view, mode, relation, vetoed, settle=settle
+    )
     if by_key is not None:
         return Collected(plan=by_key, verify=(), reason="")
     verify, reason = _verify_ids(direct, family, mode)
@@ -117,6 +121,8 @@ def _direct_plan(
     mode: ResolutionMode,
     relation: _Relation,
     vetoed: _Veto,
+    *,
+    settle: bool,
 ) -> tuple[Plan | None, list[tuple[Entity, bool]], list[Entity]]:
     """Decide from alias hits, or return the direct and family lists."""
     direct: list[tuple[Entity, bool]] = []
@@ -158,7 +164,21 @@ def _direct_plan(
             direct,
             family,
         )
+    if settle and mode is ResolutionMode.AUTO_KEY and len(direct) > 1:
+        entity, canonical = min(direct, key=_preference)
+        method = DecisionMethod.KEY if canonical else DecisionMethod.ALIAS
+        return (
+            Plan(entity.entity_id, method, Outcome.MATCHED, "preferred_hit"),
+            direct,
+            family,
+        )
     return None, direct, family
+
+
+def _preference(hit: tuple[Entity, bool]) -> tuple[bool, int, datetime, str]:
+    """Order key hits before alias hits, then busier, older and smaller ids."""
+    entity, canonical = hit
+    return (not canonical, -entity.mention_count, entity.created_at, entity.entity_id)
 
 
 def _verify_ids(

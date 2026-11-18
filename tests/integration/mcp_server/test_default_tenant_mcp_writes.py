@@ -38,6 +38,15 @@ SCRIPT = {
 TERMINAL_STATUSES = {"done", "failed"}
 
 
+@pytest.fixture(params=["two_pass", "combined"], autouse=True)
+def extraction_mode(
+    request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> str:
+    """Select the extraction structure for each test through the environment."""
+    monkeypatch.setenv("MEMORY_EXTRACTION_MODE", request.param)
+    return str(request.param)
+
+
 @pytest.fixture(autouse=True)
 async def falkordb_environment(
     monkeypatch: pytest.MonkeyPatch, falkordb_store: FalkorDBGraphStore

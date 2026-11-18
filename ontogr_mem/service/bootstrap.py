@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from ontogr_mem.combined_extraction.settings import ExtractionSettings
 from ontogr_mem.data_models.clock import Clock, SystemClock
 from ontogr_mem.graphstore.protocol import GraphStore
 from ontogr_mem.llm import RoleModels, build_models
@@ -90,6 +91,7 @@ async def build_service(
     policy: ResolutionPolicy,
     resolver_settings: ResolverSettings,
     retrieval_settings: RetrievalSettings,
+    extraction_settings: ExtractionSettings | None = None,
     limiter: CallerRateLimiter,
     max_attempts: int = 3,
     tracer: Tracer | None = None,
@@ -116,6 +118,7 @@ async def build_service(
         policy: Entity resolution policy.
         resolver_settings: Entity resolver configuration.
         retrieval_settings: Retrieval configuration.
+        extraction_settings: Combined or two-pass extraction configuration.
         limiter: Per-principal read and write limiter.
         models: Caller-owned process-wide model pool. The caller closes it.
         ontology: Declaration applied when a tenant opens.
@@ -148,6 +151,7 @@ async def build_service(
             policy=policy,
             resolver_settings=resolver_settings,
             retrieval_settings=retrieval_settings,
+            extraction_settings=extraction_settings,
         )
 
     tenants = TenantRuntimeCache(
@@ -195,6 +199,7 @@ async def open_service(
     policy: ResolutionPolicy | None = None,
     resolver_settings: ResolverSettings | None = None,
     retrieval_settings: RetrievalSettings | None = None,
+    extraction_settings: ExtractionSettings | None = None,
     limiter: CallerRateLimiter | None = None,
     max_attempts: int = 3,
     tracer: Tracer | None = None,
@@ -218,6 +223,7 @@ async def open_service(
         policy: Entity resolution policy.
         resolver_settings: Entity resolution settings.
         retrieval_settings: Retrieval settings.
+        extraction_settings: Combined or two-pass extraction configuration.
         limiter: Request limiter; defaults to the standard service limits.
         ontology: Declaration applied when a tenant opens.
         ontology_tenant: Limit the declaration to this tenant when supplied.
@@ -267,6 +273,7 @@ async def open_service(
             policy=policy or ResolutionPolicy(),
             resolver_settings=resolver_settings or ResolverSettings(),
             retrieval_settings=retrieval_settings or RetrievalSettings(),
+            extraction_settings=extraction_settings or ExtractionSettings(),
             limiter=limiter or CallerRateLimiter(),
             max_attempts=max_attempts,
             tracer=tracer,

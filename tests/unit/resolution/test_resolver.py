@@ -172,7 +172,9 @@ class TestEntityResolver:
         assert len(first.entities) == 2
         assert len(first.mentions) == 2
         mentions = {mention.surface_form: mention for mention in first.mentions}
-        assert mentions["Acme"].decision_outcome is Outcome.CREATED_PROVISIONAL
+        assert mentions["Acme"].entity_id == "c1"
+        assert mentions["Acme"].decision_outcome is Outcome.MATCHED
+        assert mentions["Acme"].decision_reason == "preferred_hit"
         [reused] = second.mentions
         assert reused.entity_id == mentions["Initech"].entity_id
         assert reused.decision_method is DecisionMethod.KEY

@@ -7,7 +7,7 @@ a test names catalog types and relations and never dense ids.
 
 import json
 import re
-from collections.abc import AsyncGenerator, Mapping, Sequence
+from collections.abc import AsyncGenerator, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
@@ -19,6 +19,7 @@ from ontogr_mem.relational_store.config import StateSettings
 from ontogr_mem.service.bootstrap import ServiceSettings
 from tests.support.embedder import MockEmbedder
 from tests.support.scripted_model import (
+    Scripted,
     ScriptedCall,
     scripted_model,
     scripted_role_models,
@@ -102,8 +103,11 @@ def _fact_item(prompt: str, fact: ScriptedFact) -> dict[str, object]:
     }
 
 
-def text_models(script: Script) -> RoleModels:
-    """Return a model pool whose extraction answers follow ``script``."""
+COMBINED_MARKER = "Task: extract the entities and the facts"
+
+
+def _answer(script: Script) -> Callable[[ScriptedCall], object]:
+    """Return the answer function that follows ``script`` for all prompt shapes."""
     fenced: dict[str, tuple[Sequence[ScriptedEntity], Sequence[ScriptedFact]]] = {}
     for text, value in script.items():
         key = _block(fence("episode_text", text), "episode_text")
@@ -114,12 +118,30 @@ def text_models(script: Script) -> RoleModels:
     def answer(call: ScriptedCall) -> object:
         prompt = call.prompt
         entities, facts = fenced[_block(prompt, "episode_text")]
+        if prompt.startswith(COMBINED_MARKER):
+            return {
+                "entities": [
+                    {**_entity_item(prompt, entity), "ref": f"e{index}"}
+                    for index, entity in enumerate(entities)
+                ],
+                "facts": [_fact_item(prompt, fact) for fact in facts],
+            }
         if "Task: list the entities" in prompt:
             return {"entities": [_entity_item(prompt, entity) for entity in entities]}
         return {"facts": [_fact_item(prompt, fact) for fact in facts]}
 
-    model, _ = scripted_model(answer=answer)
-    return scripted_role_models(model)
+    return answer
+
+
+def counted_text_models(script: Script) -> tuple[RoleModels, Scripted]:
+    """Return a scripted model pool and the recorder of its calls."""
+    model, scripted = scripted_model(answer=_answer(script))
+    return scripted_role_models(model), scripted
+
+
+def text_models(script: Script) -> RoleModels:
+    """Return a model pool whose extraction answers follow ``script``."""
+    return counted_text_models(script)[0]
 
 
 @asynccontextmanager

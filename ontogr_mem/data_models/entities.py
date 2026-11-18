@@ -75,7 +75,9 @@ class Entity(_Model):
 
     Attributes:
         entity_id: Deterministic id. A merged id is never reused.
-        type_label: Entity type label, such as ``Person``.
+        type_label: Catalog label recorded when the type was assigned.
+        ontology_type_id: Stable type id. Zero is the Unknown type.
+        proposed_type: Type name the model gave while the type is Unknown.
         canonical_name: Name chosen when the entity was created.
         strict_key: Normalized lookup key of the canonical name.
         loose_key: Blocking key of the canonical name.
@@ -99,6 +101,8 @@ class Entity(_Model):
 
     entity_id: str
     type_label: str
+    ontology_type_id: int = 0
+    proposed_type: str = ""
     canonical_name: str
     strict_key: str
     loose_key: str

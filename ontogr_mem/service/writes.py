@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
+from ontogr_mem.combined_extraction.extractor import CombinedExtractor
 from ontogr_mem.data_models import (
     UNKNOWN_TYPE_ID,
     Actor,
@@ -46,6 +47,8 @@ from ontogr_mem.ingestion import IngestionPipeline, seal
 from ontogr_mem.llm import ModelFailure, ModelRole
 from ontogr_mem.ontology.extraction_items import stabilize_facts
 from ontogr_mem.ontology.models import UNKNOWN_ID, Ontology, Reason, Relation
+from ontogr_mem.ontology.projection import Projection
+from ontogr_mem.ontology.stamp import stamp_types
 from ontogr_mem.ontology.validate import EntityItem, ExtractedItems, RelationItem
 from ontogr_mem.request_context import current_context
 from ontogr_mem.service.connectors import draft_registry
@@ -212,7 +215,7 @@ async def _prepare_fact(
             ("o", request.object, object_type),
         )
     ]
-    await tenant.resolver.resolve(entities)
+    await _resolve(tenant, entities, projection)
     valid_from = request.valid_from or request.reference_time or occurred_at
     time_basis = (
         TimeBasis.STATED if request.valid_from is not None else TimeBasis.REFERENCE
@@ -272,6 +275,14 @@ async def _prepare_text(
     ):
         return episode, []
     projection = await tenant.ontology.extraction_view()
+    if tenant.extraction.mode == "combined":
+        entity_result, fact_result = await CombinedExtractor(tenant.models).extract(
+            episode, projection.view, tenant.stores.episodes
+        )
+        _raise_on_failure(entity_result.status, entity_result.detail)
+        _raise_on_failure(fact_result.status, fact_result.detail)
+        await _resolve(tenant, entity_result.entities, projection)
+        return episode, fact_result.facts
     entities = await EntityExtraction(
         [LLMExtractor(tenant.models)],
         RecordMapper({}),
@@ -279,19 +290,36 @@ async def _prepare_text(
         previous=tenant.stores.episodes,
     ).extract([episode])
     entity_result = entities.results[0]
-    if entity_result.status in {Status.ERROR, Status.PARSE_FAILED}:
-        raise LLMUnavailableError(entity_result.detail, hint=_LLM_HINT)
-    await tenant.resolver.resolve(entity_result.entities)
+    _raise_on_failure(entity_result.status, entity_result.detail)
+    stamped = await _resolve(tenant, entity_result.entities, projection)
     fact_report = await FactExtraction(
         LLMFactExtractor(tenant.models),
         InMemoryFactStore(),
         projection.view,
         previous=tenant.stores.episodes,
-    ).extract([episode], {episode.id: entity_result.entities})
+    ).extract([episode], {episode.id: stamped})
     fact_result = fact_report.results[0]
-    if fact_result.status in {Status.ERROR, Status.PARSE_FAILED}:
-        raise LLMUnavailableError(fact_result.detail, hint=_LLM_HINT)
+    _raise_on_failure(fact_result.status, fact_result.detail)
     return episode, fact_result.facts
+
+
+def _raise_on_failure(status: Status, detail: str) -> None:
+    """Raise LLMUnavailableError when an extraction call failed."""
+    if status in {Status.ERROR, Status.PARSE_FAILED}:
+        raise LLMUnavailableError(detail, hint=_LLM_HINT)
+
+
+async def _resolve(
+    tenant: TenantRuntime,
+    entities: Sequence[ExtractedEntity],
+    projection: Projection,
+    *,
+    allow_model: bool = True,
+) -> list[ExtractedEntity]:
+    """Stamp the entities with their ontology types, then resolve them."""
+    stamped = stamp_types(entities, projection)
+    await tenant.resolver.resolve(stamped, allow_model=allow_model)
+    return stamped
 
 
 # The steps share the validation report and projection, so the flow stays whole.
@@ -430,7 +458,7 @@ async def _prepare_sourced_facts(  # noqa: PLR0912, PLR0915
                         confidence=1.0,
                         method=Method.RECORD,
                         episode_id=episode.id,
-                        type_label=endpoint.type_label if unknown else None,
+                        proposed_type=endpoint.type_label if unknown else "",
                     )
                 )
             extraction = await EntityExtraction(
@@ -456,7 +484,7 @@ async def _prepare_sourced_facts(  # noqa: PLR0912, PLR0915
                 return episode, [], _drop_results(drops)
             # The resolver raises on an episode it has already resolved.
             if not await tenant.resolver.store.episode_resolution_state(episode.id):
-                await tenant.resolver.resolve(result.entities, allow_model=False)
+                await _resolve(tenant, result.entities, projection, allow_model=False)
             bound_facts = list(bound.facts)
     return episode, bound_facts, _drop_results(drops)
 
@@ -528,7 +556,7 @@ async def update_memory(  # noqa: PLR0915
         method=Method.RECORD,
         episode_id=episode.id,
     )
-    await tenant.resolver.resolve([new_entity])
+    await _resolve(tenant, [new_entity], projection)
     new_id = await tenant.resolver.store.entity_id_for_ref(episode.id, "n")
     if new_id is None:
         raise InternalError("new object reference did not resolve")

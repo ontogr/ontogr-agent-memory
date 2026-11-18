@@ -40,6 +40,7 @@ async def make(
     models: RoleModels | None = None,
     embedder: Embedder | None = None,
     inline: bool = False,
+    policy: ResolutionPolicy | None = None,
     **settings: object,
 ) -> EntityResolver:
     """Build a resolver on the given store with a deterministic embedder."""
@@ -51,7 +52,7 @@ async def make(
     return EntityResolver(
         store,
         vectors,
-        ResolutionPolicy(),
+        policy if policy is not None else ResolutionPolicy(),
         ResolverSettings(inline_verification=inline, **settings),  # type: ignore[arg-type]
         SystemClock(),
         models=models or build_models(LLMConfig.model_construct()),

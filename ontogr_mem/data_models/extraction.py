@@ -49,16 +49,18 @@ class ExtractedEntity:
     Attributes:
         local_id: Id that is unique inside the episode.
         name: The name as written in the episode.
-        type_id: Dense id of the entity type in the catalog the extractor used,
-            or -1 when no type fits.
+        type_id: Dense id of the entity type in the projection the extractor used,
+            or -1 for Unknown.
         confidence: Value from 0 to 1.
         method: How the entity was found.
         episode_id: Episode the entity came from.
-        type_label: A type name the model chose that is not in the catalog.
+        type_label: Catalog label, or None before the write path sets it.
         description: Short text from the model.
         attributes: Scalar attributes with evidence in the episode.
         spans: Character offsets of the mentions. Empty for the actor and for
             entities mapped from records, which have no text to point into.
+        ontology_type_id: Stable type id, 0 for Unknown, or None before stamping.
+        proposed_type: Type name the model gave when no catalog type fit.
     """
 
     local_id: str
@@ -71,6 +73,8 @@ class ExtractedEntity:
     description: str = ""
     attributes: dict[str, Any] = field(default_factory=dict)
     spans: tuple[Span, ...] = ()
+    ontology_type_id: int | None = None
+    proposed_type: str = ""
 
     def __post_init__(self) -> None:
         """Reject a confidence outside 0 to 1."""

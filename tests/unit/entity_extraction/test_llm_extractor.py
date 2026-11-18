@@ -74,9 +74,11 @@ class TestLLMExtractor:
 
         result = await LLMExtractor(models).extract(text_episode(TEXT), catalog())
 
-        assert [(e.name, e.type_id, e.type_label) for e in result.entities] == [
-            ("Orders", UNKNOWN_TYPE_ID, "Table"),
-            ("Ana", UNKNOWN_TYPE_ID, None),
+        assert [
+            (e.name, e.type_id, e.proposed_type, e.type_label) for e in result.entities
+        ] == [
+            ("Orders", UNKNOWN_TYPE_ID, "Table", None),
+            ("Ana", UNKNOWN_TYPE_ID, "", None),
         ]
 
     async def test_low_confidence_entity_is_typed_unknown(self):
@@ -87,6 +89,44 @@ class TestLLMExtractor:
 
         result = await LLMExtractor(models).extract(text_episode(TEXT), catalog())
 
+        assert result.entities[0].type_id == UNKNOWN_TYPE_ID
+
+    async def test_same_name_with_distinct_types_stays_separate(self):
+        """Two catalog types keep two entities for the same name."""
+        models, _ = entity_models(
+            [
+                reply(
+                    {"name": "Jordan", "type_id": 0, "confidence": 0.9},
+                    {"name": "Jordan", "type_id": 2, "confidence": 0.9},
+                )
+            ]
+        )
+
+        result = await LLMExtractor(models).extract(
+            text_episode("Jordan met Jordan."), catalog()
+        )
+
+        assert [(e.local_id, e.type_id) for e in result.entities] == [
+            ("e0", 0),
+            ("e1", 2),
+        ]
+
+    async def test_same_name_collapses_when_both_types_are_downgraded(self):
+        """Low confidence gives both proposals the same effective type."""
+        models, _ = entity_models(
+            [
+                reply(
+                    {"name": "Jordan", "type_id": 0, "confidence": 0.6},
+                    {"name": "Jordan", "type_id": 2, "confidence": 0.6},
+                )
+            ]
+        )
+
+        result = await LLMExtractor(models).extract(
+            text_episode("Jordan met Jordan."), catalog()
+        )
+
+        assert len(result.entities) == 1
         assert result.entities[0].type_id == UNKNOWN_TYPE_ID
 
     async def test_reasks_a_malformed_reply_and_keeps_both_requests_in_usage(self):

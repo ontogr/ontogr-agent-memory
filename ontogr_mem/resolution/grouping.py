@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from ontogr_mem.data_models import ExtractedEntity
+from ontogr_mem.data_models import UNKNOWN_LABEL, ExtractedEntity
 from ontogr_mem.resolution.keys import loose_key, strict_key
 from ontogr_mem.resolution.policy import (
     ResolutionPolicy,
@@ -35,6 +35,8 @@ class Group:
         uri: Bound identifier, if any member carried one.
         identity: Normalized identity attributes of the group.
         surface_forms: Names as written by the members.
+        ontology_type_id: Stable id of the group type.
+        proposed_type: Type name the model gave while the type is Unknown.
     """
 
     members: list[ExtractedEntity]
@@ -47,6 +49,24 @@ class Group:
     uri: str | None = None
     identity: dict[str, str] = field(default_factory=dict)
     surface_forms: list[str] = field(default_factory=list)
+    ontology_type_id: int = 0
+    proposed_type: str = ""
+
+
+def _promote_group_type(
+    target: Group,
+    label: str,
+    extracted: ExtractedEntity,
+    relations: TypeRelations,
+) -> None:
+    """Promote the group's type triple when a member's type is more specific."""
+    winner = relations.more_specific(target.type_label, label)
+    if winner != target.type_label:
+        target.type_label = winner
+        target.ontology_type_id = extracted.ontology_type_id or 0
+        target.proposed_type = extracted.proposed_type
+    elif target.type_label == label == UNKNOWN_LABEL and not target.proposed_type:
+        target.proposed_type = extracted.proposed_type
 
 
 def build_groups(
@@ -79,13 +99,15 @@ def build_groups(
                 members=[],
                 name=extracted.name.strip(),
                 type_label=label,
+                ontology_type_id=extracted.ontology_type_id or 0,
+                proposed_type=extracted.proposed_type,
                 strict=key,
                 loose=loose_key(extracted.name),
                 uri=str(uri) if uri else None,
             )
             groups.append(target)
         else:
-            target.type_label = relations.more_specific(target.type_label, label)
+            _promote_group_type(target, label, extracted, relations)
             target.uri = target.uri or (str(uri) if uri else None)
         target.members.append(extracted)
         if extracted.description and extracted.description not in target.descriptions:

@@ -41,7 +41,7 @@ OntoGr Agent Memory is an open source Python library that stores what an agent l
   <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/extraction-layer.svg" alt="A source item becomes an episode. The entity extractor and the fact extractor both read it, and the ontology manager gives each the types it allows. Entity resolution links extracted names to canonical entities in the graph store, and the fact extractor passes facts to the temporal engine." width="860">
 </p>
 
-Ingestion stores each item as an episode with its source and actor. Extraction then reads the episode in two passes, one for entities and one for facts. The ontology sets the allowed types, and resolution links each name to a canonical entity.
+Ingestion stores each item as an episode with its source and actor. By default, text extraction reads the episode in two passes, one for entities and one for facts. Set `MEMORY_EXTRACTION_MODE=combined` to request both in one pass. The ontology sets the allowed types, and resolution links each name to a canonical entity.
 
 #### Episode ingestion
 
@@ -68,7 +68,7 @@ Ingestion accepts five source kinds:
 
 *Entity extraction finds the names in an episode, and every name must appear in the text.*
 
-Entity extraction and fact extraction are separate passes over the same episode. Entity extraction returns entities. The relation between two entities comes from fact extraction, where each fact carries a relation that the ontology maps to a stable type. Entity extraction supports these extractors:
+In the default two-pass mode, entity extraction and fact extraction run separately over the same episode. Combined mode requests entities and facts together. The relation between two entities comes from fact extraction, where each fact carries a relation that the ontology maps to a stable type. Entity extraction supports these extractors:
 
 - an LLM extractor with a numbered type catalog
 - GLiNER and spaCy extractors
@@ -98,6 +98,8 @@ A language model can state things that the text never says. Fact extraction chec
 Free-form labels drift, so one relation can appear under many names and its facts cannot be compared. A catalog gives each type a stable id.
 
 Each tenant has a catalog of entity types and relation types, plus aliases. Type ids are stable integers. A type can be deprecated or merged, but old ids remain resolvable. A catalog change is a change set applied by one pure function and committed with a compare-and-swap against the current head, so a stale head fails instead of overwriting another change.
+
+Entity lookup and retrieval responses expose `type_label` with its catalog label and `proposed_type` with the model's type name when the entity has the Unknown type. The model's proposed name does not replace the catalog label.
 
 A label that the catalog does not hold is handled by kind:
 
@@ -977,6 +979,7 @@ Settings classes use `pydantic-settings`. They read the `.env` file in the curre
 | `MEMORY_CONSOLIDATION_` | Consolidation leases, feedback, scoring, communities, and retention. |
 | `MEMORY_ENTITY_EXTRACTION_` | Entity extractor concurrency, context, and thresholds. |
 | `MEMORY_FACT_EXTRACTION_` | Fact extractor concurrency, context, and version. |
+| `MEMORY_EXTRACTION_MODE` | Selects `two_pass` (the default) or `combined` entity and fact extraction. `two_pass` runs separate entity and fact passes. `combined` requests both in one pass. Invalid model replies can trigger retries. |
 | `MEMORY_LLM_` | Global and per-role model settings. See [Named model roles](#named-model-roles). |
 | `MEMORY_EMBEDDING_` | Provider selection, native FastEmbed options, endpoint settings and batch size. See [Language model and embedding layer](#language-model-and-embedding-layer). |
 | `MEMORY_FORGET_` | Forget confirmation secret. |

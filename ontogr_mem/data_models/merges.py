@@ -50,6 +50,8 @@ class SurvivorDelta(TypedDict, total=False):
 
     Attributes:
         type_label: Type label of the survivor before the merge.
+        ontology_type_id: Stable type id of the survivor before the merge.
+        proposed_type: Proposed type text of the survivor before the merge.
         uri: Bound identifier of the survivor before the merge.
         descriptions_added: Descriptions the merge added to the survivor.
         attribute_keys_added: Attribute keys the merge added to the survivor.
@@ -60,6 +62,8 @@ class SurvivorDelta(TypedDict, total=False):
     """
 
     type_label: str
+    ontology_type_id: int
+    proposed_type: str
     uri: str | None
     descriptions_added: list[str]
     attribute_keys_added: list[str]
