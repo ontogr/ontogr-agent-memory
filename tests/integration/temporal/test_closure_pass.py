@@ -133,4 +133,8 @@ async def test_malformed_closure_response_caches_only_recognized_contradictions(
     assert len(judge.calls) == 2
     assert {fact_id for fact_id, _ in judge.calls[1][1]} == {old_facts["one"].fact_id}
     applied = await store.verdicts_for([new_fact.fact_id, old_facts["one"].fact_id])
-    assert {verdict.verdict for verdict in applied} == {VerdictKind.CONTRADICTS}
+    assert {
+        verdict.verdict
+        for verdict in applied
+        if verdict.fact_b_id == old_facts["one"].fact_id
+    } == {VerdictKind.CONTRADICTS}

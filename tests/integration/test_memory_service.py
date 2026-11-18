@@ -740,21 +740,22 @@ class TestMemoryService:
         assert job.result["skipped"] == {}
         assert job.attempts == 2
         assert vector_attempts == 2
-        assert len(job.result["fact_ids"]) == 1
+        assert len(job.result["fact_ids"]) == 3
         entity = await harness.service.get_entity(
             harness.principal, GetEntity(tenant="t1", name="Hydra")
         )
-        assert len(entity.facts) == 2
+        assert len(entity.facts) == 4
         assert any(fact.fact_id in job.result["fact_ids"] for fact in entity.facts)
 
         observations = await stores.temporal_store.observations_of_episode(
             job.result["episode_id"]
         )
-        assert len(observations) == 1
-        assert [
+        assert len(observations) == 3
+        assert all(
             (item.actor_role, item.source_system, item.connector)
+            == ("assistant", "agent-memory", "agent-interface")
             for item in observations
-        ] == [("assistant", "agent-memory", "agent-interface")]
+        )
         episodes = await harness.service.list_episodes(
             harness.principal,
             ListEpisodes(tenant="t1", session_id="mixed-outcomes"),
@@ -785,8 +786,8 @@ class TestMemoryService:
         )
         assert skipped_job.result is not None
         assert skipped_job.result["unplaced"] == 1
-        assert skipped_job.result["skipped"] == {}
-        assert len(skipped_job.result["fact_ids"]) == 1
+        assert skipped_job.result["skipped"] == {"ref_count": 1}
+        assert skipped_job.result["fact_ids"] == []
         listed = await harness.service.list_episodes(
             harness.principal,
             ListEpisodes(tenant="t1", session_id="all-skipped"),

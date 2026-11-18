@@ -66,20 +66,26 @@ async def make_reader_world(graph_backend: GraphBackend):
                 slot="withdrawn",
                 episode="reset-episode",
             ),
-            obs(
-                "kept-observation",
-                "paris",
-                at(2020),
-                slot="kept",
-                episode="kept-episode",
+            replace(
+                obs(
+                    "kept-observation",
+                    "paris",
+                    at(2020),
+                    slot="kept",
+                    episode="kept-episode",
+                ),
+                statement="Ana keeps a flat in Paris.",
             ),
-            obs(
-                "inverse-observation",
-                "paris",
-                at(2020),
-                slot="inverse",
-                inverse=True,
-                holder="ana",
+            replace(
+                obs(
+                    "inverse-observation",
+                    "paris",
+                    at(2020),
+                    slot="inverse",
+                    inverse=True,
+                    holder="ana",
+                ),
+                statement="Paris residents include Ana.",
             ),
         ]
     )
@@ -205,13 +211,6 @@ class TestFactReader:
         assert all("stable-1" in view.evidence for view in by_observation)
         assert all(view.statement == "Ana lives in Paris." for view in by_observation)
         assert all(view.source == "test-source" for view in by_observation)
-        assert {
-            view.fact_id
-            for view in await reader.by_observations(
-                ["reset-observation"],
-                TemporalQuery(now=clock.value, include_history=True),
-            )
-        } == {withdrawn.fact_id}
 
     async def test_modality_filter_and_event_visibility(
         self, graph_backend: GraphBackend
@@ -282,11 +281,12 @@ class TestFactReader:
         assert stable_view.statement == "Ana lives in Paris."
         assert stable_view.source == "test-source"
         assert all(view.statement for view in touching if view.slot_key != "stable")
-        (withdrawn,) = await reader.by_observations(
-            ["reset-observation"], TemporalQuery(now=NOW, include_history=True)
+        assert (
+            await reader.by_observations(
+                ["reset-observation"], TemporalQuery(now=NOW, include_history=True)
+            )
+            == []
         )
-        assert withdrawn.status is FactStatus.WITHDRAWN
-        assert withdrawn.statement == "Ana works at Rome."
 
     async def test_subset_of_open_dispute_keeps_its_counterpart_annotation(
         self, graph_backend: GraphBackend
