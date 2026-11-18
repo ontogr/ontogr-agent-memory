@@ -120,7 +120,7 @@ def bind_entities(
     out: list[ExtractedEntity] = []
     ids: list[str | None] = []
     dropped: list[Dropped] = []
-    seen: dict[tuple[str, int], int] = {}
+    seen: dict[tuple[str, int], list[int]] = {}
     for item in raw:
         name = item.name.strip()
         info = {"name": item.name, "type_id": item.type_id}
@@ -166,12 +166,18 @@ def bind_entities(
             ):
                 attributes.setdefault(declared, raw_value)
         name_key = normalize_name(name)
-        index = seen.get((name_key, type_id))
-        conflict = index is not None and any(
-            attributes[key] != out[index].attributes[key]
-            for key in attributes.keys() & out[index].attributes.keys()
+        index = next(
+            (
+                candidate
+                for candidate in seen.get((name_key, type_id), ())
+                if not any(
+                    attributes[key] != out[candidate].attributes[key]
+                    for key in attributes.keys() & out[candidate].attributes.keys()
+                )
+            ),
+            None,
         )
-        if index is not None and not conflict:
+        if index is not None:
             prior = out[index]
             out[index] = replace(
                 prior,
@@ -180,7 +186,7 @@ def bind_entities(
             )
             ids.append(out[index].local_id)
             continue
-        seen[(name_key, type_id)] = len(out)
+        seen.setdefault((name_key, type_id), []).append(len(out))
         local_id = f"e{len(out)}"
         out.append(
             ExtractedEntity(

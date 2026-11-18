@@ -140,7 +140,7 @@ class TemporalStack:
         await self.episodes.write_episodes([episode])
         view = await self.manager.extraction_view()
         stamped = stamp_types(entities, view)
-        await self.resolver.resolve(stamped, await self.links())
+        await self.resolver.resolve(stamped, TypeLinks.from_ontology(view.ontology))
         models, _ = fact_models(answer=scripted_facts(temporal_replies(view.view)))
         extraction = FactExtraction(
             LLMFactExtractor(models), InMemoryFactStore(), view.view

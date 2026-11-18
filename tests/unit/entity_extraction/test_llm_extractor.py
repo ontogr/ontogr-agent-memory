@@ -192,6 +192,42 @@ class TestLLMExtractor:
             {"email": "two@example.com"},
         ]
 
+    async def test_later_mention_reuses_the_first_namesake_after_a_conflict(self):
+        """A third mention that matches the first namesake reuses that entity."""
+        models, _ = entity_models(
+            [
+                reply(
+                    {
+                        "name": "Ana",
+                        "type_id": 0,
+                        "confidence": 0.9,
+                        "attributes": {"email": "one@example.com"},
+                    },
+                    {
+                        "name": "Ana",
+                        "type_id": 0,
+                        "confidence": 0.9,
+                        "attributes": {"email": "two@example.com"},
+                    },
+                    {
+                        "name": "Ana",
+                        "type_id": 0,
+                        "confidence": 0.9,
+                        "attributes": {"email": "one@example.com"},
+                    },
+                )
+            ]
+        )
+        result = await LLMExtractor(models).extract(
+            text_episode("Ana uses one@example.com, two@example.com, one@example.com."),
+            TypeCatalog([EntityType(0, "Person", identity_attributes=("email",))], []),
+        )
+
+        assert [entity.attributes for entity in result.entities] == [
+            {"email": "one@example.com"},
+            {"email": "two@example.com"},
+        ]
+
     async def test_same_name_with_distinct_types_stays_separate(self):
         """Two catalog types keep two entities for the same name."""
         models, _ = entity_models(

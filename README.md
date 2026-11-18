@@ -161,7 +161,7 @@ Resolution links extracted names to canonical entities through a ladder:
 3. a fuzzy Jaccard match
 4. a model verdict for the remaining ambiguous pairs
 
-- **Ids survive merges:** An entity id is a UUID5 over the first mention, so it survives a merge and a deleted duplicate is not recreated from its name. A type-family policy decides which entities may merge.
+- **Ids survive merges:** An entity id is a UUID5 over the first mention, so it survives a merge and a deleted duplicate is not recreated from its name. The ontology's type ids decide which entities may merge; see Entity identity and resolver compatibility below.
 - **Three outcomes:** A name links to an existing entity, becomes a new entity when no candidate remains or the verifier calls every candidate distinct, or becomes a provisional entity that is checked again later.
 - **Merges are reversible:** A merge never deletes the absorbed entity. It keeps a `merged_into` pointer and a snapshot, so an unmerge can restore both sides.
 - **Mentions and aliases are records:** Entity verdicts record same, distinct, or uncertain decisions for later runs.

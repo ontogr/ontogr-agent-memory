@@ -109,6 +109,7 @@ async def scan_residue(  # noqa: C901, PLR0912
                     str(entity.identity_attrs),
                 ]
             )
-            if any(needle in text for needle in needles):
+            normalized = strict_key(text)
+            if any(strict_key(needle) in normalized for needle in needles):
                 residue.add(f"entity_text:{entity.entity_id}")
     return tuple(sorted(residue))

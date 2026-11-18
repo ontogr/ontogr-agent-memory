@@ -113,9 +113,16 @@ class TypeCatalog:
         return result
 
     def identity_names(self, dense_id: int) -> tuple[str, ...]:
-        """Return identity attribute names, or an empty tuple for Unknown."""
+        """Return identity attribute names, or an empty tuple for Unknown.
+
+        Raises:
+            ValueError: If ``dense_id`` does not name a catalog type.
+        """
         if dense_id == UNKNOWN_TYPE_ID:
             return ()
+        if not 0 <= dense_id < len(self.entity_types):
+            msg = f"entity type id {dense_id} is outside the catalog"
+            raise ValueError(msg)
         return self.entity_types[dense_id].identity_attributes
 
     def relation_types_json(self) -> list[dict[str, Any]]:

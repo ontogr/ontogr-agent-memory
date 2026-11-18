@@ -26,9 +26,9 @@ async def falkordb_environment(
     yield
 
 
-def ontology_file(tmp_path: Path, entities: str) -> Path:
+def ontology_file(tmp_path: Path, entities: str, name: str = "ontology.yaml") -> Path:
     """Write ontology entities to a temporary YAML file."""
-    path = tmp_path / "ontology.yaml"
+    path = tmp_path / name
     path.write_text(f"entities:\n{entities}\n", encoding="utf-8")
     return path
 
@@ -84,9 +84,11 @@ class TestTypeCompatibility:
     ):
         """A renamed type matches entities stored under its former label."""
         tenant = new_tenant()
-        old = ontology_file(tmp_path, "  - label: Employer\n")
+        old = ontology_file(tmp_path, "  - label: Employer\n", name="old.yaml")
         new = ontology_file(
-            tmp_path, "  - label: Company\n    renamed_from: [Employer]\n"
+            tmp_path,
+            "  - label: Company\n    renamed_from: [Employer]\n",
+            name="new.yaml",
         )
         answers = script(
             {"Acme is an employer.": "Employer", "Acme is a company.": "Company"}
@@ -110,9 +112,13 @@ class TestTypeCompatibility:
     ):
         """A merged type matches entities stored under its former id."""
         tenant = new_tenant()
-        old = ontology_file(tmp_path, "  - label: Firm\n  - label: Company\n")
+        old = ontology_file(
+            tmp_path, "  - label: Firm\n  - label: Company\n", name="old.yaml"
+        )
         new = ontology_file(
-            tmp_path, "  - label: Firm\n    merged_into: Company\n  - label: Company\n"
+            tmp_path,
+            "  - label: Firm\n    merged_into: Company\n  - label: Company\n",
+            name="new.yaml",
         )
         answers = script({"Acme is a firm.": "Firm", "Acme is a company.": "Company"})
         try:

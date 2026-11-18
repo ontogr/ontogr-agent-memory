@@ -24,6 +24,7 @@ from ontogr_mem.llm import LLMConfig, build_models
 from ontogr_mem.ontology.extraction_items import stabilize_facts
 from ontogr_mem.ontology.links import TypeLinks
 from ontogr_mem.ontology.manager import OntologyManager
+from ontogr_mem.ontology.stamp import stamp_types
 from ontogr_mem.resolution import EntityResolver, ResolutionPolicy
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionMode, TypePolicy
@@ -242,7 +243,7 @@ async def _process(stack: WriterStack, episodes: Sequence[Episode], observer):
             for entity in result.entities
         ]
         by_episode[result.episode_id] = enriched
-        await stack.resolver.resolve(enriched, links)
+        await stack.resolver.resolve(stamp_types(enriched, projection), links)
 
     relation = projection.view.catalog.relation_by_label("works_at")
     assert relation is not None

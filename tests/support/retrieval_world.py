@@ -27,6 +27,7 @@ from ontogr_mem.ontology.links import TypeLinks
 from ontogr_mem.ontology.manager import OntologyManager
 from ontogr_mem.ontology.models import AddEntity, AddRelation, PatternSpec
 from ontogr_mem.ontology.ontology_store import OntologyStore
+from ontogr_mem.ontology.stamp import stamp_types
 from ontogr_mem.resolution import EntityResolver
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionMode, ResolutionPolicy, TypePolicy
@@ -193,7 +194,7 @@ async def build_world(backend: RetrievalBackend) -> RetrievalWorld:
             content_hash=content_hash(spec.content),
         )
         extracted = _extracted_entities(spec, type_ids)
-        resolved = await resolver.resolve(extracted, links)
+        resolved = await resolver.resolve(stamp_types(extracted, projection), links)
         stored_entities.update(
             {entity.canonical_name: entity for entity in resolved.entities}
         )

@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Custom resolver integrations must pass `TypeLinks` to `resolve`, `deduplicate`, and `merge`; `Entity` construction now requires `ontology_type_id`.
+- Custom resolver integrations must accept a `TypeLinks` argument in `resolve`, `deduplicate`, and `merge`, and use `resolver.linked(links)` to bind one snapshot for consolidation; `Entity` construction now requires `ontology_type_id`.
 - People verification is off by default.
 - The entity extraction prompt uses ontology type ids and records the model's type name in `proposed_type` when no id matches.
 - Relations use a kind in place of the `exclusive` flag. PyYAML and RDFLib are

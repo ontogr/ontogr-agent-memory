@@ -18,16 +18,10 @@ from tests.support.type_world import WORLD
 
 FIXED_TIME = datetime(2026, 10, 21, tzinfo=UTC)
 
-_EXTRA_TYPE_IDS: dict[str, int] = {}
-
 
 def type_id_for(label: str) -> int:
-    """Return a stable type id for a label, extending WORLD for extra labels."""
-    if label in WORLD.ids:
-        return WORLD.ids[label]
-    if label not in _EXTRA_TYPE_IDS:
-        _EXTRA_TYPE_IDS[label] = 1000 + len(_EXTRA_TYPE_IDS)
-    return _EXTRA_TYPE_IDS[label]
+    """Return the stable id of a label, or Unknown for a label WORLD lacks."""
+    return WORLD.ids.get(label, WORLD.ids["Unknown"])
 
 
 def entity(
