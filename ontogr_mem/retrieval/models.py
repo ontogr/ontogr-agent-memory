@@ -5,12 +5,11 @@ found: the ranked facts, the ranked episodes, the entity cards, one record per
 lane and the notes the retriever made on the way.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from typing import Final
 
-from ontogr_mem.data_models.facts import Modality
 from ontogr_mem.data_models.timestamps import require_utc
 from ontogr_mem.retrieval.errors import RetrievalError
 from ontogr_mem.retrieval.scope import SearchScope
@@ -191,12 +190,7 @@ class RetrievalRequest:
             ``exclude``.
         mentions: Entity names the question names.
         graph_depth: Hops the graph lane walks from its seeds.
-        entity_types: Entity type labels to include.
-        exclude_entity_types: Entity type labels to exclude.
-        relation_types: Relation type labels to include.
-        exclude_relation_types: Relation type labels to exclude.
-        modalities: Fact modalities to return.
-        scope: Resolved filters for this request.
+        scope: Resolved type and modality filters for this request.
     """
 
     query: str
@@ -210,20 +204,14 @@ class RetrievalRequest:
     disputed: str = "flag"
     mentions: tuple[str, ...] = ()
     graph_depth: int = 1
-    entity_types: tuple[str, ...] = ()
-    exclude_entity_types: tuple[str, ...] = ()
-    relation_types: tuple[str, ...] = ()
-    exclude_relation_types: tuple[str, ...] = ()
-    modalities: tuple[str, ...] = ("actual",)
-    scope: SearchScope | None = None
+    scope: SearchScope = field(default_factory=SearchScope)
 
     def __post_init__(self) -> None:  # noqa: PLR0912
         """Reject a request the retriever cannot serve.
 
         Raises:
             RetrievalError: If the query is blank, a timestamp has no timezone,
-                the time filters conflict, a bound is out of range, or the
-                modalities are empty or unsupported.
+                the time filters conflict, or a bound is out of range.
         """
         if not self.query.strip():
             msg = "query must not be blank"
@@ -256,33 +244,19 @@ class RetrievalRequest:
         if self.disputed not in DISPUTED_MODES:
             msg = f"disputed must be one of {DISPUTED_MODES}"
             raise RetrievalError(msg)
-        if not self.modalities:
-            msg = "modalities must not be empty"
-            raise RetrievalError(msg)
-        try:
-            modalities = frozenset(Modality(value) for value in self.modalities)
-        except ValueError as exc:
-            msg = f"unsupported modality: {exc}"
-            raise RetrievalError(msg) from exc
         if len(self.mentions) > MENTION_CAP:
             msg = f"mentions must hold at most {MENTION_CAP} names"
             raise RetrievalError(msg)
         if any(not mention.strip() for mention in self.mentions):
             msg = "mentions must not hold a blank name"
             raise RetrievalError(msg)
-        if self.scope is None:
-            object.__setattr__(
-                self,
-                "scope",
-                SearchScope(modalities=modalities),
-            )
 
     def to_temporal_query(self) -> TemporalQuery:
         """Build the temporal query that matches the time filters of the request.
 
         Returns:
             A query with the same present time, valid time, system time,
-            overlap window and history flag.
+            overlap window and history flag, and the resolved modalities.
         """
         return TemporalQuery(
             now=self.now,
@@ -290,7 +264,7 @@ class RetrievalRequest:
             known_at=self.known_at,
             overlaps=self.overlaps,
             include_history=self.include_history,
-            modalities=self.scope.modalities if self.scope is not None else frozenset(),
+            modalities=self.scope.modalities,
         )
 
 

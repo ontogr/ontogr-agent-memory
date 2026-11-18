@@ -83,8 +83,6 @@ class TestRetrievalRequest:
             pytest.param({"graph_depth": 0}, id="depth-below-one"),
             pytest.param({"graph_depth": 4}, id="depth-above-cap"),
             pytest.param({"disputed": "ignore"}, id="unknown-disputed-mode"),
-            pytest.param({"modalities": ()}, id="empty-modalities"),
-            pytest.param({"modalities": ("bogus",)}, id="unsupported-modality"),
             pytest.param(
                 {"mentions": ("a", "b", "c", "d", "e", "f", "g", "h", "i")},
                 id="too-many-mentions",

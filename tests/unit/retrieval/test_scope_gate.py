@@ -11,6 +11,11 @@ from ontogr_mem.retrieval.errors import UnknownFilterLabelError
 from ontogr_mem.retrieval.gate import FactGate
 from ontogr_mem.retrieval.models import RetrievalRequest
 from ontogr_mem.retrieval.scope import SearchScope, build_scope
+from ontogr_mem.service.contracts import SearchMemory
+
+
+NOW = datetime(2026, 10, 23, 12, 0, tzinfo=UTC)
+"""The present time every request in this module uses."""
 
 
 class TestBuildScope:
@@ -61,6 +66,24 @@ class TestBuildScope:
         )
         assert await build_scope("tenant", request, fail) == SearchScope()
 
+    async def test_resolves_a_public_search_request(self) -> None:
+        """Resolve type labels and modalities from a SearchMemory request."""
+        links = SimpleNamespace(
+            entity_family=lambda label: frozenset({7}) if label == "Person" else None,
+            relation_family=lambda label: None,
+        )
+
+        async def load_links():
+            return links
+
+        request = SearchMemory(
+            query="query", entity_types=["Person"], modalities=["planned"]
+        )
+        scope = await build_scope("tenant", request, load_links)
+
+        assert scope.entity_types == frozenset({7})
+        assert scope.modalities == frozenset({Modality.PLANNED})
+
     async def test_unknown_label_names_tenant_and_label(self) -> None:
         """Report an unknown filter label with its tenant context."""
         links = SimpleNamespace(
@@ -81,29 +104,38 @@ class TestBuildScope:
             await build_scope("tenant", request, load_links)
 
 
-class TestRetrievalRequestModalities:
-    """Use request modalities unless a resolved scope supplies them."""
+class TestRetrievalRequestScope:
+    """Use the resolved scope as the only source of retrieval filters."""
 
-    def test_uses_direct_modalities_without_scope(self) -> None:
-        """Use direct modalities when no scope has been resolved."""
+    def test_uses_default_scope_modalities(self) -> None:
+        """Use actual-only modalities when no scope is supplied."""
+        request = RetrievalRequest(query="query", now=NOW)
+
+        assert request.to_temporal_query().modalities == frozenset({Modality.ACTUAL})
+
+    def test_uses_scope_modalities(self) -> None:
+        """Use modalities from the resolved scope."""
         request = RetrievalRequest(
             query="query",
-            now=datetime.now(UTC),
-            modalities=("planned",),
+            now=NOW,
+            scope=SearchScope(modalities=frozenset({Modality.PLANNED})),
         )
 
         assert request.to_temporal_query().modalities == frozenset({Modality.PLANNED})
 
-    def test_preserves_scope_modalities(self) -> None:
-        """Use modalities from the resolved scope."""
-        request = RetrievalRequest(
-            query="query",
-            now=datetime.now(UTC),
-            modalities=("planned",),
-            scope=SearchScope(modalities=frozenset({Modality.ACTUAL})),
-        )
-
-        assert request.to_temporal_query().modalities == frozenset({Modality.ACTUAL})
+    @pytest.mark.parametrize(
+        "label_field",
+        [
+            "entity_types",
+            "exclude_entity_types",
+            "relation_types",
+            "exclude_relation_types",
+        ],
+    )
+    def test_rejects_unresolved_label_fields(self, label_field: str) -> None:
+        """Raw labels cannot reach a request without first being resolved."""
+        with pytest.raises(TypeError, match=label_field):
+            RetrievalRequest(query="query", now=NOW, **{label_field: ("Person",)})
 
 
 class TestFactGate:
@@ -135,7 +167,6 @@ class TestFactGate:
 
     async def test_filters_cards_by_own_type(self) -> None:
         """Filter entity cards by each entity's own type."""
-        now = datetime.now(UTC)
 
         class Reader:
             async def get_entities(
@@ -149,8 +180,8 @@ class TestFactGate:
                         canonical_name="a",
                         strict_key="a",
                         loose_key="a",
-                        created_at=now,
-                        updated_at=now,
+                        created_at=NOW,
+                        updated_at=NOW,
                     ),
                     Entity(
                         entity_id="b",
@@ -159,8 +190,8 @@ class TestFactGate:
                         canonical_name="b",
                         strict_key="b",
                         loose_key="b",
-                        created_at=now,
-                        updated_at=now,
+                        created_at=NOW,
+                        updated_at=NOW,
                     ),
                 ]
 

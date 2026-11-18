@@ -13,7 +13,9 @@ from ontogr_mem.service.contracts import (
     ConsolidateMemory,
     ContractModel,
     EntityOut,
+    EntityPage,
     EntityRef,
+    EntityTypeOut,
     EntityView,
     EpisodeOut,
     EpisodePage,
@@ -24,16 +26,24 @@ from ontogr_mem.service.contracts import (
     ForgetMode,
     ForgetResult,
     GetEntity,
+    GetOntology,
     HostFact,
     InvalidateMemory,
     JobState,
     JobView,
+    ListEntities,
     ListEpisodes,
+    ListStaleEpisodes,
     MemoryContext,
     MemoryFeedback,
     MemoryKind,
+    OntologyView,
+    PatternOut,
+    RelationTypeOut,
     ScopedRequest,
     SearchMemory,
+    StaleEpisodeOut,
+    StaleEpisodePage,
     StatusOut,
     UpdateMemory,
     WriteReceipt,
@@ -85,6 +95,33 @@ ENTITY_EXAMPLE = EntityOut(
     type_label="Person",
     summary="A person",
     aliases=["Al", "Ally"],
+)
+
+PATTERN_EXAMPLE = PatternOut(source="Person", target="Organization")
+
+ENTITY_TYPE_EXAMPLE = EntityTypeOut(
+    label="Person",
+    description="A person",
+    aliases=["Human"],
+    identity_attributes=["name"],
+    status="active",
+)
+
+RELATION_TYPE_EXAMPLE = RelationTypeOut(
+    label="WORKS_AT",
+    description="Employment",
+    aliases=["works at"],
+    kind="directed",
+    symmetric=False,
+    patterns=[PATTERN_EXAMPLE],
+    status="active",
+)
+
+STALE_EPISODE_EXAMPLE = StaleEpisodeOut(
+    episode_id="e1",
+    kind="message",
+    ingested_at=NOW,
+    ontology_version=2,
 )
 
 EXAMPLES = (
@@ -166,6 +203,25 @@ EXAMPLES = (
         include_history=True,
         max_facts=50,
     ),
+    ListEntities(tenant="t1", entity_type="Person", cursor="c1", limit=50),
+    GetOntology(tenant="t1", include_deprecated=True),
+    ListStaleEpisodes(tenant="t1", cursor="c3", limit=5),
+    PATTERN_EXAMPLE,
+    ENTITY_TYPE_EXAMPLE,
+    RELATION_TYPE_EXAMPLE,
+    OntologyView(
+        tenant="t1",
+        version=3,
+        entity_types=[ENTITY_TYPE_EXAMPLE],
+        relation_types=[RELATION_TYPE_EXAMPLE],
+    ),
+    STALE_EPISODE_EXAMPLE,
+    StaleEpisodePage(
+        tenant="t1",
+        current_version=3,
+        episodes=[STALE_EPISODE_EXAMPLE],
+        next_cursor="c4",
+    ),
     ListEpisodes(tenant="t1", session_id="s1", cursor="c2", limit=50),
     WRITE_EXAMPLE,
     JobView(
@@ -193,6 +249,7 @@ EXAMPLES = (
     EntityRef(entity_id="e1", name="Alice"),
     FACT_EXAMPLE,
     ENTITY_EXAMPLE,
+    EntityPage(entities=[ENTITY_EXAMPLE], next_cursor="c5"),
     MemoryContext(
         state="found",
         facts=[FACT_EXAMPLE],

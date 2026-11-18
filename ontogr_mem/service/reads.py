@@ -121,20 +121,13 @@ async def _retrieve_tenants(
             disputed=request.disputed,
             mentions=tuple(request.mentions),
             graph_depth=request.graph_depth,
-            entity_types=tuple(request.entity_types),
-            exclude_entity_types=tuple(request.exclude_entity_types),
-            relation_types=tuple(request.relation_types),
-            exclude_relation_types=tuple(request.exclude_relation_types),
-            modalities=tuple(request.modalities),
         )
     except RetrievalError as exc:
         raise InvalidArgumentError(str(exc)) from exc
     results = []
     for tenant_id, runtime in tenants:
         try:
-            scope = await build_scope(
-                tenant_id, retrieval_request, runtime.links_for_head
-            )
+            scope = await build_scope(tenant_id, request, runtime.links_for_head)
             results.append(
                 await runtime.retriever.retrieve(
                     replace(retrieval_request, scope=scope)
