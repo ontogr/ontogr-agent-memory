@@ -971,7 +971,10 @@ class TestMemoryService:
         assert len(placed) == 1
         assert unplaced[0].relation_label == "MENTORS"
         assert placed[0].relation_label == "WORKS_AT"
-        assert placed[0].relation_type_id == before.relation_by_label("WORKS_AT").type_id
+        works_at = before.relation_by_label("WORKS_AT")
+        if works_at is None:
+            raise AssertionError("WORKS_AT missing from the catalog")
+        assert placed[0].relation_type_id == works_at.type_id
         assert unplaced[0].fact_id != placed[0].fact_id
         assert unplaced[0].object_id != placed[0].object_id
         after = await manager.catalog()
