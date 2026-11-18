@@ -21,6 +21,7 @@ class EntityType:
     id: int
     label: str
     description: str = ""
+    identity_attributes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,10 +100,23 @@ class TypeCatalog:
 
     def entity_types_json(self) -> list[dict[str, Any]]:
         """Entity types as plain data for prompts."""
-        return [
-            {"id": t.id, "label": t.label, "description": t.description}
-            for t in self.entity_types
-        ]
+        result = []
+        for t in self.entity_types:
+            item: dict[str, Any] = {
+                "id": t.id,
+                "label": t.label,
+                "description": t.description,
+            }
+            if t.identity_attributes:
+                item["identity_attributes"] = list(t.identity_attributes)
+            result.append(item)
+        return result
+
+    def identity_names(self, dense_id: int) -> tuple[str, ...]:
+        """Return identity attribute names, or an empty tuple for Unknown."""
+        if dense_id == UNKNOWN_TYPE_ID:
+            return ()
+        return self.entity_types[dense_id].identity_attributes
 
     def relation_types_json(self) -> list[dict[str, Any]]:
         """Relation types as plain data for prompts."""
