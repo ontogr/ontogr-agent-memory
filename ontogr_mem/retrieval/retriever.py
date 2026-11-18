@@ -497,14 +497,22 @@ class Retriever:
                 ordered_ids = await gate.admit_entities(ordered_ids)
                 if not ordered_ids:
                     return []
-            entities = await self._ordered_entities(ordered_ids)
+            resolved = await self._ordered_entities(ordered_ids)
         except Exception as exc:
             if not _port_error(exc):
                 raise
             notes.append(f"entity cards unavailable: {exc}")
             return []
         cards: list[EntityCard] = []
-        for entity in entities:
+        seen: set[str] = set()
+        for requested_id, entity in resolved:
+            for lane in source_map.get(requested_id, ("fact",)):
+                target = source_map.setdefault(entity.entity_id, [])
+                if lane not in target:
+                    target.append(lane)
+            if entity.entity_id in seen:
+                continue
+            seen.add(entity.entity_id)
             try:
                 aliases = await self._entities.aliases_of(entity.entity_id)
             except Exception as exc:
@@ -527,8 +535,8 @@ class Retriever:
                 break
         return cards
 
-    async def _ordered_entities(self, ids: Sequence[str]) -> list[Entity]:
-        """Resolve merged ids and preserve the first candidate's position."""
+    async def _ordered_entities(self, ids: Sequence[str]) -> list[tuple[str, Entity]]:
+        """Resolve merged ids and keep the requested id beside each survivor."""
         direct = await self._entities.get_entities(ids)
         known = {entity.entity_id: entity for entity in direct}
         while True:
@@ -547,8 +555,7 @@ class Retriever:
                 break
             known.update({entity.entity_id: entity for entity in fetched})
 
-        ordered: list[Entity] = []
-        seen: set[str] = set()
+        resolved: list[tuple[str, Entity]] = []
         for entity_id in ids:
             current = known.get(entity_id)
             visited: set[str] = set()
@@ -558,14 +565,9 @@ class Retriever:
                     break
                 visited.add(current.entity_id)
                 current = known.get(current.merged_into)
-            if (
-                current is not None
-                and current.status is EntityStatus.ACTIVE
-                and current.entity_id not in seen
-            ):
-                ordered.append(current)
-                seen.add(current.entity_id)
-        return ordered
+            if current is not None and current.status is EntityStatus.ACTIVE:
+                resolved.append((entity_id, current))
+        return resolved
 
 
 def _find_view(key: FactKey, lanes: Sequence[LaneOutput]) -> FactView | None:
