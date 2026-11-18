@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 
 from ontogr_mem.data_models.fact_versions import Fact
 from ontogr_mem.temporal.handler import fact_side
-from ontogr_mem.temporal.trust import Trust
 from ontogr_mem.temporal.temporal_store import TemporalStore
+from ontogr_mem.temporal.trust import Trust
 from ontogr_mem.temporal.verdicts import (
     FactVerdict,
     VerdictKind,
