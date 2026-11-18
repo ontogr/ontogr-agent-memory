@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 
+from ontogr_mem.combined_extraction.settings import ExtractionSettings
 from ontogr_mem.consolidation import (
     ConsolidationRunner,
     default_stages,
@@ -38,6 +39,7 @@ class TenantRuntime:
     clock: Clock
     _labels: dict[int, str] = field(default_factory=dict)
     models: RoleModels = field(kw_only=True)
+    extraction: ExtractionSettings = field(kw_only=True)
 
     @property
     def llm_available(self) -> bool:
@@ -88,6 +90,7 @@ def build_tenant_runtime(
     policy: ResolutionPolicy,
     resolver_settings: ResolverSettings,
     retrieval_settings: RetrievalSettings,
+    extraction_settings: ExtractionSettings | None = None,
 ) -> TenantRuntime:
     """Wire the memory components around one tenant's stores."""
     writer = VectorWriter(stores.vectors)
@@ -122,4 +125,5 @@ def build_tenant_runtime(
         clock,
         labels,
         models=models,
+        extraction=extraction_settings or ExtractionSettings(),
     )

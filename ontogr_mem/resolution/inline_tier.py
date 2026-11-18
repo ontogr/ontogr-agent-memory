@@ -54,6 +54,7 @@ async def inline_verify(
             policy=policy,
             settings=settings,
             relations=relations,
+            settle=False,
         )
         plan = apply_verdicts(collected, {}, incomplete)
         if plan.outcome is Outcome.MATCHED or not plan.verify:
@@ -101,6 +102,8 @@ def _pseudo(index: int, group: Group, clock: Clock) -> Entity:
     return Entity(
         entity_id=f"new:{index}",
         type_label=group.type_label,
+        ontology_type_id=group.ontology_type_id,
+        proposed_type=group.proposed_type,
         canonical_name=group.name,
         strict_key=group.strict,
         loose_key=group.loose,

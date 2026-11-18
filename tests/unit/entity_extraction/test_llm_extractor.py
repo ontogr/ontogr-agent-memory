@@ -74,9 +74,11 @@ class TestLLMExtractor:
 
         result = await LLMExtractor(models).extract(text_episode(TEXT), catalog())
 
-        assert [(e.name, e.type_id, e.type_label) for e in result.entities] == [
-            ("Orders", UNKNOWN_TYPE_ID, "Table"),
-            ("Ana", UNKNOWN_TYPE_ID, None),
+        assert [
+            (e.name, e.type_id, e.proposed_type, e.type_label) for e in result.entities
+        ] == [
+            ("Orders", UNKNOWN_TYPE_ID, "Table", None),
+            ("Ana", UNKNOWN_TYPE_ID, "", None),
         ]
 
     async def test_low_confidence_entity_is_typed_unknown(self):

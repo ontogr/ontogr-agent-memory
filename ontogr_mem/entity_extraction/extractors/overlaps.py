@@ -72,7 +72,11 @@ def _combine(existing: ExtractedEntity, ent: ExtractedEntity) -> ExtractedEntity
         "spans": tuple(sorted(set(existing.spans) | set(ent.spans)))
     }
     if existing.type_id == UNKNOWN_TYPE_ID and ent.type_id != UNKNOWN_TYPE_ID:
-        changes |= {"type_id": ent.type_id, "confidence": ent.confidence}
+        changes |= {
+            "type_id": ent.type_id,
+            "confidence": ent.confidence,
+            "proposed_type": "",
+        }
     if not existing.description and ent.description:
         changes["description"] = ent.description
     return replace(existing, **changes)

@@ -40,6 +40,28 @@ TEXT_KINDS = frozenset({Kind.MESSAGE, Kind.DOCUMENT, Kind.TOOL_OUTPUT})
 STRUCTURED_KINDS = frozenset({Kind.RECORD, Kind.EVENT})
 
 
+def add_speaker(
+    episode: Episode, entities: list[ExtractedEntity], types: TypeCatalog
+) -> list[ExtractedEntity]:
+    """Add the message speaker as an entity when no matching name exists."""
+    if episode.kind is not Kind.MESSAGE:
+        return entities
+    actor = episode.actor
+    name = actor.display_name or actor.id
+    if any(same_name(entity.name, name) for entity in entities):
+        return entities
+    speaker = ExtractedEntity(
+        local_id="actor",
+        name=name,
+        type_id=types.actor_type_id(),
+        confidence=1.0,
+        method=Method.RECORD,
+        episode_id=episode.id,
+        attributes={"actor_id": actor.id, "role": actor.role.value},
+    )
+    return [*entities, speaker]
+
+
 def _compose(extractors: Sequence[EntityExtractor]) -> EntityExtractor:
     """Combine the extractors into the one the pipeline calls.
 
@@ -164,27 +186,7 @@ class EntityExtraction:
         result = ExtractionResult(
             episode.id,
             Status.OK if found.entities else Status.EMPTY,
-            self._with_actor(episode, found.entities),
+            add_speaker(episode, found.entities, self._types),
             usage=found.usage,
         )
         return result, [t.value for t in found.triggers]
-
-    def _with_actor(
-        self, episode: Episode, entities: list[ExtractedEntity]
-    ) -> list[ExtractedEntity]:
-        if episode.kind is not Kind.MESSAGE:
-            return entities
-        actor = episode.actor
-        name = actor.display_name or actor.id
-        if any(same_name(e.name, name) for e in entities):
-            return entities
-        speaker = ExtractedEntity(
-            local_id="actor",
-            name=name,
-            type_id=self._types.actor_type_id(),
-            confidence=1.0,
-            method=Method.RECORD,
-            episode_id=episode.id,
-            attributes={"actor_id": actor.id, "role": actor.role.value},
-        )
-        return [*entities, speaker]

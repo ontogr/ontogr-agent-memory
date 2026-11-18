@@ -77,53 +77,67 @@ class LLMExtractor(EntityExtractor):
                 ),
             }
         )
-        return Extracted(self._bind(episode, types, raw), usage)
+        return Extracted(bind_entities(episode, types, raw, self._settings)[0], usage)
 
-    def _bind(
-        self, episode: Episode, types: TypeCatalog, raw: list[RawEntity]
-    ) -> list[ExtractedEntity]:
-        text = text_of(episode)
-        out: list[ExtractedEntity] = []
-        seen: dict[str, int] = {}
-        for item in raw:
-            name = item.name.strip()
-            if not name or not types.has_entity_id(item.type_id):
-                log.debug("discarding entity %r with type id %s", name, item.type_id)
-                continue
-            spans = find_spans(text, name)
-            if not spans:
-                log.debug("discarding entity %r: not in the episode", name)
-                continue
-            confidence = (
-                item.confidence
-                if item.confidence is not None
-                else self._settings.default_confidence
+
+def bind_entities(
+    episode: Episode,
+    types: TypeCatalog,
+    raw: Sequence[RawEntity],
+    settings: EntityExtractionSettings,
+) -> tuple[list[ExtractedEntity], list[str | None]]:
+    """Bind model entities to the episode text and the type catalog.
+
+    Names that are not in the episode text and ids outside the catalog are
+    discarded. Entities with one normalized name collapse into the first.
+
+    Returns:
+        The bound entities, and for each raw item the local id of the entity it
+        became. A discarded item has None. A duplicate has the id of the entity
+        it collapsed into.
+    """
+    text = text_of(episode)
+    out: list[ExtractedEntity] = []
+    ids: list[str | None] = []
+    seen: dict[str, int] = {}
+    for item in raw:
+        name = item.name.strip()
+        if not name or not types.has_entity_id(item.type_id):
+            log.debug("discarding entity %r with type id %s", name, item.type_id)
+            ids.append(None)
+            continue
+        spans = find_spans(text, name)
+        if not spans:
+            log.debug("discarding entity %r: not in the episode", name)
+            ids.append(None)
+            continue
+        confidence = (
+            item.confidence
+            if item.confidence is not None
+            else settings.default_confidence
+        )
+        type_id = item.type_id if confidence >= settings.threshold else UNKNOWN_TYPE_ID
+        proposed = (item.type_label or "").strip()
+        name_key = normalize_name(name)
+        if (index := seen.get(name_key)) is not None:
+            prior = out[index]
+            out[index] = replace(prior, confidence=max(prior.confidence, confidence))
+            ids.append(out[index].local_id)
+            continue
+        seen[name_key] = len(out)
+        local_id = f"e{len(out)}"
+        out.append(
+            ExtractedEntity(
+                local_id=local_id,
+                name=name,
+                type_id=type_id,
+                confidence=confidence,
+                method=Method.LLM,
+                episode_id=episode.id,
+                proposed_type=proposed if item.type_id == UNKNOWN_TYPE_ID else "",
+                description=item.description,
+                spans=tuple(spans),
             )
-            type_id = (
-                item.type_id
-                if confidence >= self._settings.threshold
-                else UNKNOWN_TYPE_ID
-            )
-            label = (item.type_label or "").strip() or None
-            name_key = normalize_name(name)
-            if (index := seen.get(name_key)) is not None:
-                prior = out[index]
-                out[index] = replace(
-                    prior, confidence=max(prior.confidence, confidence)
-                )
-                continue
-            seen[name_key] = len(out)
-            out.append(
-                ExtractedEntity(
-                    local_id=f"e{len(out)}",
-                    name=name,
-                    type_id=type_id,
-                    confidence=confidence,
-                    method=Method.LLM,
-                    episode_id=episode.id,
-                    type_label=label if item.type_id == UNKNOWN_TYPE_ID else None,
-                    description=item.description,
-                    spans=tuple(spans),
-                )
-            )
-        return out
+        )
+        ids.append(local_id)
+    return out, ids

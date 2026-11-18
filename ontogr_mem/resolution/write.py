@@ -63,8 +63,14 @@ def _matched(
     clock: Clock,
 ) -> Entity:
     type_label = entity.type_label
+    type_id = entity.ontology_type_id
+    proposed_type = entity.proposed_type
     if type_label.casefold() != group.type_label.casefold():
-        type_label = relations.more_specific(type_label, group.type_label)
+        winner = relations.more_specific(type_label, group.type_label)
+        if winner != type_label:
+            type_label = winner
+            type_id = group.ontology_type_id
+            proposed_type = group.proposed_type
     descriptions = list(entity.descriptions)
     for description in group.descriptions:
         if description not in descriptions:
@@ -79,6 +85,8 @@ def _matched(
         update={
             "status": EntityStatus.ACTIVE,
             "type_label": type_label,
+            "ontology_type_id": type_id,
+            "proposed_type": proposed_type,
             "descriptions": descriptions,
             "attributes": attributes,
             "identity_attrs": identity_attrs,
@@ -105,6 +113,8 @@ async def _created(
     fresh = Entity(
         entity_id=entity_id_value,
         type_label=group.type_label,
+        ontology_type_id=group.ontology_type_id,
+        proposed_type=group.proposed_type,
         canonical_name=group.name,
         strict_key=group.strict,
         loose_key=group.loose,
@@ -130,6 +140,8 @@ async def _created(
     return prior.model_copy(
         update={
             "type_label": fresh.type_label,
+            "ontology_type_id": fresh.ontology_type_id,
+            "proposed_type": fresh.proposed_type,
             "canonical_name": fresh.canonical_name,
             "strict_key": fresh.strict_key,
             "loose_key": fresh.loose_key,

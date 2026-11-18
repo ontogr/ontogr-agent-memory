@@ -99,6 +99,8 @@ Free-form labels drift, so one relation can appear under many names and its fact
 
 Each tenant has a catalog of entity types and relation types, plus aliases. Type ids are stable integers. A type can be deprecated or merged, but old ids remain resolvable. A catalog change is a change set applied by one pure function and committed with a compare-and-swap against the current head, so a stale head fails instead of overwriting another change.
 
+Each entity exposes `type_label` with its catalog label and `proposed_type` with the model's type name when the entity has the Unknown type. The model's proposed name does not replace the catalog label.
+
 A label that the catalog does not hold is handled by kind:
 
 | Kind | Behavior |
@@ -977,6 +979,7 @@ Settings classes use `pydantic-settings`. They read the `.env` file in the curre
 | `MEMORY_CONSOLIDATION_` | Consolidation leases, feedback, scoring, communities, and retention. |
 | `MEMORY_ENTITY_EXTRACTION_` | Entity extractor concurrency, context, and thresholds. |
 | `MEMORY_FACT_EXTRACTION_` | Fact extractor concurrency, context, and version. |
+| `MEMORY_EXTRACTION_MODE` | `two_pass` | Selects `two_pass` or `combined` entity and fact extraction. `two_pass` makes up to two model calls per write, while `combined` makes one. |
 | `MEMORY_LLM_` | Global and per-role model settings. See [Named model roles](#named-model-roles). |
 | `MEMORY_EMBEDDING_` | Provider selection, native FastEmbed options, endpoint settings and batch size. See [Language model and embedding layer](#language-model-and-embedding-layer). |
 | `MEMORY_FORGET_` | Forget confirmation secret. |

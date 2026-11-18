@@ -21,7 +21,7 @@ from ontogr_mem.resolution.errors import EpisodeAlreadyResolvedError
 from ontogr_mem.resolution.grouping import build_groups
 from ontogr_mem.resolution.ids import entity_id
 from ontogr_mem.resolution.keys import entity_text
-from ontogr_mem.resolution.policy import ResolutionPolicy, TypePolicy
+from ontogr_mem.resolution.policy import ResolutionMode, ResolutionPolicy, TypePolicy
 from ontogr_mem.resolution.resolver import EntityResolver
 from ontogr_mem.resolution.resolver_store import ResolverStore
 from ontogr_mem.vectorstore import (
@@ -54,6 +54,9 @@ NAMES = (
     "Jasper",
 )
 QUERY = "Manganese"
+VERIFY_PEOPLE = ResolutionPolicy(
+    types={"Person": TypePolicy(mode=ResolutionMode.VERIFY_ALWAYS)}
+)
 
 
 async def make(
@@ -75,7 +78,7 @@ async def make(
     return EntityResolver(
         chosen,
         vectors,
-        policy or ResolutionPolicy(),
+        policy or VERIFY_PEOPLE,
         ResolverSettings(inline_verification=inline, **settings),  # type: ignore[arg-type]
         clock or SystemClock(),  # type: ignore[arg-type]
         models=models or build_models(LLMConfig.model_construct()),
@@ -212,8 +215,14 @@ async def test_person_family_key_hit_is_created_provisional_not_merged(
 async def test_equal_identity_attribute_matches_a_person_automatically(
     graph_backend: GraphBackend,
 ):
-    """An equal identity attribute settles a key hit."""
-    policy = ResolutionPolicy(types={"Person": TypePolicy(identity_attrs=("email",))})
+    """An equal identity attribute settles a key hit that needs verification."""
+    policy = ResolutionPolicy(
+        types={
+            "Person": TypePolicy(
+                mode=ResolutionMode.VERIFY_ALWAYS, identity_attrs=("email",)
+            )
+        }
+    )
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(graph_backend, store, policy=policy)
 

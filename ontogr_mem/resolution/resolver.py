@@ -141,10 +141,10 @@ class EntityResolver:
         Args:
             entities: Extracted entities of one or more episodes.
             allow_model: Whether inline verification may call the resolution
-                model. ``False`` skips inline verification for this call only;
-                deterministic candidate matching still runs, and entities that
-                would have needed verification are written as new provisional
-                entities instead of being linked to a candidate.
+                model. ``False`` skips inline verification for this call only.
+                When no verifier runs, a name that matches several stored
+                entities attaches to the preferred one instead of becoming a
+                provisional entity.
         """
         batch = list(entities)
         if not batch:
@@ -173,11 +173,12 @@ class EntityResolver:
                 settings=self.settings,
             )
             verified: dict[int, dict[str, VerdictKind]] = {}
-            if (
+            verifier_runs = (
                 allow_model
                 and self.settings.inline_verification
                 and self._verifier is not None
-            ):
+            )
+            if verifier_runs:
                 verified = await inline_verify(
                     groups,
                     candidates,
@@ -189,7 +190,9 @@ class EntityResolver:
                     incomplete=incomplete,
                     clock=self.clock,
                 )
-            return await self._write(groups, candidates, verified, incomplete)
+            return await self._write(
+                groups, candidates, verified, incomplete, settle=not verifier_runs
+            )
 
     async def _write(
         self,
@@ -197,6 +200,8 @@ class EntityResolver:
         candidates: Sequence[Sequence[Candidate]],
         verified: dict[int, dict[str, VerdictKind]],
         incomplete: bool,
+        *,
+        settle: bool,
     ) -> ResolutionResult:
         entities: list[Entity] = []
         aliases: list[Alias] = []
@@ -213,6 +218,7 @@ class EntityResolver:
                 policy=self.policy,
                 settings=self.settings,
                 relations=self.relations,
+                settle=settle,
             )
             plan: Plan = apply_verdicts(collected, verified.get(index, {}), incomplete)
             entity, written_aliases, written_mentions = await write_group(

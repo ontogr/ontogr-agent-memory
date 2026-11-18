@@ -102,10 +102,10 @@ def test_block_index_from_rows_indexes_aliases_and_the_stripped_key():
     assert "e1#s" in ix.candidates("apple")
 
 
-def test_policy_defaults_person_verify_always_others_auto_key():
-    """People are verified and every other type may merge on a key."""
+def test_every_type_is_keyed_unless_the_policy_says_otherwise():
+    """Every type defaults to key matching."""
     p = ResolutionPolicy()
-    assert p.mode("Person") is ResolutionMode.VERIFY_ALWAYS
+    assert p.mode("Person") is ResolutionMode.AUTO_KEY
     assert p.mode("City") is ResolutionMode.AUTO_KEY
     assert p.mode("Widget") is ResolutionMode.AUTO_KEY
 

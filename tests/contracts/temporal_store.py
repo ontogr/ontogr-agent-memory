@@ -58,6 +58,7 @@ NOW = datetime(2026, 4, 1, tzinfo=UTC)
 WRITERS = 30
 TENANTS = 20
 LONG_LIST = 60
+MAX_CONCURRENT_COMMITS = 8
 
 
 def at(year: int) -> datetime:
@@ -396,16 +397,24 @@ class TemporalStoreContract:
         for harness in harnesses:
             await harness.store.append_observations([observation("obs-1")])
 
+        # A graph server queues only a limited number of queries at once, so
+        # admit the commits in bounded waves instead of sending every tenant's
+        # writers to the server simultaneously.
+        gate = asyncio.Semaphore(MAX_CONCURRENT_COMMITS)
+
         def commit_in(harness: TemporalHarness) -> Callable[[int], Awaitable[int]]:
-            def commit(index: int) -> Awaitable[int]:
-                return harness.store.commit_slot(
-                    SlotCommit(
-                        slot_key=SLOT,
-                        base_revision=0,
-                        new_facts=(version("fact-1", 1),),
-                        ledger=(ledger_for(SLOT, (0, GENESIS), writer=f"w{index}"),),
+            async def commit(index: int) -> int:
+                async with gate:
+                    return await harness.store.commit_slot(
+                        SlotCommit(
+                            slot_key=SLOT,
+                            base_revision=0,
+                            new_facts=(version("fact-1", 1),),
+                            ledger=(
+                                ledger_for(SLOT, (0, GENESIS), writer=f"w{index}"),
+                            ),
+                        )
                     )
-                )
 
             return commit
 

@@ -516,7 +516,11 @@ class FactOut(ContractModel):
 
 
 class EntityOut(ContractModel):
-    """A canonical entity."""
+    """A canonical entity.
+
+    Attributes:
+        proposed_type: Type name the model gave while the type is Unknown.
+    """
 
     entity_id: str
     tenant: TenantId
@@ -524,6 +528,7 @@ class EntityOut(ContractModel):
     type_label: str = ""
     summary: str = ""
     aliases: list[str] = Field(default_factory=list)
+    proposed_type: str = ""
 
 
 class MemoryContext(ContractModel):

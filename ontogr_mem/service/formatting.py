@@ -20,6 +20,7 @@ def entity_out(tenant_id: str, entity: Entity, aliases: list[Alias]) -> EntityOu
         tenant=tenant_id,
         name=entity.canonical_name,
         type_label=entity.type_label,
+        proposed_type=entity.proposed_type,
         summary=entity.summary,
         aliases=[alias.text for alias in aliases],
     )
@@ -32,6 +33,7 @@ def entity_card_out(tenant_id: str, card: EntityCard) -> EntityOut:
         tenant=tenant_id,
         name=card.name,
         type_label=card.type_label,
+        proposed_type=card.proposed_type,
         summary=card.summary,
         aliases=list(card.aliases),
     )

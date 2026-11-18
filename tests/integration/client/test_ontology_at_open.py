@@ -62,6 +62,7 @@ class TestOntologyAtOpen:
                 job = await memory.get_job(receipt.job_id)
                 assert job.result is not None
                 assert len(job.result["fact_ids"]) == 1
+                assert (await memory.get_entity("Acme")).entity.type_label == "Employer"
                 result = await memory.search("Who does Acme employ?")
                 assert [fact.statement for fact in result.facts] == ["Acme employs Ana"]
             async with open_memory(tenant, text_models(script)) as memory:
@@ -70,6 +71,7 @@ class TestOntologyAtOpen:
                 job = await memory.get_job(receipt.job_id)
                 assert job.result is not None
                 assert len(job.result["fact_ids"]) == 1
+                assert (await memory.get_entity("Beta")).entity.type_label == "Employer"
         finally:
             await falkordb_store.erase_tenant(tenant)
 

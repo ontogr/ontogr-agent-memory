@@ -151,6 +151,7 @@ async def test_a_candidate_the_verifier_never_answered_stays_pending(
         policy=resolver.policy,
         settings=resolver.settings,
         relations=resolver.relations,
+        settle=False,
     )
     plan = apply_verdicts(collected, {"e1": VerdictKind.DISTINCT}, False)
 

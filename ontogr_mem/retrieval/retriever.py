@@ -491,6 +491,7 @@ class Retriever:
                     entity_id=entity.entity_id,
                     name=entity.canonical_name,
                     type_label=entity.type_label,
+                    proposed_type=entity.proposed_type,
                     aliases=tuple(alias.text for alias in aliases),
                     summary=entity.summary,
                     lanes=tuple(source_map.get(entity.entity_id, ("fact",))),

@@ -33,6 +33,7 @@ class EntityCard:
         aliases: Alias text values in sorted order.
         facts: Latest visible version of each fact touching this entity.
         facts_truncated: Whether ``max_facts`` omitted any matching facts.
+        proposed_type: Type name the model gave while the type is Unknown.
     """
 
     entity_id: str
@@ -44,6 +45,7 @@ class EntityCard:
     aliases: tuple[str, ...]
     facts: tuple[FactView, ...]
     facts_truncated: bool
+    proposed_type: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +133,7 @@ async def entity_card(
         entity_id=entity.entity_id,
         name=entity.canonical_name,
         type_label=entity.type_label,
+        proposed_type=entity.proposed_type,
         summary=entity.summary,
         status=entity.status,
         merged_into=entity.merged_into,

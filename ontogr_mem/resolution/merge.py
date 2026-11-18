@@ -119,6 +119,8 @@ async def build_merge_plan(
         "merge", survivor_id, absorbed_id, actor, reason, str(len(mentions))
     )
     now = clock.now()
+    winner = relations.more_specific(survivor.type_label, absorbed.type_label)
+    adopts = winner != survivor.type_label
     snapshot = {
         "entity": absorbed.model_dump(mode="json"),
         "aliases": [alias.model_dump(mode="json") for alias in aliases],
@@ -134,6 +136,8 @@ async def build_merge_plan(
     ]
     delta: dict[str, Any] = {
         "type_label": survivor.type_label,
+        "ontology_type_id": survivor.ontology_type_id,
+        "proposed_type": survivor.proposed_type,
         "uri": survivor.uri,
         "descriptions_added": descriptions_added,
         "attribute_keys_added": attribute_keys_added,
@@ -144,8 +148,12 @@ async def build_merge_plan(
     }
     updated_survivor = survivor.model_copy(
         update={
-            "type_label": relations.more_specific(
-                survivor.type_label, absorbed.type_label
+            "type_label": winner,
+            "ontology_type_id": (
+                absorbed.ontology_type_id if adopts else survivor.ontology_type_id
+            ),
+            "proposed_type": (
+                absorbed.proposed_type if adopts else survivor.proposed_type
             ),
             "descriptions": survivor.descriptions + descriptions_added,
             "attributes": {**absorbed.attributes, **survivor.attributes},
@@ -226,6 +234,8 @@ def build_unmerge_plan(
     restored_survivor = survivor.model_copy(
         update={
             "type_label": delta["type_label"],
+            "ontology_type_id": delta["ontology_type_id"],
+            "proposed_type": delta["proposed_type"],
             "uri": delta["uri"],
             "descriptions": [
                 d for d in survivor.descriptions if d not in delta["descriptions_added"]
