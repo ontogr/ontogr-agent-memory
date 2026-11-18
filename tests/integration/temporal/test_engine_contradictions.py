@@ -103,7 +103,7 @@ async def test_record_verdicts_then_reconcile_applies_them(graph_backend: GraphB
         [await verdict(store, facts[0], facts[1], VerdictKind.CONTRADICTS, lambda: NOW)]
     )
 
-    assert report.counts[Outcome.JUDGE_CONTRADICTS.value] == 1
+    assert report.counts[Outcome.SLOT_COMMITTED.value] == 1
     assert await current_objects(store) == ["globex"]
     believed = TemporalQuery(now=NOW, include_history=True, known_at=NOW)
     closed = [v for v in await store.query(believed) if v.object_id == "acme"]

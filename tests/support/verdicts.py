@@ -24,12 +24,16 @@ async def verdict(
     now: Callable[[], datetime],
 ) -> FactVerdict:
     """Build a verdict from the facts' stored first observations."""
-    observations = {
+    observations_a = {
         observation.obs_id: observation
-        for observation in await store.observations_by_ids((*a.evidence, *b.evidence))
+        for observation in await store.observations_of_slot(a.slot_key)
     }
-    first = fact_side(a, observations, Trust())
-    second = fact_side(b, observations, Trust())
+    observations_b = {
+        observation.obs_id: observation
+        for observation in await store.observations_of_slot(b.slot_key)
+    }
+    first = fact_side(a, observations_a, Trust())
+    second = fact_side(b, observations_b, Trust())
     return FactVerdict(
         pair_key=pair_key(a.fact_id, b.fact_id),
         fact_a_id=a.fact_id,

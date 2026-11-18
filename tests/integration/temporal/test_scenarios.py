@@ -112,16 +112,16 @@ class ScenarioContract:
                 obs("p1", "globex", at(2015), slot="other", rel=2),
             ]
         )
-        facts = {f.object_id: f.fact_id for f in await store.current_facts()}
+        facts = {f.object_id: f for f in await store.current_facts()}
         await engine.record_decision(
             ConflictDecision(
                 decision_id="decision-1",
                 conflict_id="conflict-1",
-                fact_ids=(facts["acme"], facts["globex"]),
+                fact_ids=(facts["acme"].fact_id, facts["globex"].fact_id),
                 action=DecisionAction.CHOOSE,
                 decided_by=VerdictSource.USER,
                 at=datetime(2026, 10, 1, tzinfo=UTC),
-                chosen_fact_id=facts["acme"],
+                chosen_fact_id=facts["acme"].fact_id,
             )
         )
 

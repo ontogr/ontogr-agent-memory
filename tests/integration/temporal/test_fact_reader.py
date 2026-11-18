@@ -198,7 +198,20 @@ class TestFactReader:
             view.fact_id for view in stored_query
         }
         assert successor.fact_id in {view.fact_id for view in history}
-        assert by_observation[0].fact_id == original.fact_id
+        assert [(view.version, view.status) for view in by_observation] == [
+            (1, FactStatus.ACTIVE),
+            (2, FactStatus.ACTIVE),
+        ]
+        assert all("stable-1" in view.evidence for view in by_observation)
+        assert all(view.statement == "Ana lives in Paris." for view in by_observation)
+        assert all(view.source == "test-source" for view in by_observation)
+        assert {
+            view.fact_id
+            for view in await reader.by_observations(
+                ["reset-observation"],
+                TemporalQuery(now=clock.value, include_history=True),
+            )
+        } == {withdrawn.fact_id}
 
     async def test_modality_filter_and_event_visibility(
         self, graph_backend: GraphBackend
@@ -267,7 +280,7 @@ class TestFactReader:
         assert {view.slot_key for view in touching} == {"stable", "kept", "inverse"}
         stable_view = next(view for view in touching if view.slot_key == "stable")
         assert stable_view.statement == "Ana lives in Paris."
-        assert stable_view.source_system == "test-source"
+        assert stable_view.source == "test-source"
         assert all(view.statement for view in touching if view.slot_key != "stable")
         (withdrawn,) = await reader.by_observations(
             ["reset-observation"], TemporalQuery(now=NOW, include_history=True)
