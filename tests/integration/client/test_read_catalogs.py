@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator
 
 import pytest
 
+from ontogr_mem.data_models.episode import Kind
 from ontogr_mem.graphstore.falkordb import FalkorDBGraphStore
 from ontogr_mem.ontology.declaration import (
     EntityDeclaration,
@@ -148,7 +149,7 @@ class TestClientReadCatalogs:
                 page = await memory.stale_episodes()
                 assert page.current_version > old_version
                 assert len(page.episodes) == 1
-                assert page.episodes[0].kind == "message"
+                assert page.episodes[0].kind == Kind.DOCUMENT
                 assert page.episodes[0].ontology_version == old_version
                 assert page.episodes[0].episode_id
                 assert page.episodes[0].ingested_at
