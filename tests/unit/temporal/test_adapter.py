@@ -208,15 +208,11 @@ class TestAdapter:
             "valid_from": at(2020),
             "text": "the same statement",
         }
-        (first,), _ = await convert(
-            typed(relation_label="has event", **common)
-        )
+        (first,), _ = await convert(typed(relation_label="has event", **common))
         (normalized,), _ = await convert(
             typed(relation_label=" HAS   EVENT ", **common)
         )
-        (different,), _ = await convert(
-            typed(relation_label="other event", **common)
-        )
+        (different,), _ = await convert(typed(relation_label="other event", **common))
         assert first.slot_key == normalized.slot_key
         assert first.slot_key != different.slot_key
 

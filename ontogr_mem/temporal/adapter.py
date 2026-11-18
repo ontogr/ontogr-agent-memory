@@ -127,9 +127,7 @@ def _isolated_slot_key(
             valid_from.isoformat() if time_basis is TimeBasis.STATED else "reference"
         )
         namespace = (
-            "slot-event-negated"
-            if polarity is Polarity.NEGATED
-            else "slot-event"
+            "slot-event-negated" if polarity is Polarity.NEGATED else "slot-event"
         )
         return stable_id(
             namespace, subject_id, object_id, relation, modality.value, start
