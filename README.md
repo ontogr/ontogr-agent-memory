@@ -41,7 +41,7 @@ OntoGr Agent Memory is an open source Python library that stores what an agent l
   <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/extraction-layer.svg" alt="A source item becomes an episode. The entity extractor and the fact extractor both read it, and the ontology manager gives each the types it allows. Entity resolution links extracted names to canonical entities in the graph store, and the fact extractor passes facts to the temporal engine." width="860">
 </p>
 
-Ingestion stores each item as an episode with its source and actor. Extraction then reads the episode in two passes, one for entities and one for facts. The ontology sets the allowed types, and resolution links each name to a canonical entity.
+Ingestion stores each item as an episode with its source and actor. By default, text extraction reads the episode in two passes, one for entities and one for facts. Set `MEMORY_EXTRACTION_MODE=combined` to request both in one pass. The ontology sets the allowed types, and resolution links each name to a canonical entity.
 
 #### Episode ingestion
 
@@ -68,7 +68,7 @@ Ingestion accepts five source kinds:
 
 *Entity extraction finds the names in an episode, and every name must appear in the text.*
 
-Entity extraction and fact extraction are separate passes over the same episode. Entity extraction returns entities. The relation between two entities comes from fact extraction, where each fact carries a relation that the ontology maps to a stable type. Entity extraction supports these extractors:
+In the default two-pass mode, entity extraction and fact extraction run separately over the same episode. Combined mode requests entities and facts together. The relation between two entities comes from fact extraction, where each fact carries a relation that the ontology maps to a stable type. Entity extraction supports these extractors:
 
 - an LLM extractor with a numbered type catalog
 - GLiNER and spaCy extractors
