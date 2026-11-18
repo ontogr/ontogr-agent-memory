@@ -1,5 +1,9 @@
 """Exercise ontology-aware MCP tools through the in-process transport."""
 
+from collections.abc import AsyncGenerator
+
+import pytest
+
 from ontogr_mem.graphstore.falkordb import FalkorDBGraphStore
 from tests.integration.mcp_server.test_server import (
     GROUNDED_FACT,
@@ -7,7 +11,19 @@ from tests.integration.mcp_server.test_server import (
     _write_and_wait,
     open_client,
 )
+from tests.support.falkordb import falkordb_test_settings
 from tests.support.tenants import new_tenant
+
+
+@pytest.fixture(autouse=True)
+async def falkordb_environment(
+    monkeypatch: pytest.MonkeyPatch, falkordb_store: FalkorDBGraphStore
+) -> AsyncGenerator[None]:
+    """Point the service settings at the compose FalkorDB for each test."""
+    settings = falkordb_test_settings()
+    monkeypatch.setenv("MEMORY_FALKORDB_HOST", settings.host)
+    monkeypatch.setenv("MEMORY_FALKORDB_PORT", str(settings.port))
+    yield
 
 
 class TestFilterTools:
@@ -20,7 +36,9 @@ class TestFilterTools:
         tenant = new_tenant()
         try:
             async with open_client(tenant) as client:
-                job = await _write_and_wait(client, "Ana works at Acme.", [GROUNDED_FACT])
+                job = await _write_and_wait(
+                    client, "Ana works at Acme.", [GROUNDED_FACT]
+                )
                 assert job["status"] == "done"
 
                 search = _content(

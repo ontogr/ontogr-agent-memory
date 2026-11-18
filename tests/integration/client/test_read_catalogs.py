@@ -40,7 +40,10 @@ class TestClientReadCatalogs:
         """List only the requested active type and resume after its cursor."""
         tenant = new_tenant()
         ontology = OntologyDeclaration(
-            entities=[EntityDeclaration(label="Person"), EntityDeclaration(label="Place")],
+            entities=[
+                EntityDeclaration(label="Person"),
+                EntityDeclaration(label="Place"),
+            ],
             relations=[RelationDeclaration(label="KNOWS")],
         )
         script = {
@@ -56,8 +59,12 @@ class TestClientReadCatalogs:
             )
         }
         try:
-            async with open_memory(tenant, text_models(script), ontology=ontology) as memory:
-                receipt = await memory.write_text("Ana knows Bo in Oslo.", wait_seconds=10)
+            async with open_memory(
+                tenant, text_models(script), ontology=ontology
+            ) as memory:
+                receipt = await memory.write_text(
+                    "Ana knows Bo in Oslo.", wait_seconds=10
+                )
                 await memory.drain()
                 first = await memory.list_entities(entity_type="Person", limit=1)
                 assert len(first.entities) == 1
@@ -68,7 +75,10 @@ class TestClientReadCatalogs:
                 assert len(second.entities) == 1
                 assert second.next_cursor is None
                 assert first.entities[0].entity.id < second.entities[0].entity.id
-                assert {first.entities[0].entity.type_label, second.entities[0].entity.type_label} == {"Person"}
+                assert {
+                    first.entities[0].entity.type_label,
+                    second.entities[0].entity.type_label,
+                } == {"Person"}
                 assert receipt.job_id
         finally:
             await falkordb_store.erase_tenant(tenant)
@@ -83,17 +93,23 @@ class TestClientReadCatalogs:
                 EntityDeclaration(label="Person", description="A person"),
                 EntityDeclaration(label="LegacyPerson", deprecated=True),
             ],
-            relations=[RelationDeclaration(label="KNOWS", aliases=["is acquainted with"])],
+            relations=[
+                RelationDeclaration(label="KNOWS", aliases=["is acquainted with"])
+            ],
         )
         try:
-            async with open_memory(tenant, text_models({}), ontology=ontology) as memory:
+            async with open_memory(
+                tenant, text_models({}), ontology=ontology
+            ) as memory:
                 active = await memory.get_ontology()
                 complete = await memory.get_ontology(include_deprecated=True)
                 assert active.tenant == tenant
                 assert {item.label for item in active.entity_types} == {"Person"}
                 assert {item.label for item in active.relation_types} == {"KNOWS"}
                 assert "is acquainted with" in next(
-                    item.aliases for item in complete.relation_types if item.label == "KNOWS"
+                    item.aliases
+                    for item in complete.relation_types
+                    if item.label == "KNOWS"
                 )
                 assert {item.label for item in complete.entity_types} == {
                     "Person",
@@ -121,7 +137,9 @@ class TestClientReadCatalogs:
             )
         }
         try:
-            async with open_memory(tenant, text_models(script), ontology=original) as memory:
+            async with open_memory(
+                tenant, text_models(script), ontology=original
+            ) as memory:
                 receipt = await memory.write_text("Ana lives in Oslo.", wait_seconds=10)
                 await memory.drain()
                 old_version = (await memory.get_ontology()).version

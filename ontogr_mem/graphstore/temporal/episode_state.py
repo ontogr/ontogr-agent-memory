@@ -1,7 +1,7 @@
 """EpisodeStateStore operations for graph-backed temporal storage."""
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from ontogr_mem.data_models.episode import TemporalStatus
@@ -148,7 +148,7 @@ class EpisodeStateStore:
         ]
 
     async def episodes_below_version(
-        self, version: int, *, after: str | None, limit: int, kinds: list[str]
+        self, version: int, *, after: str | None, limit: int, kinds: Sequence[str]
     ) -> list[tuple[str, int]]:
         """Return committed episode ids and versions below ``version``."""
         rows = await self._runner.run(

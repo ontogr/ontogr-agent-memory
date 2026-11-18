@@ -174,7 +174,7 @@ class GraphTemporalStore:
         return await self._episodes.incomplete_episodes()
 
     async def episodes_below_version(
-        self, version: int, *, after: str | None, limit: int, kinds: list[str]
+        self, version: int, *, after: str | None, limit: int, kinds: Sequence[str]
     ) -> list[tuple[str, int]]:
         """Return committed episode ids and versions below ``version``."""
         return await self._episodes.episodes_below_version(

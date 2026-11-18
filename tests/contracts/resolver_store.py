@@ -843,33 +843,12 @@ class ResolverStoreContract:
     ):
         """Dirty, provisional and swept rows follow the per-entity rules."""
         await store.write_entity_batch([entity("changed-low")], [])
-        await store.write_entity_batch(
+        checked_rows = await store.write_entity_batch(
             [entity("checked-c"), entity("checked-a")], []
         )
 
-    async def test_lists_active_entities_by_type_and_cursor(self, make_harness):
-        """Active entities are filtered by type and paged by id."""
-        harness = await make_harness()
-        await harness.store.save_entity(entity("entity-1"), bump_revision=False)
-        await harness.store.save_entity(
-            entity("entity-2", status=EntityStatus.ARCHIVED), bump_revision=False
-        )
-        await harness.store.save_entity(entity("entity-3"), bump_revision=False)
-
-        first_page = await harness.store.list_active_entities(
-            type_ids=frozenset({2}), after=None, limit=1
-        )
-        next_page = await harness.store.list_active_entities(
-            type_ids=frozenset({2}), after=first_page[0].entity_id, limit=10
-        )
-
-        assert [item.entity_id for item in first_page] == ["entity-1"]
-        assert [item.entity_id for item in next_page] == ["entity-3"]
-        assert await harness.store.list_active_entities(
-            type_ids=frozenset(), after=None, limit=10
-        ) == []
         provisional = (
-            await harness.store.write_entity_batch(
+            await store.write_entity_batch(
                 [
                     entity("provisional").model_copy(
                         update={"resolution_state": ResolutionState.PROVISIONAL}
@@ -879,15 +858,15 @@ class ResolverStoreContract:
             )
         )[0]
         checked_high = (
-            await harness.store.write_entity_batch([entity("checked-high")], [])
+            await store.write_entity_batch([entity("checked-high")], [])
         )[0]
         archived = (
-            await harness.store.write_entity_batch(
+            await store.write_entity_batch(
                 [entity("archived", status=EntityStatus.ARCHIVED)], []
             )
         )[0]
         merged = (
-            await harness.store.write_entity_batch(
+            await store.write_entity_batch(
                 [
                     entity(
                         "merged",
@@ -944,6 +923,31 @@ class ResolverStoreContract:
             "provisional",
             "checked-high",
         ]
+
+    async def test_lists_active_entities_by_type_and_cursor(self, make_harness):
+        """Active entities are filtered by type and paged by id."""
+        harness = await make_harness()
+        await harness.store.save_entity(entity("entity-1"), bump_revision=False)
+        await harness.store.save_entity(
+            entity("entity-2", status=EntityStatus.ARCHIVED), bump_revision=False
+        )
+        await harness.store.save_entity(entity("entity-3"), bump_revision=False)
+
+        first_page = await harness.store.list_active_entities(
+            type_ids=frozenset({2}), after=None, limit=1
+        )
+        next_page = await harness.store.list_active_entities(
+            type_ids=frozenset({2}), after=first_page[0].entity_id, limit=10
+        )
+
+        assert [item.entity_id for item in first_page] == ["entity-1"]
+        assert [item.entity_id for item in next_page] == ["entity-3"]
+        assert (
+            await harness.store.list_active_entities(
+                type_ids=frozenset(), after=None, limit=10
+            )
+            == []
+        )
 
     async def test_list_for_deduplication_returns_independent_snapshots(
         self, store: ResolverStore

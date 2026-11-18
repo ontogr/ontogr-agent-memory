@@ -93,22 +93,26 @@ class TestSearchFilters:
                 by_entity = await memory.search(
                     "Ana Ben Berlin", entity_types=["Location"]
                 )
-                assert {fact.text for fact in by_entity.facts} == {
+                assert {fact.statement for fact in by_entity.facts} == {
                     "Ben lives in Berlin"
                 }
                 included = await memory.search("Ana Ben", relation_types=["LIVES_IN"])
-                assert {fact.text for fact in included.facts} == {"Ben lives in Berlin"}
+                assert {fact.statement for fact in included.facts} == {
+                    "Ben lives in Berlin"
+                }
                 excluded = await memory.search(
                     "Ana Ben", exclude_relation_types=["LIVES_IN"]
                 )
-                assert "Ana mentors Ben" in {fact.text for fact in excluded.facts}
+                assert "Ana mentors Ben" in {fact.statement for fact in excluded.facts}
                 assert "Ben lives in Berlin" not in {
-                    fact.text for fact in excluded.facts
+                    fact.statement for fact in excluded.facts
                 }
                 no_org = await memory.search(
                     "Ana Acme", exclude_entity_types=["Organization"]
                 )
-                assert "Ana works at Acme" not in {fact.text for fact in no_org.facts}
+                assert "Ana works at Acme" not in {
+                    fact.statement for fact in no_org.facts
+                }
         finally:
             await falkordb_store.erase_tenant(tenant)
 
@@ -146,7 +150,7 @@ class TestSearchFilters:
                 await memory.drain()
                 assert not (await memory.search("Ana Acme")).facts
                 planned = await memory.search("Ana Acme", modalities=["planned"])
-                assert {fact.text for fact in planned.facts} == {"Ana joins Acme"}
+                assert {fact.statement for fact in planned.facts} == {"Ana joins Acme"}
                 with pytest.raises(InvalidArgumentError, match="MissingType"):
                     await memory.search("Ana", entity_types=["MissingType"])
         finally:
