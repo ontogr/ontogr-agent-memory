@@ -378,7 +378,10 @@ class SearchMemory(ContractModel):
         Annotated[str, Field(min_length=1, max_length=128)]
     ] = Field(default_factory=list, max_length=MAX_FILTER_LABELS)
     modalities: list[Literal["actual", "planned", "conditional", "desired"]] = Field(
-        default_factory=lambda: ["actual"],
+        default_factory=lambda: cast(
+            list[Literal["actual", "planned", "conditional", "desired"]],
+            ["actual"],
+        ),
         min_length=1,
     )
     budget_tokens: int = Field(default=2000, ge=100, le=32000)
