@@ -73,26 +73,20 @@ def rank_key(candidate: Candidate, settings: ResolverSettings) -> tuple[float, s
 def needs_two_votes(
     signals: PairSignals,
     settings: ResolverSettings,
-    cross_family: bool,
 ) -> bool:
     """Return whether the pair needs a second, swapped verification vote.
 
-    A cross-family pair always needs two votes. Otherwise a strong enough
-    cosine or Jaccard value is accepted on one vote. Each signal is read
-    against its own floor, so a Jaccard value is never weighed as a cosine.
+    A strong enough cosine or Jaccard value is accepted on one vote. Each signal
+    is read against its own floor, so a Jaccard value is never weighed as a cosine.
     A pair that a rule proposed exactly is settled by the caller.
 
     Args:
         signals: The signals measured for the pair.
         settings: Thresholds for a single-vote answer.
-        cross_family: True when the two entities share a merge family but not a
-            type.
 
     Returns:
         True when a second vote is required.
     """
-    if cross_family:
-        return True
     if signals.cosine is not None and signals.cosine >= settings.single_vote_min:
         return False
     jaccard_strong = (

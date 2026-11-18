@@ -1,6 +1,6 @@
 """Strict parsing of model replies, with a lenient JSON fallback."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from ontogr_mem.json_reply import SchemaError, load_json
@@ -14,6 +14,7 @@ class RawEntity:
     type_id: int
     type_label: str | None = None
     description: str = ""
+    attributes: dict[str, str] = field(default_factory=dict)
     confidence: float | None = None
 
 
@@ -38,6 +39,17 @@ def _optional_text(
     if not isinstance(value, str):
         errors.append(f"{where}.{key} must be a string or null")
         return None
+    return value
+
+
+def _attributes(item: dict[str, Any], where: str, errors: list[str]) -> dict[str, str]:
+    value = item.get("attributes", {})
+    if not isinstance(value, dict) or not all(
+        isinstance(name, str) and isinstance(attribute, str)
+        for name, attribute in value.items()
+    ):
+        errors.append(f"{where}.attributes must be an object of string values")
+        return {}
     return value
 
 
@@ -80,6 +92,7 @@ def parse_entities(text: str) -> list[RawEntity]:
                 type_id=item["type_id"] if _is_int(item.get("type_id")) else -999,
                 type_label=_optional_text(item, "type_label", where, errors),
                 description=_optional_text(item, "description", where, errors) or "",
+                attributes=_attributes(item, where, errors),
                 confidence=float(confidence) if confidence is not None else None,
             )
         )

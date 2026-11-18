@@ -15,6 +15,7 @@ class EntityOutput(BaseModel):
     type_id: StrictInt
     type_label: StrictStr | None = None
     description: StrictStr = ""
+    attributes: dict[StrictStr, StrictStr | None] = Field(default_factory=dict)
     confidence: Annotated[float, Field(strict=True, ge=0, le=1)] | None = None
 
 

@@ -77,8 +77,14 @@ async def make_erase_world(
         if episode.content_hash is not None:
             await stores.episodes.record_content_hash(episode.id, episode.content_hash)
 
-    person = _entity("person", "Robert Smith")
-    organization = _entity("organization", "Acme", type_label="Organization")
+    type_ids = {item.label: item.type_id for item in ontology.entities}
+    person = _entity("person", "Robert Smith", ontology_type_id=type_ids["Person"])
+    organization = _entity(
+        "organization",
+        "Acme",
+        type_label="Organization",
+        ontology_type_id=type_ids["Organization"],
+    )
     aliases = [
         _alias(person.entity_id, "Robert Smith", "e1"),
         _alias(person.entity_id, "Bob", "e2"),
@@ -125,10 +131,13 @@ async def make_erase_world(
     )
 
 
-def _entity(entity_id: str, name: str, *, type_label: str = "Person") -> Entity:
+def _entity(
+    entity_id: str, name: str, *, type_label: str = "Person", ontology_type_id: int
+) -> Entity:
     """Create an entity with text fields that Erase must clear."""
     return Entity(
         entity_id=entity_id,
+        ontology_type_id=ontology_type_id,
         type_label=type_label,
         canonical_name=name,
         strict_key=strict_key(name),
@@ -136,6 +145,9 @@ def _entity(entity_id: str, name: str, *, type_label: str = "Person") -> Entity:
         summary=f"Summary mentioning {name}",
         descriptions=[f"Description mentioning {name}"],
         attributes={"note": f"Note mentioning {name}"},
+        identity_attrs=(
+            {"email": f"{name.lower()}@example.org"} if type_label == "Person" else {}
+        ),
         created_at=datetime(2026, 10, 22, tzinfo=UTC),
         updated_at=datetime(2026, 10, 22, tzinfo=UTC),
     )

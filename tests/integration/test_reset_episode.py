@@ -56,11 +56,14 @@ from tests.support.embedder import MockEmbedder
 from tests.support.episodes import make_episode
 from tests.support.temporal import TemporalHarness, graph_temporal_harness
 from tests.support.tenants import new_tenant
+from tests.support.type_world import type_world
 from tests.unit.temporal.helpers import LocalRefResolver, at
 
 
 ONE = DictRelationPolicy({1: RelationRules(Cardinality.ONE)})
 WORKS_AT = 1
+TYPE_WORLD = type_world(("Person", None, ()), ("Organization", None, ()))
+LINKS = TYPE_WORLD.links
 
 
 class FakeMentions:
@@ -235,6 +238,7 @@ def _person(local_id: str, name: str, episode_id: str) -> ExtractedEntity:
         confidence=0.9,
         method=Method.LLM,
         episode_id=episode_id,
+        ontology_type_id=TYPE_WORLD.ids["Person"],
     )
 
 
@@ -248,6 +252,7 @@ def _org(local_id: str, name: str, episode_id: str) -> ExtractedEntity:
         confidence=0.9,
         method=Method.LLM,
         episode_id=episode_id,
+        ontology_type_id=TYPE_WORLD.ids["Organization"],
     )
 
 
@@ -355,13 +360,13 @@ class ResolverResetScenario:
         stack = await self._stack(make_stack)
         store, resolver = stack.temporal.store, stack.resolver
         await resolver.resolve(
-            [_person("alice", "Alice", "e1"), _org("acme", "Acme", "e1")]
+            [_person("alice", "Alice", "e1"), _org("acme", "Acme", "e1")], LINKS
         )
         await self._ingest(
             stack, store, "e1", [works_at("alice", "acme", "e1", "Alice works at Acme")]
         )
         await resolver.resolve(
-            [_person("bob", "Bob", "e2"), _org("acme", "Acme", "e2")]
+            [_person("bob", "Bob", "e2"), _org("acme", "Acme", "e2")], LINKS
         )
         await self._ingest(
             stack, store, "e2", [works_at("bob", "acme", "e2", "Bob works at Acme")]
@@ -373,7 +378,7 @@ class ResolverResetScenario:
 
         with pytest.raises(EpisodeAlreadyResolvedError):
             await resolver.resolve(
-                [_person("alice", "Alice", "e1"), _org("acme", "Acme", "e1")]
+                [_person("alice", "Alice", "e1"), _org("acme", "Acme", "e1")], LINKS
             )
 
         await _engine(store, resolver).reset_episode("e1", resolver)
@@ -382,7 +387,7 @@ class ResolverResetScenario:
         assert await _current_pairs(store) == [(bob, acme)]
 
         await resolver.resolve(
-            [_person("alice", "Alice", "e1"), _org("beta", "Beta", "e1")]
+            [_person("alice", "Alice", "e1"), _org("beta", "Beta", "e1")], LINKS
         )
         await self._ingest(
             stack, store, "e1", [works_at("alice", "beta", "e1", "Alice works at Beta")]
@@ -403,7 +408,7 @@ class ResolverResetScenario:
         stack = await self._stack(make_stack)
         store, resolver = stack.temporal.store, stack.resolver
         await resolver.resolve(
-            [_person("alice", "Alice", "e1"), _org("acme", "Acme", "e1")]
+            [_person("alice", "Alice", "e1"), _org("acme", "Acme", "e1")], LINKS
         )
         await self._ingest(
             stack, store, "e1", [works_at("alice", "acme", "e1", "Alice works at Acme")]
@@ -412,7 +417,7 @@ class ResolverResetScenario:
 
         await _engine(store, resolver).reset_episode("e1", resolver)
         await resolver.resolve(
-            [_person("alice-2", "Alice", "e1"), _org("acme", "Acme", "e1")]
+            [_person("alice-2", "Alice", "e1"), _org("acme", "Acme", "e1")], LINKS
         )
         await self._ingest(
             stack,
@@ -435,16 +440,16 @@ class ResolverResetScenario:
         store, resolver = stack.temporal.store, stack.resolver
         carol = [_person("carol", "Carol", "e3"), _org("acme", "Acme", "e3")]
         claim = [works_at("carol", "acme", "e3", "Carol works at Acme")]
-        await resolver.resolve(carol)
+        await resolver.resolve(carol, LINKS)
         with pytest.raises(RuntimeError):
             await self._ingest(stack, _AppendFails(store), "e3", claim)
 
         with pytest.raises(EpisodeAlreadyResolvedError):
-            await resolver.resolve(carol)
+            await resolver.resolve(carol, LINKS)
         await _engine(store, resolver).reset_episode("e3", resolver)
         assert await resolver.store.entity_id_for_ref("e3", "carol") is None
 
-        await resolver.resolve(carol)
+        await resolver.resolve(carol, LINKS)
         await self._ingest(stack, store, "e3", claim)
         carol_id = await _ref(resolver, "e3", "carol")
         acme = await _ref(resolver, "e3", "acme")

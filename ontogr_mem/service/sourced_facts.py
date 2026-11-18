@@ -2,13 +2,14 @@
 
 A host sends the source text and the facts it read from it. These functions verify
 each fact against that text without a language model and without any I/O.
-`ground_host_facts` checks that the quote and both names appear in the text and
-gives each distinct endpoint a local ref. `bind_host_facts` binds the grounded
-facts with the shared fact binding, merges exact duplicates and assigns ids.
+`ground_host_facts` checks that the quote, both names and their attribute values
+appear in the text and gives each distinct endpoint a local ref. `bind_host_facts`
+binds the grounded facts with the shared fact binding, merges exact duplicates
+and assigns ids.
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 
 from ontogr_mem.data_models import Episode, ExtractedEntity, Method, TypeView
@@ -55,11 +56,14 @@ class Endpoint:
         ref: Local id such as `h0`, assigned in first-occurrence order.
         name: Name as first written, without outer whitespace.
         type_label: Type label as first written, without outer whitespace.
+        attributes: Identity values collected from the facts that use this
+            endpoint; the first value of each name wins.
     """
 
     ref: str
     name: str
     type_label: str
+    attributes: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,6 +150,16 @@ def _first_problem(
         return FactDropReason.UNGROUNDED, "subject not found in episode"
     if locate(episode_text, fact.object) is None:
         return FactDropReason.UNGROUNDED, "object not found in episode"
+    for side, values in (
+        ("subject", fact.subject_attributes),
+        ("object", fact.object_attributes),
+    ):
+        for value in values.values():
+            if not value.strip() or locate(episode_text, value) is None:
+                return (
+                    FactDropReason.UNGROUNDED,
+                    f"{side} attribute not found in episode",
+                )
     return None
 
 
@@ -154,9 +168,11 @@ def ground_host_facts(episode_text: str, facts: Sequence[HostFact]) -> Grounded:
 
     Each fact gets at most one drop, from the first check it fails: a blank
     required field, a quote that is not in the text, then a subject or object
-    name that is not in the text. Among the facts that pass, a name that appears
-    with more than one type drops every fact that uses it, whatever the input
-    order. Case and whitespace differences are ignored when comparing text.
+    name or attribute value that is not in the text. Among the facts that pass,
+    a name that appears with more than one type drops every fact that uses it,
+    whatever the input order. Case and whitespace differences are ignored when
+    comparing text. Attribute values of a shared endpoint are collected on that
+    endpoint, with the first value of each name kept.
 
     Args:
         episode_text: The source text in NFC, as returned by `text_of`.
@@ -187,7 +203,8 @@ def ground_host_facts(episode_text: str, facts: Sequence[HostFact]) -> Grounded:
     ambiguous = {name for name, types in types_by_name.items() if len(types) > 1}
 
     refs: dict[tuple[str, str], str] = {}
-    endpoints: list[Endpoint] = []
+    endpoint_names: list[tuple[str, str, str]] = []
+    values_by_ref: dict[str, dict[str, str]] = {}
     grounded: list[GroundedFact] = []
     for index, fact in survivors:
         if {normalize_text(fact.subject), normalize_text(fact.object)} & ambiguous:
@@ -200,20 +217,29 @@ def ground_host_facts(episode_text: str, facts: Sequence[HostFact]) -> Grounded:
             )
             continue
         pair: list[str] = []
-        for name, type_label in (
-            (fact.subject, fact.subject_type),
-            (fact.object, fact.object_type),
+        for name, type_label, values in (
+            (fact.subject, fact.subject_type, fact.subject_attributes),
+            (fact.object, fact.object_type, fact.object_attributes),
         ):
             key = (normalize_text(name), normalize_text(type_label))
             if key not in refs:
-                refs[key] = f"h{len(refs)}"
-                endpoints.append(Endpoint(refs[key], name.strip(), type_label.strip()))
-            pair.append(refs[key])
+                ref = f"h{len(refs)}"
+                refs[key] = ref
+                endpoint_names.append((ref, name.strip(), type_label.strip()))
+            ref = refs[key]
+            collected = values_by_ref.setdefault(ref, {})
+            for attribute_name, value in values.items():
+                collected.setdefault(normalize_text(attribute_name), value.strip())
+            pair.append(ref)
         grounded.append(GroundedFact(index, fact, pair[0], pair[1]))
 
+    endpoints = tuple(
+        Endpoint(ref, name, type_label, values_by_ref.get(ref, {}))
+        for ref, name, type_label in endpoint_names
+    )
     return Grounded(
         tuple(grounded),
-        tuple(endpoints),
+        endpoints,
         tuple(sorted(drops, key=lambda drop: drop.index)),
     )
 

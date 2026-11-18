@@ -13,9 +13,15 @@ from tests.support.scripted_model import (
     scripted_model,
     scripted_role_models,
 )
+from tests.support.type_world import WORLD
 
 
 FIXED_TIME = datetime(2026, 10, 21, tzinfo=UTC)
+
+
+def type_id_for(label: str) -> int:
+    """Return the stable id of a label, or Unknown for a label WORLD lacks."""
+    return WORLD.ids.get(label, WORLD.ids["Unknown"])
 
 
 def entity(
@@ -23,11 +29,15 @@ def entity(
     name: str,
     type_label: str = "Company",
     summary: str = "",
+    ontology_type_id: int | None = None,
 ) -> Entity:
-    """Build an entity with a fixed clock."""
+    """Build an entity with a fixed clock and a stable type id."""
     return Entity(
         entity_id=entity_id,
         type_label=type_label,
+        ontology_type_id=(
+            type_id_for(type_label) if ontology_type_id is None else ontology_type_id
+        ),
         canonical_name=name,
         strict_key=name.casefold(),
         loose_key=name.casefold(),

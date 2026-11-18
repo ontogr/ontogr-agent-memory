@@ -28,7 +28,8 @@ from ontogr_mem.vectorstore.memory import InMemoryBackend
 from tests.support.clock import FixedClock
 from tests.support.embedder import MockEmbedder
 from tests.support.scripted_model import scripted_model, scripted_role_models
-from tests.unit.resolution.helpers import entity, oracle_models
+from tests.support.type_world import WORLD
+from tests.unit.resolution.helpers import entity, oracle_models, type_id_for
 
 
 class _MemoryResolverStore:
@@ -133,6 +134,7 @@ def _extracted(local_id: str, name: str, episode_id: str = "ep1") -> ExtractedEn
         type_label="Company",
         description="",
         attributes={},
+        ontology_type_id=type_id_for("Company"),
     )
 
 
@@ -162,10 +164,12 @@ class TestEntityResolver:
 
         first = await resolver.resolve(
             [_extracted("1", "Acme"), _extracted("2", "Initech")],
+            WORLD.links,
             allow_model=False,
         )
         second = await resolver.resolve(
             [_extracted("1", "Initech", episode_id="ep2")],
+            WORLD.links,
             allow_model=False,
         )
 
@@ -185,7 +189,7 @@ class TestEntityResolver:
         models, scripted = oracle_models(lambda name_a, name_b: name_b == "Acme")
         resolver = await _resolver(_seeded_store(), models)
 
-        result = await resolver.resolve([_extracted("1", "Acme")])
+        result = await resolver.resolve([_extracted("1", "Acme")], WORLD.links)
 
         assert len(scripted.calls) >= 1
         [mention] = result.mentions

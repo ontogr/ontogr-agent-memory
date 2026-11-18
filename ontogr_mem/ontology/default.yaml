@@ -1,13 +1,15 @@
 # Default ontology for agent memory. The entity types follow the set that Graphiti
 # ships for its MCP server, and the relation vocabulary follows the shape of the
 # one in the FalkorDB GraphRAG SDK. The descriptions are written for this project.
-# A host that declares its own ontology replaces this one.
+# Flat, with an identity attribute on Person only.
 entities:
 - label: Person
   description: 'An individual human named or described in the text. Example: Ana, the user,
     Dr. Rao. Not a company or a team (use Organization).'
   aliases:
   - Individual
+  identity_attributes:
+  - email
 - label: Organization
   description: 'A company, institution, team or other formal group. Example: Acme, a hospital,
     the data team. Not the place where it is based (use Location) and not one person.'

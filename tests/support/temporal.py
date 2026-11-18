@@ -50,6 +50,7 @@ def graph_temporal_harness(
             await resolver.save_entity(
                 Entity(
                     entity_id=entity_id,
+                    ontology_type_id=1,
                     type_label="Thing",
                     canonical_name=entity_id,
                     strict_key=entity_id,
@@ -105,6 +106,7 @@ async def open_temporal(
         await resolver.save_entity(
             Entity(
                 entity_id=entity_id,
+                ontology_type_id=1,
                 type_label="Thing",
                 canonical_name=entity_id,
                 strict_key=entity_id,

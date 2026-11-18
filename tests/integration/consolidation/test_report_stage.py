@@ -26,6 +26,7 @@ from tests.integration.temporal.test_engine_contradictions import (
 from tests.support.consolidation import ConsWorld, new_world
 from tests.support.graph_backend import GraphBackend
 from tests.support.scripted_model import scripted_role_models
+from tests.support.type_world import WORLD
 from tests.unit.temporal.helpers import at
 
 
@@ -50,7 +51,7 @@ def ctx_for(
         store=store or world.store,
         settings=world.settings,
         models=scripted_role_models(),
-        resolution=world.resolution,
+        resolution=world.resolution.linked(WORLD.links),
         temporal=world.temporal,
         results=results or [],
     )

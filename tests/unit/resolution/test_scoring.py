@@ -67,24 +67,20 @@ class TestNeedsTwoVotes:
 
     def test_a_strong_cosine_needs_one_vote(self) -> None:
         """Cosine at or above the single-vote bar is accepted alone."""
-        assert not needs_two_votes(PairSignals(cosine=0.97), SETTINGS, False)
+        assert not needs_two_votes(PairSignals(cosine=0.97), SETTINGS)
 
     def test_a_mid_cosine_needs_two_votes(self) -> None:
         """A cosine below the single-vote bar needs a second vote."""
-        assert needs_two_votes(PairSignals(cosine=0.95), SETTINGS, False)
+        assert needs_two_votes(PairSignals(cosine=0.95), SETTINGS)
 
     def test_a_strong_jaccard_needs_one_vote(self) -> None:
         """Jaccard at or above its single-vote bar is accepted alone."""
-        assert not needs_two_votes(PairSignals(jaccard=0.93), SETTINGS, False)
+        assert not needs_two_votes(PairSignals(jaccard=0.93), SETTINGS)
 
     def test_a_jaccard_below_its_own_floor_needs_two_votes(self) -> None:
         """A Jaccard under the Jaccard bar needs a second vote."""
-        assert needs_two_votes(PairSignals(jaccard=0.91), SETTINGS, False)
-
-    def test_a_cross_family_pair_always_needs_two_votes(self) -> None:
-        """Even a near-perfect cosine does not settle a cross-family pair."""
-        assert needs_two_votes(PairSignals(cosine=0.99), SETTINGS, True)
+        assert needs_two_votes(PairSignals(jaccard=0.91), SETTINGS)
 
     def test_a_pair_without_signals_needs_two_votes(self) -> None:
         """A pair no signal proposed is never settled on one vote."""
-        assert needs_two_votes(PairSignals(), SETTINGS, False)
+        assert needs_two_votes(PairSignals(), SETTINGS)

@@ -318,7 +318,9 @@ async def _resolve(
 ) -> list[ExtractedEntity]:
     """Stamp the entities with their ontology types, then resolve them."""
     stamped = stamp_types(entities, projection)
-    await tenant.resolver.resolve(stamped, allow_model=allow_model)
+    await tenant.resolver.resolve(
+        stamped, tenant.links(projection.ontology), allow_model=allow_model
+    )
     return stamped
 
 
@@ -446,6 +448,17 @@ async def _prepare_sourced_facts(  # noqa: PLR0912, PLR0915
                     continue
                 stable = _known_type(endpoint_verdicts[endpoint.ref].type_id)
                 unknown = stable is None or stable not in projection.entity_ids
+                declared = {
+                    name.casefold(): name
+                    for name in tenant.links(projection.ontology).identity_names(
+                        stable if not unknown else UNKNOWN_ID
+                    )
+                }
+                attributes: dict[str, str] = {}
+                for name, value in endpoint.attributes.items():
+                    declared_name = declared.get(name.casefold())
+                    if declared_name is not None:
+                        attributes.setdefault(declared_name, value)
                 entities.append(
                     ExtractedEntity(
                         local_id=endpoint.ref,
@@ -459,6 +472,7 @@ async def _prepare_sourced_facts(  # noqa: PLR0912, PLR0915
                         method=Method.RECORD,
                         episode_id=episode.id,
                         proposed_type=endpoint.type_label if unknown else "",
+                        attributes=attributes,
                     )
                 )
             extraction = await EntityExtraction(

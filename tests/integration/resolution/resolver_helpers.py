@@ -1,5 +1,7 @@
 """Builders for resolver behavior tests."""
 
+from dataclasses import replace
+
 from ontogr_mem.data_models import ExtractedEntity, Method, SystemClock
 from ontogr_mem.data_models.entities import Mention
 from ontogr_mem.llm import LLMConfig, RoleModels, build_models
@@ -10,6 +12,12 @@ from ontogr_mem.resolution.resolver_store import ResolverStore
 from ontogr_mem.vectorstore import Embedder, EmbeddingGateway, VectorStore
 from ontogr_mem.vectorstore.memory import InMemoryBackend
 from tests.support.embedder import MockEmbedder
+from tests.unit.resolution.helpers import type_id_for
+
+
+def stamp(extracted: ExtractedEntity, label: str) -> ExtractedEntity:
+    """Stamp an extracted entity with the stable id of a type label."""
+    return replace(extracted, type_label=label, ontology_type_id=type_id_for(label))
 
 
 def ex(
@@ -20,7 +28,7 @@ def ex(
     description: str = "",
     **attributes: object,
 ) -> ExtractedEntity:
-    """Build an extracted entity."""
+    """Build an extracted entity stamped with a stable type id."""
     return ExtractedEntity(
         local_id=local_id,
         name=name,
@@ -31,6 +39,7 @@ def ex(
         episode_id=episode_id,
         description=description,
         attributes=dict(attributes),
+        ontology_type_id=type_id_for(type_label),
     )
 
 

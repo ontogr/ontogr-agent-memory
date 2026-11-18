@@ -257,10 +257,12 @@ class Memory:
     ) -> WriteReceipt:
         """Store source text and host-extracted facts without model calls.
 
-        Use this when the caller has extracted facts from the source. Quotes
-        and entity names must occur in that source. The receipt identifies a
-        queued job; its result lists stored fact ids and dropped input indices
-        with reasons. Use get_job until the job reaches a terminal state.
+        Use this when the caller has extracted facts from the source. Quotes,
+        entity names and identity attribute values must occur in that source.
+        A fact may carry identity values for its subject and object. The receipt
+        identifies a queued job; its result lists stored fact ids and dropped
+        input indices with reasons. Use get_job until the job reaches a terminal
+        state.
 
         Args:
             source_text: Original text to retain as one Episode.

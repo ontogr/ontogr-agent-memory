@@ -28,12 +28,12 @@ from ontogr_mem.resolution.merge import (
     pick_survivor,
     survivor_order,
 )
-from ontogr_mem.resolution.policy import ResolutionPolicy, TypeRelations
 from ontogr_mem.resolution.resolver_store import ResolverStore, merge_intent
 from ontogr_mem.vectorstore import VectorKind
 from tests.contracts.resolver_store import alias, entity
 from tests.integration.resolution.resolver_helpers import ex, make
 from tests.support.graph_backend import GraphBackend
+from tests.support.type_world import WORLD
 
 
 async def _two_entities(
@@ -41,9 +41,9 @@ async def _two_entities(
 ) -> tuple[ResolverStore, object, str, str]:
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(store)
-    first = await resolver.resolve([ex("1", "Acme", "Company")])
+    first = await resolver.resolve([ex("1", "Acme", "Company")], WORLD.links)
     second = await resolver.resolve(
-        [ex("1", "Acme Incorporated", "Company", episode_id="ep2")]
+        [ex("1", "Acme Incorporated", "Company", episode_id="ep2")], WORLD.links
     )
     return store, resolver, first.entities[0].entity_id, second.entities[0].entity_id
 
@@ -66,7 +66,7 @@ async def test_merge_then_unmerge_restores_the_absorbed_entity(
     """An unmerge returns the absorbed entity, its aliases and its mentions."""
     store, resolver, survivor_id, absorbed_id = await _two_entities(graph_backend)
 
-    record = await resolver.merge(survivor_id, absorbed_id, actor="user")
+    record = await resolver.merge(WORLD.links, survivor_id, absorbed_id, actor="user")
     absorbed = (await store.get_entities([absorbed_id]))[0]
     assert absorbed.status is EntityStatus.MERGED
     assert absorbed.merged_into == survivor_id
@@ -83,7 +83,7 @@ async def test_merge_then_unmerge_restores_the_absorbed_entity(
 async def test_merge_after_a_user_unmerge_is_refused(graph_backend: GraphBackend):
     """The user DISTINCT verdict blocks an automated merge of the same pair."""
     store, resolver, survivor_id, absorbed_id = await _two_entities(graph_backend)
-    record = await resolver.merge(survivor_id, absorbed_id, actor="user")
+    record = await resolver.merge(WORLD.links, survivor_id, absorbed_id, actor="user")
     unmerged = await resolver.unmerge(record.merge_id, actor="user")
 
     restored = await store.get_entities([survivor_id, absorbed_id])
@@ -95,7 +95,7 @@ async def test_merge_after_a_user_unmerge_is_refused(graph_backend: GraphBackend
     assert verdict.source is VerdictSource.USER
 
     with pytest.raises(UnmergeBlockedError):
-        await resolver.merge(survivor_id, absorbed_id, actor="resolver")
+        await resolver.merge(WORLD.links, survivor_id, absorbed_id, actor="resolver")
 
 
 async def test_merge_rejects_aliases_added_after_planning(
@@ -112,8 +112,7 @@ async def test_merge_rejects_aliases_added_after_planning(
     )
     plan = await build_merge_plan(
         store,
-        ResolutionPolicy(),
-        TypeRelations(),
+        WORLD.links,
         "e1",
         "e2",
         clock=SystemClock(),
@@ -153,7 +152,7 @@ async def test_recovery_does_not_hide_an_alias_move_from_a_checkpoint(
         [alias("e2", "Original name")],
     )
     resolver = await make(store)
-    record = await resolver.merge("e1", "e2", actor="user")
+    record = await resolver.merge(WORLD.links, "e1", "e2", actor="user")
     applying = record.model_copy(update={"state": MergeState.APPLYING})
     await runner.run(
         QuerySpec(
@@ -226,7 +225,7 @@ async def test_recovery_keeps_aliases_a_finished_merge_already_moved(
         [alias("e2", "Original name")],
     )
     resolver = await make(store)
-    record = await resolver.merge("e1", "e2", actor="user")
+    record = await resolver.merge(WORLD.links, "e1", "e2", actor="user")
     applying = record.model_copy(update={"state": MergeState.APPLYING})
     await runner.run(
         QuerySpec(
@@ -270,7 +269,7 @@ async def test_recovery_refuses_aliases_owned_outside_the_intent(
         [alias("e2", "Original name")],
     )
     resolver = await make(store)
-    record = await resolver.merge("e1", "e2", actor="user")
+    record = await resolver.merge(WORLD.links, "e1", "e2", actor="user")
     applying = record.model_copy(update={"state": MergeState.APPLYING})
     await runner.run(
         QuerySpec(
@@ -375,7 +374,7 @@ async def test_recovery_replays_stamped_merge_and_unmerge_intents(
             )
         )
 
-    merge = await resolver.merge("e1", "e2", actor="user")
+    merge = await resolver.merge(WORLD.links, "e1", "e2", actor="user")
     merge_rows = merge_intent(merge.snapshot)
     assert merge_rows is not None
     assert merge_rows.survivor.revision == merge.seq
@@ -437,7 +436,7 @@ async def test_recovery_replays_stamped_merge_and_unmerge_intents(
 async def test_purged_snapshot_blocks_unmerge(graph_backend: GraphBackend):
     """A privacy purge makes the merge irreversible."""
     store, resolver, survivor_id, absorbed_id = await _two_entities(graph_backend)
-    record = await resolver.merge(survivor_id, absorbed_id, actor="user")
+    record = await resolver.merge(WORLD.links, survivor_id, absorbed_id, actor="user")
 
     assert await resolver.purge_snapshots(entity_id=survivor_id) == 1
     with pytest.raises(SnapshotPurgedError):
@@ -450,7 +449,7 @@ async def test_remove_episode_mentions_deletes_an_orphan_entity(
     """The reset-side operation removes the mention and its entity."""
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(store)
-    await resolver.resolve([ex("1", "Acme", "Company")])
+    await resolver.resolve([ex("1", "Acme", "Company")], WORLD.links)
 
     deleted = await resolver.remove_episode_mentions("ep1")
 
@@ -464,7 +463,7 @@ async def test_delete_refuses_an_entity_with_a_live_fact(graph_backend: GraphBac
     stores = await graph_backend.open_stores()
     store = stores.resolver_store
     resolver = await make(store)
-    result = await resolver.resolve([ex("1", "Acme", "Company")])
+    result = await resolver.resolve([ex("1", "Acme", "Company")], WORLD.links)
     entity_id = result.entities[0].entity_id
     await graph_backend.seed_fact_edge(stores, entity_id)
 
@@ -481,7 +480,7 @@ async def test_an_expired_fact_version_does_not_block_a_delete(
     stores = await graph_backend.open_stores()
     store = stores.resolver_store
     resolver = await make(store)
-    result = await resolver.resolve([ex("1", "Acme", "Company")])
+    result = await resolver.resolve([ex("1", "Acme", "Company")], WORLD.links)
     entity_id = result.entities[0].entity_id
     await graph_backend.seed_fact_edge(stores, entity_id, expired_at=5)
     await graph_backend.seed_fact_edge(stores, entity_id, status="withdrawn")
@@ -495,11 +494,13 @@ async def test_a_new_mention_restores_an_archived_entity(graph_backend: GraphBac
     """A mention that matches an archived entity reuses it and makes it active."""
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(store)
-    first = await resolver.resolve([ex("1", "Acme", "Company")])
+    first = await resolver.resolve([ex("1", "Acme", "Company")], WORLD.links)
     entity_id = first.entities[0].entity_id
     await resolver.archive(entity_id)
 
-    again = await resolver.resolve([ex("1", "Acme", "Company", episode_id="ep2")])
+    again = await resolver.resolve(
+        [ex("1", "Acme", "Company", episode_id="ep2")], WORLD.links
+    )
 
     assert again.entities[0].entity_id == entity_id
     stored = (await store.get_entities([entity_id]))[0]
@@ -511,7 +512,7 @@ async def test_archive_keeps_the_entity_readable(graph_backend: GraphBackend):
     """Archive changes the status without deleting the row."""
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await make(store)
-    result = await resolver.resolve([ex("1", "Acme", "Company")])
+    result = await resolver.resolve([ex("1", "Acme", "Company")], WORLD.links)
     entity_id = result.entities[0].entity_id
 
     await resolver.archive(entity_id)

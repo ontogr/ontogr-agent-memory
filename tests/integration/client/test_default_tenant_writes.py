@@ -29,6 +29,13 @@ HYDRA_OBJECT = "Ana owns Hydra."
 HYDRA_ORG = "Ana works at Hydra."
 ACME_PREFERENCE = "Ana likes Acme."
 STUDIED = "Ana studied at MIT."
+ANA_ONE = "Ana (ana@one.org) works at Acme."
+ANA_TWO = "Ana (ana@two.org) works at Beta."
+ANA_NONE = "Ana works at Cyd."
+ANA_ONE_AGAIN = "Ana (Ana@One.org) works at Dune."
+ANA_UNSTATED = "Ana works at Elm."
+ANA_NONE_AGAIN = "Ana works at Fig."
+ZETA_ORG = "Ana works at Zeta Corp."
 EARLIER = datetime(2025, 1, 1, tzinfo=UTC)
 LATER = datetime(2025, 6, 1, tzinfo=UTC)
 SCRIPT = {
@@ -74,6 +81,58 @@ SCRIPT = {
     STUDIED: (
         [ScriptedEntity("Ana", "Person"), ScriptedEntity("MIT", "Organization")],
         [ScriptedFact("Ana studied at MIT", 0, 1, "STUDENT_OF", "Ana studied at MIT")],
+    ),
+    ANA_ONE: (
+        [
+            ScriptedEntity("Ana", "Person", attributes={"email": "ana@one.org"}),
+            ScriptedEntity("Acme", "Organization"),
+        ],
+        [
+            ScriptedFact(
+                "Ana works at Acme", 0, 1, "WORKS_AT", "Ana (ana@one.org) works at Acme"
+            )
+        ],
+    ),
+    ANA_TWO: (
+        [
+            ScriptedEntity("Ana", "Person", attributes={"email": "ana@two.org"}),
+            ScriptedEntity("Beta", "Organization"),
+        ],
+        [
+            ScriptedFact(
+                "Ana works at Beta", 0, 1, "WORKS_AT", "Ana (ana@two.org) works at Beta"
+            )
+        ],
+    ),
+    ANA_NONE: (
+        [ScriptedEntity("Ana", "Person"), ScriptedEntity("Cyd", "Organization")],
+        [ScriptedFact("Ana works at Cyd", 0, 1, "WORKS_AT", "Ana works at Cyd")],
+    ),
+    ANA_ONE_AGAIN: (
+        [
+            ScriptedEntity("Ana", "Person", attributes={"email": "Ana@One.org"}),
+            ScriptedEntity("Dune", "Organization"),
+        ],
+        [
+            ScriptedFact(
+                "Ana works at Dune", 0, 1, "WORKS_AT", "Ana (Ana@One.org) works at Dune"
+            )
+        ],
+    ),
+    ANA_UNSTATED: (
+        [
+            ScriptedEntity("Ana", "Person", attributes={"email": "ana@three.org"}),
+            ScriptedEntity("Elm", "Organization"),
+        ],
+        [ScriptedFact("Ana works at Elm", 0, 1, "WORKS_AT", "Ana works at Elm")],
+    ),
+    ANA_NONE_AGAIN: (
+        [ScriptedEntity("Ana", "Person"), ScriptedEntity("Fig", "Organization")],
+        [ScriptedFact("Ana works at Fig", 0, 1, "WORKS_AT", "Ana works at Fig")],
+    ),
+    ZETA_ORG: (
+        [ScriptedEntity("Ana", "Person"), ScriptedEntity("Zeta", "Organization")],
+        [ScriptedFact("Ana works at Zeta", 0, 1, "WORKS_AT", "Ana works at Zeta")],
     ),
 }
 
@@ -157,10 +216,10 @@ class TestDefaultTenantWrites:
         finally:
             await falkordb_store.erase_tenant(tenant)
 
-    async def test_object_and_organization_with_one_name_become_one_organization(
+    async def test_an_object_entity_and_an_organization_with_one_name_stay_two_entities(
         self, falkordb_store: FalkorDBGraphStore
     ):
-        """A later specific type refines a generic Object entity."""
+        """Object and Organization remain separate types with the same name."""
         tenant = new_tenant()
         try:
             async with open_memory(tenant, text_models(SCRIPT)) as memory:
@@ -168,7 +227,97 @@ class TestDefaultTenantWrites:
                 await memory.write_text(HYDRA_ORG, wait_seconds=10)
                 await memory.drain()
                 entities = await _entities_named(memory, "Hydra")
-                assert [entity.type_label for entity in entities] == ["Organization"]
+                assert [entity.type_label for entity in entities] == [
+                    "Object",
+                    "Organization",
+                ]
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_two_people_with_one_name_and_different_emails_stay_two_entities(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """Different grounded emails keep namesakes separate."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant, text_models(SCRIPT)) as memory:
+                for text in (ANA_ONE, ANA_TWO):
+                    await memory.write_text(text, wait_seconds=10)
+                await memory.drain()
+                assert len(await _entities_named(memory, "Ana")) == 2
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_a_mention_with_a_known_email_joins_that_person(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """A matching email resolves a mention to the stored person."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant, text_models(SCRIPT)) as memory:
+                for text in (ANA_ONE, ANA_TWO, ANA_ONE_AGAIN):
+                    await memory.write_text(text, wait_seconds=10)
+                await memory.drain()
+                assert len(await _entities_named(memory, "Ana")) == 2
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_an_email_the_text_does_not_state_is_ignored(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """An ungrounded extracted email does not split a person."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant, text_models(SCRIPT)) as memory:
+                for text in (ANA_ONE, ANA_UNSTATED):
+                    await memory.write_text(text, wait_seconds=10)
+                await memory.drain()
+                assert len(await _entities_named(memory, "Ana")) == 1
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_a_person_without_an_email_joins_the_first_person_with_one(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """A mention without an email joins the first matching person."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant, text_models(SCRIPT)) as memory:
+                for text in (ANA_NONE, ANA_ONE, ANA_TWO):
+                    await memory.write_text(text, wait_seconds=10)
+                await memory.drain()
+                assert len(await _entities_named(memory, "Ana")) == 2
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_namesakes_do_not_multiply_when_a_mention_has_no_email(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """Later ambiguous mentions do not create more namesakes."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant, text_models(SCRIPT)) as memory:
+                for text in (ANA_ONE, ANA_TWO, ANA_NONE, ANA_NONE_AGAIN):
+                    await memory.write_text(text, wait_seconds=10)
+                await memory.drain()
+                assert len(await _entities_named(memory, "Ana")) == 2
+        finally:
+            await falkordb_store.erase_tenant(tenant)
+
+    async def test_an_unknown_entity_and_a_typed_entity_with_one_name_become_one_entity(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
+        """A typed mention promotes a prior Unknown entity."""
+        tenant = new_tenant()
+        try:
+            async with open_memory(tenant, text_models(SCRIPT)) as memory:
+                await memory.write_text(MODEL_LABEL, wait_seconds=10)
+                await memory.write_text(ZETA_ORG, wait_seconds=10)
+                await memory.drain()
+                entities = await _entities_named(memory, "Zeta")
+                assert len(entities) == 1
+                assert entities[0].type_label == "Organization"
+                assert entities[0].proposed_type == ""
         finally:
             await falkordb_store.erase_tenant(tenant)
 

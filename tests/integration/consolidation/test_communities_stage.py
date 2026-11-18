@@ -40,6 +40,7 @@ from tests.support.scripted_model import (
     scripted_model,
     scripted_role_models,
 )
+from tests.support.type_world import WORLD
 
 
 def _answer(call: ScriptedCall) -> dict[str, str]:
@@ -70,7 +71,7 @@ def runner_for(world: ConsWorld, models: RoleModels) -> ConsolidationRunner:
         world.clock,
         world.settings,
         models=models,
-        resolution=world.resolution,
+        resolution=world.resolution.linked(WORLD.links),
         temporal=world.temporal,
     )
 
@@ -83,7 +84,7 @@ def stage_context(world: ConsWorld, models: RoleModels) -> StageContext:
         store=world.store,
         settings=world.settings,
         models=models,
-        resolution=world.resolution,
+        resolution=world.resolution.linked(WORLD.links),
         temporal=world.temporal,
     )
 

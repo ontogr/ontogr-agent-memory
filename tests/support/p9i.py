@@ -29,6 +29,7 @@ def entity(entity_id: str, *, name: str | None = None) -> Entity:
     key = canonical_name.casefold()
     return Entity(
         entity_id=entity_id,
+        ontology_type_id=1,
         type_label="Person",
         canonical_name=canonical_name,
         strict_key=key,

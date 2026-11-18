@@ -15,6 +15,7 @@ from ontogr_mem.data_models.type_catalog import (
     TypeView,
 )
 from ontogr_mem.ontology.errors import DenseIdError
+from ontogr_mem.ontology.links import TypeLinks
 from ontogr_mem.ontology.models import UNKNOWN_ID, Kind, Ontology, Status
 
 
@@ -29,6 +30,7 @@ class Projection:
     view: TypeView
     catalog_version: int
     content_hash: str
+    ontology: Ontology
     entity_ids: tuple[int, ...]
     relation_ids: tuple[int, ...]
 
@@ -86,6 +88,7 @@ def project(cat: Ontology, actor_type_label: str = "Person") -> Projection:
                 out.add(dense[e.type_id])
         return out
 
+    links = TypeLinks.from_ontology(cat)
     rel_types: list[RelationType] = []
     for i, r in enumerate(rels):
         srcs: set[int] = set()
@@ -105,7 +108,12 @@ def project(cat: Ontology, actor_type_label: str = "Person") -> Projection:
         )
     old = TypeCatalog(
         [
-            EntityType(id=i, label=e.label, description=e.description)
+            EntityType(
+                id=i,
+                label=e.label,
+                description=e.description,
+                identity_attributes=links.identity_names(e.type_id),
+            )
             for i, e in enumerate(ents)
         ],
         rel_types,
@@ -115,6 +123,7 @@ def project(cat: Ontology, actor_type_label: str = "Person") -> Projection:
         view=TypeView(old),
         catalog_version=cat.version,
         content_hash=cat.content_hash,
+        ontology=cat,
         entity_ids=tuple(e.type_id for e in ents),
         relation_ids=tuple(r.type_id for r in rels),
     )

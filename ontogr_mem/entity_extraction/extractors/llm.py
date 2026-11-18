@@ -26,6 +26,7 @@ from ontogr_mem.llm import ModelRole, RoleModels, run_agent
 
 
 log = logging.getLogger(__name__)
+MAX_ATTRIBUTE_CHARS = 256
 
 
 class LLMExtractor(EntityExtractor):
@@ -69,7 +70,21 @@ class LLMExtractor(EntityExtractor):
             models=self._models,
             deps=None,
         )
-        raw = [RawEntity(**item.model_dump()) for item in run.output.entities]
+        raw = [
+            RawEntity(
+                name=item.name,
+                type_id=item.type_id,
+                type_label=item.type_label,
+                description=item.description,
+                attributes={
+                    name: value
+                    for name, value in item.attributes.items()
+                    if isinstance(value, str)
+                },
+                confidence=item.confidence,
+            )
+            for item in run.output.entities
+        ]
         usage = Usage(
             buckets={
                 "entities/entity_extraction": TokenCount(
@@ -92,7 +107,8 @@ def bind_entities(
 
     Names that are not in the episode text and ids outside the catalog are
     discarded and reported as drops. Entities with the same normalized name and
-    effective type collapse into the first, keeping the higher confidence.
+    effective type collapse into the first, keeping the higher confidence, unless
+    they disagree about an identity value.
 
     Returns:
         The bound entities, for each raw item the local id of the entity it
@@ -104,7 +120,7 @@ def bind_entities(
     out: list[ExtractedEntity] = []
     ids: list[str | None] = []
     dropped: list[Dropped] = []
-    seen: dict[tuple[str, int], int] = {}
+    seen: dict[tuple[str, int], list[int]] = {}
     for item in raw:
         name = item.name.strip()
         info = {"name": item.name, "type_id": item.type_id}
@@ -135,13 +151,42 @@ def bind_entities(
         )
         type_id = item.type_id if confidence >= settings.threshold else UNKNOWN_TYPE_ID
         proposed = (item.type_label or "").strip()
+        identity_names = {
+            name.casefold(): name for name in types.identity_names(type_id)
+        }
+        attributes: dict[str, str] = {}
+        for raw_name, raw_value in item.attributes.items():
+            declared = identity_names.get(raw_name.strip().casefold())
+            if (
+                declared is not None
+                and isinstance(raw_value, str)
+                and raw_value.strip()
+                and len(raw_value) <= MAX_ATTRIBUTE_CHARS
+                and raw_value in text
+            ):
+                attributes.setdefault(declared, raw_value)
         name_key = normalize_name(name)
-        if (index := seen.get((name_key, type_id))) is not None:
+        index = next(
+            (
+                candidate
+                for candidate in seen.get((name_key, type_id), ())
+                if not any(
+                    attributes[key] != out[candidate].attributes[key]
+                    for key in attributes.keys() & out[candidate].attributes.keys()
+                )
+            ),
+            None,
+        )
+        if index is not None:
             prior = out[index]
-            out[index] = replace(prior, confidence=max(prior.confidence, confidence))
+            out[index] = replace(
+                prior,
+                confidence=max(prior.confidence, confidence),
+                attributes={**attributes, **prior.attributes},
+            )
             ids.append(out[index].local_id)
             continue
-        seen[(name_key, type_id)] = len(out)
+        seen.setdefault((name_key, type_id), []).append(len(out))
         local_id = f"e{len(out)}"
         out.append(
             ExtractedEntity(
@@ -154,6 +199,7 @@ def bind_entities(
                 proposed_type=proposed if item.type_id == UNKNOWN_TYPE_ID else "",
                 description=item.description,
                 spans=tuple(spans),
+                attributes=attributes,
             )
         )
         ids.append(local_id)

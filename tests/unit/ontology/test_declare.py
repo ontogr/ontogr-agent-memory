@@ -66,6 +66,15 @@ class TestDeclare:
 
         assert diff(head, build_target(head, declaration)).ops == []
 
+    @pytest.mark.parametrize("name", ["uri", "actor_id", "role"])
+    def test_rejects_reserved_identity_attribute_names(self, name):
+        """Reserved graph attributes cannot identify entity types."""
+        declaration = OntologyDeclaration(
+            entities=[EntityDeclaration(label="Person", identity_attributes=[name])]
+        )
+        with pytest.raises(InvalidChange, match="identity attribute name is reserved"):
+            build_target(Ontology.genesis(), declaration)
+
     def test_renaming_keeps_the_type_id_and_old_label(self):
         """A declared rename updates the label without replacing the type."""
         first = self._build(

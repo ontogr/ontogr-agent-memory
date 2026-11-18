@@ -15,10 +15,11 @@ from ontogr_mem.data_models.entities import (
     VerdictKind,
     VerifyStatus,
 )
+from ontogr_mem.ontology.links import TypeLinks
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.decision import collect_matches
 from ontogr_mem.resolution.grouping import Group
-from ontogr_mem.resolution.policy import ResolutionPolicy, TypeRel, TypeRelations
+from ontogr_mem.resolution.policy import ResolutionPolicy
 from ontogr_mem.resolution.resolver_store import ResolverStore
 from ontogr_mem.resolution.scoring import Candidate, needs_two_votes
 from ontogr_mem.resolution.verdicts import apply_verdicts
@@ -35,9 +36,9 @@ async def inline_verify(
     candidates: Sequence[Sequence[Candidate]],
     *,
     store: ResolverStore,
+    links: TypeLinks,
     policy: ResolutionPolicy,
     settings: ResolverSettings,
-    relations: TypeRelations,
     verifier: Verifier,
     incomplete: bool,
     clock: Clock,
@@ -53,7 +54,7 @@ async def inline_verify(
             view,
             policy=policy,
             settings=settings,
-            relations=relations,
+            links=links,
             settle=False,
         )
         plan = apply_verdicts(collected, {}, incomplete)
@@ -68,13 +69,8 @@ async def inline_verify(
             if entity is None:
                 continue
             candidate = by_id.get(entity_id)
-            cross = (
-                policy.relation(group.type_label, entity.type_label, relations)
-                is TypeRel.FAMILY
-            )
-            two_votes = cross or (
-                candidate is not None
-                and needs_two_votes(candidate.signals, settings, cross)
+            two_votes = candidate is not None and needs_two_votes(
+                candidate.signals, settings
             )
             pairs.append(
                 PairInput(

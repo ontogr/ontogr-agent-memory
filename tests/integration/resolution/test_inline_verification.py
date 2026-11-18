@@ -19,6 +19,7 @@ from tests.integration.resolution.resolver_helpers import (
 )
 from tests.support.graph_backend import GraphBackend
 from tests.support.scripted_model import scripted_model, scripted_role_models
+from tests.support.type_world import WORLD
 from tests.unit.resolution.helpers import entity, oracle_models
 
 
@@ -38,8 +39,10 @@ async def test_flag_off_by_default_means_no_llm_call_in_resolve(
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await _make_verifying_resolver(store, models=models)
 
-    await resolver.resolve([ex("1", "John Smith", "Person")])
-    await resolver.resolve([ex("1", "John Smith", "Person", episode_id="e2")])
+    await resolver.resolve([ex("1", "John Smith", "Person")], WORLD.links)
+    await resolver.resolve(
+        [ex("1", "John Smith", "Person", episode_id="e2")], WORLD.links
+    )
 
     mention = await latest_mention(store, "e2")
     assert scripted.calls == []
@@ -54,8 +57,10 @@ async def test_inline_yes_links_the_mention_to_the_existing_person(
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await _make_verifying_resolver(store, models=models, inline=True)
 
-    await resolver.resolve([ex("1", "John Smith", "Person")])
-    await resolver.resolve([ex("1", "John Smith", "Person", episode_id="e2")])
+    await resolver.resolve([ex("1", "John Smith", "Person")], WORLD.links)
+    await resolver.resolve(
+        [ex("1", "John Smith", "Person", episode_id="e2")], WORLD.links
+    )
 
     first = await latest_mention(store, "ep1")
     second = await latest_mention(store, "e2")
@@ -73,8 +78,10 @@ async def test_inline_no_creates_a_resolved_entity_with_no_candidates_left(
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await _make_verifying_resolver(store, models=models, inline=True)
 
-    await resolver.resolve([ex("1", "John Smith", "Person")])
-    await resolver.resolve([ex("1", "John Smith", "Person", episode_id="e2")])
+    await resolver.resolve([ex("1", "John Smith", "Person")], WORLD.links)
+    await resolver.resolve(
+        [ex("1", "John Smith", "Person", episode_id="e2")], WORLD.links
+    )
 
     mention = await latest_mention(store, "e2")
     assert mention.decision_outcome is Outcome.CREATED
@@ -92,26 +99,34 @@ async def test_inline_llm_outage_never_fails_the_job_it_falls_back_to_provisiona
         store, models=scripted_role_models(resolution=model), inline=True
     )
 
-    await resolver.resolve([ex("1", "John Smith", "Person")])
-    await resolver.resolve([ex("1", "John Smith", "Person", episode_id="e2")])
+    await resolver.resolve([ex("1", "John Smith", "Person")], WORLD.links)
+    await resolver.resolve(
+        [ex("1", "John Smith", "Person", episode_id="e2")], WORLD.links
+    )
 
     mention = await latest_mention(store, "e2")
     assert mention.decision_outcome is Outcome.CREATED_PROVISIONAL
     assert await count_active(store) == 2
 
 
-async def test_inline_cross_type_yes_needs_two_votes(graph_backend: GraphBackend):
-    """A company and an organization need a swapped second YES."""
+async def test_inline_related_pair_needs_one_vote(graph_backend: GraphBackend):
+    """A parent and a child with one name need a single verifier vote."""
     models, scripted = oracle_models(lambda a, b: True)
     store = (await graph_backend.open_stores()).resolver_store
+    await store.write_entity_batch(
+        [
+            entity("e1", name="Acme", type_label="Contract"),
+            entity("e2", name="Acme", type_label="PurchaseOrder"),
+        ],
+        [],
+    )
     resolver = await _make_verifying_resolver(store, models=models, inline=True)
 
-    await resolver.resolve([ex("1", "Acme", "Company")])
-    await resolver.resolve([ex("1", "Acme", "Organization", episode_id="e2")])
+    await resolver.resolve([ex("1", "Acme", "Contract", episode_id="ep2")], WORLD.links)
 
-    mention = await latest_mention(store, "e2")
-    assert mention.decision_method is DecisionMethod.LLM
-    assert len(scripted.calls) == 2
+    mention = await latest_mention(store, "ep2")
+    assert len(scripted.calls) == 1
+    assert set(mention.decision_candidates) == {"e1", "e2"}
 
 
 async def test_inline_one_call_per_resolve_for_many_ambiguous_groups(
@@ -123,13 +138,14 @@ async def test_inline_one_call_per_resolve_for_many_ambiguous_groups(
     resolver = await _make_verifying_resolver(store, models=models, inline=True)
 
     await resolver.resolve(
-        [ex("1", "John Smith", "Person"), ex("2", "Mary Jones", "Person")]
+        [ex("1", "John Smith", "Person"), ex("2", "Mary Jones", "Person")], WORLD.links
     )
     await resolver.resolve(
         [
             ex("1", "John Smith", "Person", episode_id="e2"),
             ex("2", "Mary Jones", "Person", episode_id="e2"),
-        ]
+        ],
+        WORLD.links,
     )
 
     assert len(scripted.calls) == 1
@@ -141,9 +157,7 @@ async def test_a_candidate_the_verifier_never_answered_stays_pending(
     """A pair whose call failed keeps the entity on the pending list."""
     store = (await graph_backend.open_stores()).resolver_store
     resolver = await _make_verifying_resolver(store)
-    [group] = build_groups(
-        [ex("1", "John Smith", "Person")], resolver.policy, resolver.relations
-    )
+    [group] = build_groups([ex("1", "John Smith", "Person")], WORLD.links)
     candidates = [
         Candidate(entity_id="e1", signals=PairSignals(jaccard=0.5)),
         Candidate(entity_id="e2", signals=PairSignals(jaccard=0.5)),
@@ -161,7 +175,7 @@ async def test_a_candidate_the_verifier_never_answered_stays_pending(
         view,
         policy=resolver.policy,
         settings=resolver.settings,
-        relations=resolver.relations,
+        links=WORLD.links,
         settle=False,
     )
     plan = apply_verdicts(collected, {"e1": VerdictKind.DISTINCT}, False)

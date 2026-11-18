@@ -125,6 +125,7 @@ def entity(entity_id: str, descriptions: list[str], *, stale: bool = True) -> En
     """Build an active entity with the given descriptions."""
     return Entity(
         entity_id=entity_id,
+        ontology_type_id=1,
         type_label="Thing",
         canonical_name=entity_id,
         strict_key=entity_id,

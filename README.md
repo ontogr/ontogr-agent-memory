@@ -161,11 +161,24 @@ Resolution links extracted names to canonical entities through a ladder:
 3. a fuzzy Jaccard match
 4. a model verdict for the remaining ambiguous pairs
 
-- **Ids survive merges:** An entity id is a UUID5 over the first mention, so it survives a merge and a deleted duplicate is not recreated from its name. A type-family policy decides which entities may merge.
+- **Ids survive merges:** An entity id is a UUID5 over the first mention, so it survives a merge and a deleted duplicate is not recreated from its name. The ontology's type ids decide which entities may merge; see Entity identity and resolver compatibility below.
 - **Three outcomes:** A name links to an existing entity, becomes a new entity when no candidate remains or the verifier calls every candidate distinct, or becomes a provisional entity that is checked again later.
 - **Merges are reversible:** A merge never deletes the absorbed entity. It keeps a `merged_into` pointer and a snapshot, so an unmerge can restore both sides.
 - **Mentions and aliases are records:** Entity verdicts record same, distinct, or uncertain decisions for later runs.
 - **Model failures never merge:** Deferred deduplication uses blocking and vector candidates, then verifies the pairs that need a decision. An unreadable verdict is not remembered as a decision.
+
+#### Entity identity and resolver compatibility
+
+Ontology type ids define entity compatibility and identity. Resolution compares
+these stable ids, follows ontology type merges, and treats sibling or unrelated
+types as distinct. Identity attributes declared on a type are also inherited
+from its parent types. Shared identity values can confirm a match, while
+conflicting values prevent a merge.
+
+Custom resolver integrations must provide the active ontology's `TypeLinks` when
+they call `resolve`, `deduplicate`, or `merge`. Use `resolver.linked(links)` to
+bind one ontology snapshot for consolidation operations. Entity records must
+include `ontology_type_id`; use `0` for the `Unknown` type.
 
 ### Temporal and consistency engine
 
@@ -493,7 +506,7 @@ The four snippets do not change between server modes. The server has two modes.
 - **Keyless mode** needs no language model on the server. Run the server where no global or role-specific model is configured. Removing only `MEMORY_LLM_API_KEY` does not disable a configured model.
 - **Model mode** lets the server extract facts from text. Set `MEMORY_LLM_MODEL`, `MEMORY_LLM_BASE_URL` and the key in the environment, or in the server working directory's `.env`, before the process starts. Use a model key for these settings. Never copy a host subscription token into them.
 
-Keyless mode works as follows. The host's model extracts the facts and calls `write_facts` with the source text and the facts. A `write_facts` request carries at most 1000 facts, and each text field of a fact holds at most 4096 characters. The service stores the exact source text as one Episode, checks every quote and name against that text, applies the ontology rules, and stores the valid facts. The server's model settings are independent of the host's subscription.
+Keyless mode works as follows. The host's model extracts the facts and calls `write_facts` with the source text and the facts. A `write_facts` request carries at most 1000 facts, and each text field of a fact holds at most 4096 characters. A fact may carry `subject_attributes` and `object_attributes`, each at most 10 identity names and values of at most 4096 characters. Each identity value must appear in the source text, and a name the endpoint's type does not declare is ignored. The service stores the exact source text as one Episode, checks every quote, name and identity value against that text, applies the ontology rules, and stores the valid facts. The server's model settings are independent of the host's subscription.
 
 `add_memory` is listed only in model mode, when both extraction roles (`ENTITY_EXTRACTION` and `FACT_EXTRACTION`) have models. It extracts entities and facts from plain text on the server.
 

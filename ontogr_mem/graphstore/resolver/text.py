@@ -77,6 +77,7 @@ def pruned_entity_text(
             "summary": "",
             "descriptions": [],
             "attributes": {},
+            "identity_attrs": {},
             "summary_stale": True,
         }
     )

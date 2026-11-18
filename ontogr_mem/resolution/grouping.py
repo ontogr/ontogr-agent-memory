@@ -9,15 +9,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from ontogr_mem.data_models import UNKNOWN_LABEL, ExtractedEntity
+from ontogr_mem.data_models import ExtractedEntity
+from ontogr_mem.ontology.links import TypeLinks, TypeRel
+from ontogr_mem.ontology.models import UNKNOWN_ID
 from ontogr_mem.resolution.keys import loose_key, strict_key
-from ontogr_mem.resolution.policy import (
-    ResolutionPolicy,
-    TypeRel,
-    TypeRelations,
-    identity_conflict,
-    identity_of,
-)
+from ontogr_mem.resolution.policy import identity_conflict, identity_of
 
 
 @dataclass(slots=True)
@@ -55,24 +51,42 @@ class Group:
 
 def _promote_group_type(
     target: Group,
-    label: str,
+    type_id: int,
     extracted: ExtractedEntity,
-    relations: TypeRelations,
+    links: TypeLinks,
 ) -> None:
     """Promote the group's type triple when a member's type is more specific."""
-    winner = relations.more_specific(target.type_label, label)
-    if winner != target.type_label:
-        target.type_label = winner
-        target.ontology_type_id = extracted.ontology_type_id or 0
-        target.proposed_type = extracted.proposed_type
-    elif target.type_label == label == UNKNOWN_LABEL and not target.proposed_type:
-        target.proposed_type = extracted.proposed_type
+    winner = links.more_specific(target.ontology_type_id, type_id)
+    if winner != target.ontology_type_id:
+        target.ontology_type_id = winner
+        target.type_label = links.label(winner)
+    target.proposed_type = (
+        target.proposed_type or extracted.proposed_type if winner == UNKNOWN_ID else ""
+    )
+
+
+def _find_group(
+    groups: Sequence[Group],
+    key: str,
+    type_id: int,
+    identity: dict[str, str],
+    links: TypeLinks,
+) -> Group | None:
+    """Return the first group that accepts this mention, or None."""
+    for group in groups:
+        if group.strict != key:
+            continue
+        if links.relation(group.ontology_type_id, type_id) is TypeRel.DISTINCT:
+            continue
+        if identity_conflict(group.identity, identity):
+            continue
+        return group
+    return None
 
 
 def build_groups(
     entities: Sequence[ExtractedEntity],
-    policy: ResolutionPolicy,
-    relations: TypeRelations,
+    links: TypeLinks,
 ) -> list[Group]:
     """Collapse same-key, compatible-type, non-conflicting mentions of a batch."""
     groups: list[Group] = []
@@ -80,34 +94,28 @@ def build_groups(
         key = strict_key(extracted.name)
         if not key:
             continue
-        label = extracted.type_label or ""
-        identity = identity_of(policy, label, extracted.attributes)
-        target: Group | None = None
-        for group in groups:
-            if group.strict != key:
-                continue
-            relation = policy.relation(group.type_label, label, relations)
-            if relation not in (TypeRel.SAME, TypeRel.NESTED):
-                continue
-            if identity_conflict(group.identity, identity):
-                continue
-            target = group
-            break
+        if extracted.ontology_type_id is None:
+            raise ValueError(
+                f"entity {extracted.local_id} was not stamped with an ontology type"
+            )
+        type_id = links.canonical(extracted.ontology_type_id)
+        identity = identity_of(links, type_id, extracted.attributes)
+        target = _find_group(groups, key, type_id, identity, links)
         uri = extracted.attributes.get("uri")
         if target is None:
             target = Group(
                 members=[],
                 name=extracted.name.strip(),
-                type_label=label,
-                ontology_type_id=extracted.ontology_type_id or 0,
-                proposed_type=extracted.proposed_type,
+                type_label=links.label(type_id),
+                ontology_type_id=type_id,
+                proposed_type=extracted.proposed_type if type_id == UNKNOWN_ID else "",
                 strict=key,
                 loose=loose_key(extracted.name),
                 uri=str(uri) if uri else None,
             )
             groups.append(target)
         else:
-            _promote_group_type(target, label, extracted, relations)
+            _promote_group_type(target, type_id, extracted, links)
             target.uri = target.uri or (str(uri) if uri else None)
         target.members.append(extracted)
         if extracted.description and extracted.description not in target.descriptions:

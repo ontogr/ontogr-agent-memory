@@ -36,6 +36,12 @@ class TestTypeCatalog:
         assert not catalog.has_entity_id(2)
         assert catalog.entity_label(-1) == "Unknown"
 
+    @pytest.mark.parametrize("type_id", [-2, 2])
+    def test_identity_names_rejects_an_id_outside_the_catalog(self, type_id: int):
+        """No id outside the catalog can name identity attributes."""
+        with pytest.raises(ValueError, match="outside the catalog"):
+            make_catalog().identity_names(type_id)
+
     def test_version_is_a_stable_sixteen_character_hash(self):
         """Version is a stable sixteen character hash."""
         assert make_catalog().version == "b0afa31bcb938538"
