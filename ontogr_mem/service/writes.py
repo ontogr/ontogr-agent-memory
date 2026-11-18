@@ -454,11 +454,11 @@ async def _prepare_sourced_facts(  # noqa: PLR0912, PLR0915
                         stable if not unknown else UNKNOWN_ID
                     )
                 }
-                attributes = {
-                    declared[name.casefold()]: value
-                    for name, value in endpoint.attributes.items()
-                    if name.casefold() in declared
-                }
+                attributes: dict[str, str] = {}
+                for name, value in endpoint.attributes.items():
+                    declared_name = declared.get(name.casefold())
+                    if declared_name is not None:
+                        attributes.setdefault(declared_name, value)
                 entities.append(
                     ExtractedEntity(
                         local_id=endpoint.ref,

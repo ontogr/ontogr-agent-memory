@@ -494,6 +494,28 @@ class TestGroundHostFacts:
             {},
         ]
 
+    def test_keeps_the_first_value_of_a_case_variant_attribute_name(self) -> None:
+        """Names of one attribute that differ only by case keep the first value."""
+        source = "Ana (ana@one.org) works at Acme. Ana (ANA@TWO.ORG) uses Postgres."
+        facts = [
+            host_fact(
+                subject_attributes={"email": "ana@one.org"},
+                evidence_quote="Ana (ana@one.org) works at Acme.",
+            ),
+            host_fact(
+                relation="USES",
+                object_="Postgres",
+                object_type="Database",
+                subject_attributes={"Email": "ANA@TWO.ORG"},
+                evidence_quote="Ana (ANA@TWO.ORG) uses Postgres.",
+            ),
+        ]
+
+        result = ground_host_facts(source, facts)
+
+        assert result.drops == ()
+        assert result.endpoints[0].attributes == {"email": "ana@one.org"}
+
     def test_describes_a_drop_as_a_result_dict(self) -> None:
         """A drop turns into the plain dict returned to callers."""
         drop = Drop(3, FactDropReason.UNGROUNDED, "quote not found in episode")

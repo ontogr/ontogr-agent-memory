@@ -1057,10 +1057,10 @@ class TestWriteFacts:
         finally:
             await falkordb_store.erase_tenant(tenant)
 
-    async def test_a_host_attribute_the_type_does_not_declare_is_ignored(
+    async def test_an_undeclared_host_attribute_does_not_drop_the_fact(
         self, falkordb_store: FalkorDBGraphStore
     ):
-        """Undeclared identity attributes do not enter stored entities."""
+        """An identity name the type does not declare is ignored, not dropped."""
         tenant = new_tenant()
         try:
             async with open_memory(tenant) as memory:

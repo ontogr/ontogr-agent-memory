@@ -229,7 +229,7 @@ def ground_host_facts(episode_text: str, facts: Sequence[HostFact]) -> Grounded:
             ref = refs[key]
             collected = values_by_ref.setdefault(ref, {})
             for attribute_name, value in values.items():
-                collected.setdefault(attribute_name.strip(), value.strip())
+                collected.setdefault(normalize_text(attribute_name), value.strip())
             pair.append(ref)
         grounded.append(GroundedFact(index, fact, pair[0], pair[1]))
 
