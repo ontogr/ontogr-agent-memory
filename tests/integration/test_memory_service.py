@@ -917,10 +917,10 @@ class TestMemoryService:
         assert any(fact.statement == "Ana directs Hydra" for fact in entity.facts)
         assert (await manager.catalog()).relation_by_label("DIRECTS") is None
 
-    async def test_sourced_unknown_labels_are_dropped_and_not_registered(
+    async def test_sourced_unknown_labels_are_stored_without_registration(
         self, graph_backend: GraphBackend
     ):
-        """Unknown relation and endpoint type labels drop facts and register nothing."""
+        """Unknown labels stay off the catalog while both distinct facts are stored."""
         harness = await memory_service_harness(graph_backend)
         stores = await graph_backend.stores_for("t1")
         manager = _ontology_manager(stores, harness.clock)
@@ -960,8 +960,23 @@ class TestMemoryService:
         assert job.result is not None
         assert job.result.get("dropped", []) == []
         assert len(job.result["fact_ids"]) == 2
-        assert job.result["unplaced"] == 2
-        assert await manager.catalog() == before
+        assert job.result["unplaced"] == 1
+        sourced_facts = await stores.temporal_store.facts_of_episode(
+            job.result["episode_id"]
+        )
+        assert {fact.fact_id for fact in sourced_facts} == set(job.result["fact_ids"])
+        unplaced = [fact for fact in sourced_facts if fact.relation_type_id is None]
+        placed = [fact for fact in sourced_facts if fact.relation_type_id is not None]
+        assert len(unplaced) == 1
+        assert len(placed) == 1
+        assert unplaced[0].relation_label == "MENTORS"
+        assert placed[0].relation_label == "WORKS_AT"
+        assert placed[0].relation_type_id == before.relation_by_label("WORKS_AT").type_id
+        assert unplaced[0].fact_id != placed[0].fact_id
+        assert unplaced[0].object_id != placed[0].object_id
+        after = await manager.catalog()
+        assert after.relation_by_label("MENTORS") is None
+        assert after == before
 
     async def test_sourced_known_endpoint_types_with_wrong_pattern_are_dropped(
         self, graph_backend: GraphBackend
