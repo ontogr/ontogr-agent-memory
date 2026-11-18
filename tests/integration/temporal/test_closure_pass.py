@@ -87,6 +87,9 @@ async def test_closure_pass_records_contradiction_and_closes_earlier_fact(
 
     assert len(judge.calls) == 1
     assert report.counts[Outcome.JUDGE_ASKED.value] == 1
+    earlier_facts = await store.facts_by_ids([old_fact.fact_id])
+    earlier_fact = next(fact for fact in earlier_facts if fact.valid_to is not None)
+    assert earlier_fact.valid_to == at(2015)
     verdicts = await store.verdicts_for([old_fact.fact_id, new_fact.fact_id])
     assert VerdictKind.CONTRADICTS in {verdict.verdict for verdict in verdicts}
     assert judge.calls[0][0] == "Ana works for Two"

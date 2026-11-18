@@ -200,6 +200,44 @@ class TestAdapter:
         assert actual.slot_key == same_modality.slot_key
         assert actual.slot_key != planned.slot_key
 
+    async def test_event_label_slots_normalize_and_distinguish_labels(self):
+        """Unmapped event labels define slots independently of statement text."""
+        common = {
+            "fact_kind": FactKind.EVENT,
+            "relation_type": None,
+            "valid_from": at(2020),
+            "text": "the same statement",
+        }
+        (first,), _ = await convert(
+            typed(relation_label="has event", **common)
+        )
+        (normalized,), _ = await convert(
+            typed(relation_label=" HAS   EVENT ", **common)
+        )
+        (different,), _ = await convert(
+            typed(relation_label="other event", **common)
+        )
+        assert first.slot_key == normalized.slot_key
+        assert first.slot_key != different.slot_key
+
+    async def test_negated_event_does_not_close_affirmed_event_unless_overridden(self):
+        """Negated event identity is separate unless a slot is explicitly set."""
+        affirmed, _ = await convert(typed(fact_kind=FactKind.EVENT))
+        negated, _ = await convert(
+            typed(fact_kind=FactKind.EVENT, polarity=Polarity.NEGATED)
+        )
+        assert affirmed[0].slot_key != negated[0].slot_key
+
+        explicit_end, _ = await convert(
+            TypedFact(
+                extracted(fact_kind=FactKind.EVENT, polarity=Polarity.NEGATED),
+                relation_type=1,
+                catalog_version="v1",
+                slot_key=affirmed[0].slot_key,
+            )
+        )
+        assert explicit_end[0].slot_key == affirmed[0].slot_key
+
     async def test_planned_state_keeps_modality_and_separate_slot(self):
         """A planned state does not share the actual state's slot."""
         (planned,), _ = await convert(typed(modality=Modality.PLANNED))

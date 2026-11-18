@@ -111,6 +111,7 @@ def _isolated_slot_key(
     relation_label: str,
     fact_kind: FactKind,
     modality: Modality,
+    polarity: Polarity,
     time_basis: TimeBasis,
     valid_from: datetime,
     statement: str,
@@ -125,8 +126,13 @@ def _isolated_slot_key(
         start = (
             valid_from.isoformat() if time_basis is TimeBasis.STATED else "reference"
         )
+        namespace = (
+            "slot-event-negated"
+            if polarity is Polarity.NEGATED
+            else "slot-event"
+        )
         return stable_id(
-            "slot-event", subject_id, object_id, relation, modality.value, start
+            namespace, subject_id, object_id, relation, modality.value, start
         )
     if modality is not Modality.ACTUAL:
         return stable_id("slot-plan", subject_id, object_id, relation, modality.value)
@@ -272,6 +278,7 @@ async def _convert(
             relation_label=(fact.relation_label or "").strip()[:128],
             fact_kind=fact.fact_kind,
             modality=fact.modality,
+            polarity=fact.polarity,
             time_basis=fact.time_basis,
             valid_from=start or episode.occurred_at,
             statement=fact.text,
