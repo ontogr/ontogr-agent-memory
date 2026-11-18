@@ -235,7 +235,7 @@ class TestBinding:
         assert f.time_basis is TimeBasis.REFERENCE
 
     @pytest.mark.parametrize("modality", ["planned", "conditional", "desired"])
-    def test_plans_conditions_and_wishes_are_kept_and_not_dated(
+    def test_plans_conditions_and_wishes_use_episode_reference_time(
         self, modality: str
     ) -> None:
         """An undated non-actual modality uses the episode reference time."""

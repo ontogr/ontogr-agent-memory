@@ -44,7 +44,17 @@ class TestTypeCatalog:
 
     def test_version_is_a_stable_sixteen_character_hash(self):
         """Version is a stable sixteen character hash."""
-        assert make_catalog().version == "b0afa31bcb938538"
+        assert make_catalog().version == "e2860dec09ddfba5"
+
+    def test_version_changes_when_relation_symmetry_changes(self):
+        """Version includes relation symmetry."""
+        directed = make_catalog()
+        symmetric = TypeCatalog(
+            directed.entity_types,
+            [RelationType(0, "WORKS_AT", source_types=frozenset({0}), symmetric=True)],
+        )
+
+        assert directed.version != symmetric.version
 
     def test_direction_is_checked_unless_a_side_is_unknown(self):
         """Direction is checked unless a side is unknown."""
