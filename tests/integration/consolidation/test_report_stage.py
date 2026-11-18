@@ -92,7 +92,10 @@ async def test_reports_both_facts_of_an_open_dispute(
         [
             await verdict(
                 world.temporal_store,
-                facts[0], facts[1], VerdictKind.UNCERTAIN, lambda: facts[0].recorded_at
+                facts[0],
+                facts[1],
+                VerdictKind.UNCERTAIN,
+                lambda: facts[0].recorded_at,
             )
         ]
     )

@@ -26,9 +26,7 @@ async def verdict(
     """Build a verdict from the facts' stored first observations."""
     observations = {
         observation.obs_id: observation
-        for observation in await store.observations_by_ids(
-            (*a.evidence, *b.evidence)
-        )
+        for observation in await store.observations_by_ids((*a.evidence, *b.evidence))
     }
     first = fact_side(a, observations, Trust())
     second = fact_side(b, observations, Trust())

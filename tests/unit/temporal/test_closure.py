@@ -36,9 +36,11 @@ class TestClosureJudge:
             in captured["prompt"]
         )
         assert "<new_fact>\nnew fact\n</new_fact>" in captured["prompt"]
-        candidate_json = captured["prompt"].split("<existing_facts>\n", 1)[1].split(
-            "\n</existing_facts>", 1
-        )[0]
+        candidate_json = (
+            captured["prompt"]
+            .split("<existing_facts>\n", 1)[1]
+            .split("\n</existing_facts>", 1)[0]
+        )
         assert json.loads(candidate_json) == [
             {"id": "F1", "text": "first"},
             {"id": "F2", "text": "second"},

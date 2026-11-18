@@ -1294,7 +1294,9 @@ class TestWriteFacts:
         finally:
             await falkordb_store.erase_tenant(tenant)
 
-    async def test_wrong_direction_is_kept_unplaced(self, falkordb_store: FalkorDBGraphStore):
+    async def test_wrong_direction_is_kept_unplaced(
+        self, falkordb_store: FalkorDBGraphStore
+    ):
         """A WORKS_AT fact with swapped endpoints is kept without placement."""
         tenant = new_tenant()
         try:

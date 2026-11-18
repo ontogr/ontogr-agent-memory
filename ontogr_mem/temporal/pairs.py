@@ -75,17 +75,18 @@ def pair_input(
         fact, observations = partner.fact, partner.observations
         side = fact_side(fact, observations, trust)
         first = observations.get(side.first_obs_id)
+        relation = (
+            fact.relation_type_id
+            if fact.relation_type_id is not None
+            else fact.relation_label or "related to"
+        )
         sides.append(side)
         views.append(
             JudgeFact(
                 fact_id=fact.fact_id,
                 statement=first.statement
                 if first and first.statement
-                else (
-                    f"{fact.subject_id} "
-                    f"{fact.relation_type_id if fact.relation_type_id is not None else fact.relation_label or 'related to'} "
-                    f"{fact.object_id}"
-                ),
+                else (f"{fact.subject_id} {relation} {fact.object_id}"),
                 interval=_interval(fact),
                 source=first.source_system if first else "",
             )
