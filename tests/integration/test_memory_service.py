@@ -804,10 +804,10 @@ class TestMemoryService:
             'actor_role="assistant"'
         ) in search.rendered
 
-    async def test_strict_refusal_keeps_known_and_rejects_structured_fact(
+    async def test_unknown_relation_is_stored_unplaced_alongside_known_fact(
         self, graph_backend: GraphBackend
     ):
-        """STRICT drops unknown text links but does not reject the episode."""
+        """An unknown relation is kept unplaced for text and structured writes."""
         harness = await memory_service_harness(graph_backend, models=_memory_models())
         first_receipt = await harness.service.add_memory(
             harness.principal,
@@ -845,10 +845,29 @@ class TestMemoryService:
         assert job.result is not None
         assert job.result["unplaced"] == 1
         assert job.result["skipped"] == {}
-        assert len(job.result["fact_ids"]) == 1
-        assert first_job.result is not None
+        assert len(job.result["fact_ids"]) == 2
+        message_facts = await stores.temporal_store.facts_of_episode(
+            job.result["episode_id"]
+        )
+        assert {fact.fact_id for fact in message_facts} == set(job.result["fact_ids"])
+        placed = [fact for fact in message_facts if fact.relation_type_id is not None]
+        unplaced = [fact for fact in message_facts if fact.relation_type_id is None]
+        assert len(placed) == 1
+        assert len(unplaced) == 1
         catalog = await manager.catalog()
         assert catalog.relation_by_label("DIRECTS") is None
+        assert placed[0].relation_label == "OWNS"
+        assert placed[0].relation_type_id == catalog.relation_by_label("OWNS").type_id
+        assert unplaced[0].relation_label == "DIRECTS"
+        assert unplaced[0].relation_type_id is None
+        assert first_job.result is not None
+        entity = await harness.service.get_entity(
+            harness.principal, GetEntity(tenant="t1", name="Hydra")
+        )
+        readback = {fact.fact_id: fact.statement for fact in entity.facts}
+        assert first_job.result["fact_ids"][0] in readback
+        assert readback[placed[0].fact_id] == "The speaker owns Hydra"
+        assert readback[unplaced[0].fact_id] == "The speaker directs Hydra"
         episodes = await harness.service.list_episodes(
             harness.principal,
             ListEpisodes(tenant="t1", limit=10),
@@ -866,7 +885,7 @@ class TestMemoryService:
             job.result["episode_id"]: ("speaker-1", "speaker-1", "assistant"),
         }
 
-        rejected = await harness.service.add_memory(
+        structured = await harness.service.add_memory(
             harness.principal,
             AddMemory(
                 tenant="t1",
@@ -877,11 +896,26 @@ class TestMemoryService:
                 wait_seconds=5,
             ),
         )
-        rejected_job = await wait_for_job(
-            harness.service, harness.principal, rejected.job_id
+        structured_job = await wait_for_job(
+            harness.service, harness.principal, structured.job_id
         )
-        assert rejected_job.status.value == "failed"
-        assert rejected_job.result is None
+        assert structured_job.status.value == "done"
+        assert structured_job.result is not None
+        assert structured_job.result["unplaced"] == 1
+        assert structured_job.result["skipped"] == {}
+        assert len(structured_job.result["fact_ids"]) == 1
+        structured_facts = await stores.temporal_store.facts_of_episode(
+            structured_job.result["episode_id"]
+        )
+        assert len(structured_facts) == 1
+        assert structured_facts[0].fact_id == structured_job.result["fact_ids"][0]
+        assert structured_facts[0].relation_type_id is None
+        assert structured_facts[0].relation_label == "directs"
+        entity = await harness.service.get_entity(
+            harness.principal, GetEntity(tenant="t1", name="Hydra")
+        )
+        assert any(fact.statement == "Ana directs Hydra" for fact in entity.facts)
+        assert (await manager.catalog()).relation_by_label("DIRECTS") is None
 
     async def test_sourced_unknown_labels_are_dropped_and_not_registered(
         self, graph_backend: GraphBackend
