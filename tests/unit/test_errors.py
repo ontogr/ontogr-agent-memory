@@ -47,6 +47,22 @@ class TestMissingExtraError:
         assert error.extras == ("falkordb",)
         assert "pip" not in str(error)
 
+    def test_message_explains_features_and_uvx_command(self):
+        """The error connects missing extras to features and a runnable command."""
+        error = MissingExtraError(
+            ("mcp",),
+            features=("MCP server",),
+            needed=("falkordb", "mcp"),
+            subcommand="mcp",
+        )
+
+        assert str(error).splitlines() == [
+            "missing extras: mcp",
+            "needed for: MCP server",
+            'install with: uv add "ontogr-mem[mcp]"',
+            'or run with: uvx --from "ontogr-mem[falkordb,mcp]" ontogr-mem mcp',
+        ]
+
 
 class TestStoreError:
     """Behavior of the shared store error base."""
