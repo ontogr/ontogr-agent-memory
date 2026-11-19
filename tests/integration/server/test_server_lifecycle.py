@@ -140,3 +140,27 @@ class TestServerLifecycle:
             assert response.status == 202
         assert process.wait(timeout=40) == 0
         assert not (data_directory / "server.json").exists()
+
+    def test_cli_stop_with_api_key(
+        self, server_process: tuple[subprocess.Popen[str], Path]
+    ) -> None:
+        """The CLI stop command authenticates with MEMORY_MCP_API_KEY."""
+        process, data_directory = server_process
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "MEMORY_DATA_DIR": str(data_directory),
+                "MEMORY_MCP_API_KEY": "lifecycle-test-key",
+            }
+        )
+        result = subprocess.run(
+            [sys.executable, "-m", "ontogr_mem", "server", "stop"],
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert process.wait(timeout=40) == 0
+        assert not (data_directory / "server.json").exists()

@@ -214,7 +214,11 @@ def _server_status() -> int:
     if not info:
         print("not running")
         return 1
-    token = read_server_token(data_directory() / "server.token")
+    api_key = McpSettings().api_key
+    if api_key is not None:
+        token = api_key.get_secret_value()
+    else:
+        token = read_server_token(data_directory() / "server.token")
     request = urllib.request.Request(
         f"http://127.0.0.1:{info['port']}/health",
         headers={"Authorization": f"Bearer {token}"} if token else {},
@@ -250,7 +254,11 @@ def _server_stop() -> int:
     if not info:
         print("not running")
         return 1
-    token = read_server_token(data_directory() / "server.token")
+    api_key = McpSettings().api_key
+    if api_key is not None:
+        token = api_key.get_secret_value()
+    else:
+        token = read_server_token(data_directory() / "server.token")
     request = urllib.request.Request(
         f"http://127.0.0.1:{info['port']}/shutdown",
         data=b"{}",
