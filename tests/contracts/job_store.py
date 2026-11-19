@@ -192,7 +192,7 @@ class JobStoreContract:
             assert claimed == replace(job, status=JobState.RUNNING)
             assert await store.save_job(replace(claimed, attempts=1))
 
-        await store.requeue_expired(T0)
+        await store.requeue_expired(T0 + timedelta(seconds=60, microseconds=1))
         recovered = await store.queued_jobs()
 
         expected = [replace(jobs[1], attempts=1), replace(jobs[2], attempts=1), jobs[0]]
