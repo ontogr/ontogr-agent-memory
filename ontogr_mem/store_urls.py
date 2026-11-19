@@ -36,7 +36,8 @@ class FalkorTarget:
     def identity(self) -> str:
         """Return a credential-free connection identity."""
         scheme = "rediss" if self.tls else "redis"
-        return f"{scheme}://{self.host}:{self.port}"
+        host = f"[{self.host}]" if ":" in self.host else self.host
+        return f"{scheme}://{host}:{self.port}"
 
 
 @dataclass(frozen=True, slots=True)

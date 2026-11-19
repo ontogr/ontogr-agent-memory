@@ -1,7 +1,6 @@
 """The MCP runner and the ontogr-mem mcp command, with transport and storage faked."""
 
 import logging
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -237,9 +236,15 @@ class TestMcpCommand:
     @pytest.fixture(autouse=True)
     def isolated_environment(self, monkeypatch, tmp_path):
         """Clear MEMORY_MCP_ variables and the banner variable after each test."""
-        for name in list(os.environ):
-            if name.startswith("MEMORY_MCP_"):
-                monkeypatch.delenv(name)
+        for name in (
+            "MEMORY_MCP_TRANSPORT",
+            "MEMORY_MCP_HOST",
+            "MEMORY_MCP_PORT",
+            "MEMORY_MCP_TENANT",
+            "MEMORY_MCP_ONTOLOGY",
+            "MEMORY_MCP_API_KEY",
+        ):
+            monkeypatch.delenv(name, raising=False)
         # An empty directory keeps a developer dotenv file out of the settings.
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("PYDANTIC_AI_NO_BANNER", "0")

@@ -1,6 +1,7 @@
 """Server risks of FalkorDB that the adapter must survive."""
 
 import asyncio
+from dataclasses import replace
 
 import pytest
 
@@ -104,10 +105,10 @@ class TestFalkorDBRisks:
     ):
         """Five failures open the breaker; it closes again once the server is back."""
         target = parse_graph_url(falkordb_test_url())
-        proxy = TcpProxy(target.host, target.port)
+        proxy = TcpProxy("127.0.0.1", target.port)
         await proxy.start()
         store = FalkorDBGraphStore(
-            parse_graph_url(falkordb_test_url(port=proxy.port)),
+            replace(target, host="127.0.0.1", port=proxy.port),
             falkordb_test_settings(
                 port=proxy.port,
                 max_attempts=1,

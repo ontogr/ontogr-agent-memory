@@ -51,12 +51,19 @@ class TestParseGraphUrl:
         assert target.identity() == "neo4j+s://host:7687/graphs"
         assert "p@ss" not in repr(target)
 
+    def test_falkor_ipv6_identity_brackets_host(self) -> None:
+        """An IPv6 Falkor host is bracketed in the connection identity."""
+        target = parse_graph_url("redis://[::1]:6380")
+        assert isinstance(target, FalkorTarget)
+        assert target.identity() == "redis://[::1]:6380"
+
     @pytest.mark.parametrize(
         "url",
         [
             "redis://host/0",
             "neo4j://host/db",
             "neo4j://user@host",
+            "neo4j://user:secret@host/db",
             "neo4j://:secret@host",
             "redis://user@host",
             "neo4j://host?policy=x",
