@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 from ontogr_mem.data_models.jobs import JobState
 from ontogr_mem.relational_store.postgres.jobs import PostgresJobStore
+from tests.contracts.erase_journal import make_erasure
 from tests.contracts.job_store import make_job
 
 
@@ -89,3 +90,27 @@ class TestPostgresJobLeases:
         queued = replace(claimed, status=JobState.QUEUED)
         assert await first.save_job(queued)
         assert await second.claim_next("tenant_a", now, lambda _: True) is not None
+
+    async def test_recovery_transfers_expired_erasure_to_one_owner(
+        self, pool, clean_tables
+    ):
+        """Only the winner receives a tenant-scoped recovery lease."""
+        first = PostgresJobStore(pool, owner_id="first", lease_seconds=60)
+        second = PostgresJobStore(pool, owner_id="second", lease_seconds=60)
+        third = PostgresJobStore(pool, owner_id="third", lease_seconds=60)
+        record = make_erasure()
+        await first.create(record)
+
+        async with pool.acquire() as connection:
+            await connection.execute(
+                "UPDATE erasures SET lease_expires_at = NULL WHERE erasure_id = $1",
+                record.erasure_id,
+            )
+
+        now = datetime.now(UTC)
+        claimed = await second.claim_recoverable("tenant_a", now)
+
+        assert [item.erasure_id for item in claimed] == [record.erasure_id]
+        assert await third.claim_recoverable("tenant_a", now) == []
+        assert await third.claim_recoverable("tenant_b", now) == []
+        await second.step(record.erasure_id, "retract")

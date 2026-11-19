@@ -419,25 +419,27 @@ class PostgresJobStore:
     async def claim_recoverable(
         self, tenant: str | None, now: datetime
     ) -> list[ErasureRecord]:
-        """Return expired running erase rows, optionally filtered by Tenant."""
-        query = (
-            "SELECT seq, erasure_id, tenant, mode, principal_id, selector_kind, "
-            "target, episode_ids, fact_ids, observation_ids, entity_ids, "
-            "created_at, status, last_step, finished_at, residue, counts "
-            "FROM erasures WHERE status = 'running' AND "
-            "(lease_expires_at IS NULL OR lease_expires_at <= $1)"
-        )
+        """Claim expired running erase rows, optionally filtered by Tenant."""
+        lease_expiry = to_micros(now) + self._lease_micros
         async with pg_connection(self._pool) as connection:
-            if tenant is None:
-                rows = await connection.fetch(
-                    query + " ORDER BY created_at, seq", to_micros(now)
-                )
-            else:
-                rows = await connection.fetch(
-                    query + " AND tenant = $2 ORDER BY created_at, seq",
-                    to_micros(now),
-                    tenant,
-                )
+            rows = await connection.fetch(
+                "WITH candidates AS (SELECT seq FROM erasures "
+                "WHERE status = 'running' AND "
+                "(lease_expires_at IS NULL OR lease_expires_at <= $1) AND "
+                "(owner_id IS NULL OR lease_expires_at <= $1) AND "
+                "($4::text IS NULL OR tenant = $4) "
+                "ORDER BY created_at, seq FOR UPDATE SKIP LOCKED) "
+                "UPDATE erasures SET owner_id = $2, lease_expires_at = $3, "
+                "heartbeat_at = $1 WHERE seq IN (SELECT seq FROM candidates) "
+                "RETURNING seq, erasure_id, tenant, mode, principal_id, "
+                "selector_kind, target, episode_ids, fact_ids, observation_ids, "
+                "entity_ids, created_at, status, last_step, finished_at, "
+                "residue, counts",
+                to_micros(now),
+                self._owner_id,
+                lease_expiry,
+                tenant,
+            )
             return [erasure_from_row(row) for row in rows]
 
     async def get(self, erasure_id: str) -> ErasureRecord | None:
