@@ -262,7 +262,10 @@ class Memory:
                     selected_models = build_models()
                     resources.push_async_callback(selected_models.aclose)
                 from ontogr_mem.client.remote import RemoteService  # noqa: PLC0415
-                from ontogr_mem.server.entry import ensure_server  # noqa: PLC0415
+                from ontogr_mem.server.entry import (  # noqa: PLC0415
+                    _warn_settings_mismatch,
+                    ensure_server,
+                )
 
                 endpoint = await ensure_server(
                     graph_url=service_settings.graph_url.get_secret_value(),
@@ -276,14 +279,15 @@ class Memory:
                     logging.getLogger(__name__).warning(
                         "Memory server lacks a configured extraction role."
                     )
-                if any(
-                    endpoint.roles.get(role.value, False)
-                    != selected_models.configured(role)
-                    for role in TEXT_WRITE_ROLES
-                ) or endpoint.embedding_model != EmbeddingSettings().model:
-                    logging.getLogger(__name__).warning(
-                        "Memory server settings differ from the client settings."
-                    )
+                _warn_settings_mismatch(
+                    endpoint,
+                    {
+                        role.value: selected_models.configured(role)
+                        for role in TEXT_WRITE_ROLES
+                    },
+                    EmbeddingSettings().model,
+                    LLMConfig().model,
+                )
                 remote = await RemoteService.open(
                     url=endpoint.url,
                     token=endpoint.token,

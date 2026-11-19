@@ -114,7 +114,7 @@ def _warn_settings_mismatch(
         logger.warning("Memory server settings differ from the client settings.")
 
 
-async def ensure_server(  # noqa: PLR0912
+async def ensure_server(  # noqa: PLR0912, PLR0915
     *, graph_url: str, state_url: str, version: str = __version__
 ) -> ServerEndpoint:
     """Attach to a compatible server or start the per-user server process."""
@@ -129,8 +129,7 @@ async def ensure_server(  # noqa: PLR0912
             raise ServerUnavailableError(
                 f"Memory server at {explicit_url} is unavailable"
             )
-        endpoint = _endpoint(explicit_url.rstrip("/"), health, token)
-        return endpoint
+        return _endpoint(explicit_url.rstrip("/"), health, token)
 
     expected_store = _store_identity(graph_url, state_url)
     info = read_server_info(directory / "server.json")
@@ -182,18 +181,16 @@ async def ensure_server(  # noqa: PLR0912
                     f"Memory server failed to start. See {log_path}"
                 )
             arguments = [sys.executable, "-m", "ontogr_mem", "server", "run"]
-            options = {
-                "cwd": directory,
-                "env": _child_environment(graph_url, state_url),
-                "stdin": subprocess.DEVNULL,
-                "stdout": log_path.open("ab"),
-                "stderr": subprocess.STDOUT,
-                "text": False,
-            }
+            output = log_path.open("ab")
             if os.name == "nt":
                 process = subprocess.Popen(
                     arguments,
-                    **options,
+                    cwd=directory,
+                    env=_child_environment(graph_url, state_url),
+                    stdin=subprocess.DEVNULL,
+                    stdout=output,
+                    stderr=subprocess.STDOUT,
+                    text=False,
                     creationflags=(
                         subprocess.DETACHED_PROCESS
                         | subprocess.CREATE_NEW_PROCESS_GROUP
@@ -201,7 +198,14 @@ async def ensure_server(  # noqa: PLR0912
                 )
             else:
                 process = subprocess.Popen(
-                    arguments, **options, start_new_session=True
+                    arguments,
+                    cwd=directory,
+                    env=_child_environment(graph_url, state_url),
+                    stdin=subprocess.DEVNULL,
+                    stdout=output,
+                    stderr=subprocess.STDOUT,
+                    text=False,
+                    start_new_session=True,
                 )
         info = read_server_info(directory / "server.json")
         if info and isinstance(info.get("port"), int):
