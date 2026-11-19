@@ -11,6 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ontogr_mem.combined_extraction.settings import ExtractionSettings
 from ontogr_mem.data_models.clock import Clock, SystemClock
+from ontogr_mem.errors import StoreInUseError
 from ontogr_mem.graphstore.protocol import GraphStore
 from ontogr_mem.llm import RoleModels, build_models
 from ontogr_mem.observability import NoOpTracer, Tracer
@@ -37,6 +38,7 @@ from ontogr_mem.relational_store.sqlite.audit import SqliteAuditLog
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionPolicy
 from ontogr_mem.retrieval.settings import RetrievalSettings
+from ontogr_mem.server.lock import ServerLock
 from ontogr_mem.service.access.audit_sink import AuditSink, ChainedAuditSink
 from ontogr_mem.service.access.authz import Authorizer
 from ontogr_mem.service.dependencies import ServiceDeps
@@ -57,6 +59,7 @@ from ontogr_mem.store_urls import (
 )
 from ontogr_mem.temporal.settings import ClosureSettings
 from ontogr_mem.tenant_stores import TenantStores
+from ontogr_mem.vectorstore.errors import EmbedderUnavailableError
 from ontogr_mem.vectorstore.source import EmbedderSource
 
 
@@ -225,6 +228,7 @@ async def open_service(
     tracer: Tracer | None = None,
     ontology: OntologyDeclaration | None = None,
     ontology_tenant: str | None = None,
+    start_jobs: bool = True,
 ) -> AsyncGenerator[ServiceRuntime, None]:
     """Open, start, and own the service resources for one process lifetime.
 
@@ -249,6 +253,7 @@ async def open_service(
         ontology: Declaration applied when a tenant opens.
         ontology_tenant: Limit the declaration to this tenant when supplied.
         max_attempts: Maximum attempts for queued jobs.
+        start_jobs: Recover pending work and start the job runner when true.
         tracer: Optional tracer for service and embedding spans. PydanticAI model
             spans use caller-owned instrumentation.
 
@@ -326,8 +331,55 @@ async def open_service(
         )
         # Registered after the model clients so jobs stop before they close.
         resources.push_async_callback(service.stop)
-        await service.start()
+        if start_jobs:
+            await service.start()
         yield ServiceRuntime(service=service)
+
+
+@asynccontextmanager
+async def clear_session(tenant: str) -> AsyncGenerator[MemoryService, None]:
+    """Open state for a tenant clear while excluding the local server."""
+    state_settings = StateSettings()
+    state_target = parse_state_url(state_settings.url.get_secret_value())
+    lock: ServerLock | None = None
+    if isinstance(state_target, SqliteTarget):
+        lock = ServerLock(Path(f"{state_target.path}.lock"))
+        try:
+            lock.acquire()
+        except OSError as error:
+            message = "Stop the server first: ontogr-mem server stop."
+            raise StoreInUseError(message) from error
+
+    async def unavailable_embedder():
+        raise EmbedderUnavailableError(
+            "Embedding is unavailable during tenant clear",
+            hint="Tenant clear does not require embeddings.",
+        )
+
+    try:
+        async with open_service(
+            state_settings=state_settings,
+            embedder=EmbedderSource(unavailable_embedder),
+            start_jobs=False,
+        ) as runtime:
+            yield runtime.service
+    finally:
+        if lock is not None:
+            lock.release()
+
+
+@asynccontextmanager
+async def open_graph_store(
+    settings: ServiceSettings | None = None,
+) -> AsyncGenerator[GraphStore, None]:
+    """Open only the configured graph store, without touching service state."""
+    service_settings = settings or ServiceSettings()
+    target = parse_graph_url(service_settings.graph_url.get_secret_value())
+    graph_store, _ = _graph_stores(target)
+    try:
+        yield graph_store
+    finally:
+        await graph_store.close()
 
 
 def _graph_stores_factory(

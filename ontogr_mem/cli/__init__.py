@@ -15,6 +15,9 @@ from pydantic import ValidationError
 
 from ontogr_mem.agent import build_default_agent
 from ontogr_mem.cli.chat import run_chat
+from ontogr_mem.cli.data import clear_tenant_command, list_tenants_text
+from ontogr_mem.cli.doctor import run_doctor
+from ontogr_mem.cli.warm import warm_model
 from ontogr_mem.client import Memory
 from ontogr_mem.data_models.tenant import InvalidTenantError, validate_tenant_id
 from ontogr_mem.errors import AgentMemoryError, MissingExtraError, StoreInUseError
@@ -94,9 +97,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _report_error(error)
 
 
-def _dispatch(args: argparse.Namespace) -> int:
+def _dispatch(args: argparse.Namespace) -> int:  # noqa: PLR0911
     if args.command == "server":
         return _run_server_command(args)
+    if args.command == "doctor":
+        return asyncio.run(run_doctor())
+    if args.command == "warm":
+        return asyncio.run(warm_model())
+    if args.command == "tenants":
+        print(asyncio.run(list_tenants_text()))
+        return 0
+    if args.command == "clear":
+        return asyncio.run(clear_tenant_command(args.tenant))
     if args.command == "mcp":
         service = ServiceSettings()
         state = StateSettings()
@@ -191,6 +203,11 @@ def _command_parser() -> argparse.ArgumentParser:
     chat = commands.add_parser("chat", help="chat with persistent memory")
     chat.add_argument("--tenant", default=None, type=_tenant_id_argument)
     commands.add_parser("mcp", help="serve memory over MCP")
+    commands.add_parser("doctor", help="check the local memory setup")
+    commands.add_parser("warm", help="download the local embedding model")
+    commands.add_parser("tenants", help="list tenants in the graph store")
+    clear = commands.add_parser("clear", help="remove one tenant's data")
+    clear.add_argument("--tenant", required=True, type=_tenant_id_argument)
     server = commands.add_parser("server", help="manage the shared memory server")
     server_commands = server.add_subparsers(dest="server_command", required=True)
     run = server_commands.add_parser("run", help="run the memory server")
