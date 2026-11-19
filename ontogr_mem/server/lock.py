@@ -4,10 +4,17 @@ import os
 from pathlib import Path
 
 
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
+
+
 class ServerLock:
     """Hold an exclusive lock on a path until release or process exit."""
 
     def __init__(self, path: Path) -> None:
+        """Create a lock for the given path."""
         self._path = path
         self._descriptor: int | None = None
 
@@ -17,12 +24,8 @@ class ServerLock:
         descriptor = os.open(self._path, os.O_RDWR | os.O_CREAT, 0o600)
         try:
             if os.name == "nt":
-                import msvcrt
-
                 msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
             else:
-                import fcntl
-
                 fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BaseException:
             os.close(descriptor)
@@ -36,12 +39,8 @@ class ServerLock:
         descriptor, self._descriptor = self._descriptor, None
         try:
             if os.name == "nt":
-                import msvcrt
-
                 msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
             else:
-                import fcntl
-
                 fcntl.flock(descriptor, fcntl.LOCK_UN)
         finally:
             os.close(descriptor)

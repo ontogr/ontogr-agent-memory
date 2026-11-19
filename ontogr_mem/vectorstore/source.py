@@ -20,6 +20,7 @@ class EmbedderSource:
     """Load and retain an embedder on its first call."""
 
     def __init__(self, loader: Callable[[], Awaitable[Embedder]]) -> None:
+        """Create a source that loads an embedder on demand."""
         self._loader = loader
         self._embedder: Embedder | None = None
         self._lock = asyncio.Lock()

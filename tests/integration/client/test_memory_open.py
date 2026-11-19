@@ -13,7 +13,10 @@ from tests.support.scripted_model import scripted_role_models
 
 
 class TestMemoryOpen:
+    """Verify opening and locking memory clients."""
+
     async def test_locks_sqlite_store_until_context_exits(self, tmp_path: Path) -> None:
+        """Hold the SQLite lock until the client context exits."""
         state = StateSettings(
             url=f"sqlite:///{tmp_path / 'state.sqlite3'}", _env_file=None
         )
@@ -33,6 +36,7 @@ class TestMemoryOpen:
             pass
 
     async def test_defers_incomplete_endpoint_embedder_error(self, monkeypatch) -> None:
+        """Defer endpoint configuration errors until embedding is needed."""
         monkeypatch.setenv("MEMORY_EMBEDDING_PROVIDER", "endpoint")
         monkeypatch.delenv("MEMORY_EMBEDDING_MODEL", raising=False)
         monkeypatch.delenv("MEMORY_EMBEDDING_BASE_URL", raising=False)

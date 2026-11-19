@@ -9,7 +9,11 @@ from tests.support.embedder import MockEmbedder
 
 
 class TestLazyEmbedder:
+    """Verify lazy embedder loading behavior."""
+
     async def test_backend_operations_do_not_load_embedder(self) -> None:
+        """Allow backend-only operations without loading an embedder."""
+
         async def unavailable():
             raise EmbedderUnavailableError("not configured", hint="configure embedder")
 
@@ -20,6 +24,8 @@ class TestLazyEmbedder:
         assert await store.iter_ids(VectorKind.NODE, after=None, limit=100) == []
 
     async def test_upsert_raises_when_embedder_is_unavailable(self) -> None:
+        """Raise the configured error when upsert needs an unavailable embedder."""
+
         async def unavailable():
             raise EmbedderUnavailableError("not configured", hint="configure embedder")
 
@@ -33,6 +39,7 @@ class TestLazyEmbedder:
             raise AssertionError("upsert should load the configured embedder")
 
     async def test_upsert_retries_embedder_load_after_failure(self) -> None:
+        """Retry embedder loading after an earlier load failure."""
         attempts = 0
 
         async def load_embedder():

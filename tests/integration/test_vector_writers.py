@@ -309,7 +309,7 @@ class WriterRun:
     handed_off: list[Episode]
 
 
-def _pipeline(
+async def _pipeline(
     stack: WriterStack,
 ) -> WriterRun:
     """Build the writer hooks and the ingestion hand-off."""
@@ -417,7 +417,7 @@ class TestVectorWriters:
         self, stack: WriterStack
     ):
         """Search history after versioning and repair a post-commit embed failure."""
-        run = _pipeline(stack)
+        run = await _pipeline(stack)
         first_pair = await _ingest_and_commit(
             stack,
             run.pipeline,
