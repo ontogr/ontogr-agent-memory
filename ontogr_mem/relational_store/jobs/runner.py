@@ -185,8 +185,6 @@ class JobRunner:
             latest = await self._store.get_job(job.job_id)
             if latest is not None:
                 job = latest
-            if event is not None:
-                self._finished.pop(job.job_id, None)
         return replace(job, replayed=replayed)
 
     async def get(self, job_id: str) -> Job | None:
