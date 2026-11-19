@@ -194,7 +194,7 @@ def _apply_server_env() -> None:
         raise ValueError(f"server.env cannot set {name}")
     for key, value in values.items():
         if value is not None:
-            os.environ[key] = value
+            os.environ.setdefault(key, value)
 
 
 def _server_status() -> int:

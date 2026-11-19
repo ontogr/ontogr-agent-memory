@@ -23,7 +23,6 @@ from ontogr_mem.data_models.tenant import validate_tenant_id
 from ontogr_mem.llm import build_models
 from ontogr_mem.llm.config import LLMConfig
 from ontogr_mem.llm.roles import ModelRole
-from ontogr_mem.mcp_server.server import build_server
 from ontogr_mem.mcp_server.settings import McpSettings
 from ontogr_mem.ontology.loader import load_ontology
 from ontogr_mem.paths import data_directory, ensure_directory
@@ -97,6 +96,8 @@ async def serve(  # noqa: C901, PLR0912, PLR0915
     from fastmcp.server.dependencies import get_http_headers  # noqa: PLC0415
     from starlette.requests import Request  # noqa: PLC0415
     from starlette.responses import JSONResponse, Response  # noqa: PLC0415
+
+    from ontogr_mem.mcp_server.server import build_server  # noqa: PLC0415
 
     directory = data_directory()
     ensure_directory(directory)
