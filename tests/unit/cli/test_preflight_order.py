@@ -84,8 +84,7 @@ class TestPreflightBeforeOpen:
         )
 
         assert result.returncode == 1, result.stdout + result.stderr
-        for name in expected:
-            assert name in result.stderr
+        assert f"missing extras: {', '.join(expected)}" in result.stderr
         if expects_uvx:
             assert 'uvx --from "ontogr-mem[' in result.stderr
         if state_url == "sqlite":
