@@ -64,6 +64,28 @@ class TestPostgresJobLeases:
             "tenant_a", now + timedelta(seconds=61)
         )
 
+    async def test_renewed_lease_blocks_claim_past_original_expiry(
+        self, pool, clean_tables
+    ):
+        """Renewal keeps another owner out beyond the original lease deadline."""
+        clock = FixedClock(datetime(2026, 10, 23, 12, tzinfo=UTC))
+        first = PostgresJobStore(pool, clock, owner_id="first", lease_seconds=60)
+        second = PostgresJobStore(pool, clock, owner_id="second", lease_seconds=60)
+        now = clock.now()
+        await first.create_job(make_job())
+        claimed = await first.claim_next("tenant_a", now, lambda _: True)
+        assert claimed is not None
+
+        renewed_at = now + timedelta(seconds=30)
+        await first.renew_leases(renewed_at)
+        after_original_expiry = now + timedelta(seconds=61)
+
+        assert (
+            await second.claim_next("tenant_a", after_original_expiry, lambda _: True)
+            is None
+        )
+        assert await second.tenant_has_live_lease("tenant_a", after_original_expiry)
+
     async def test_expired_owner_cannot_save_running_job(self, pool, clean_tables):
         """Reject an owner write after its lease timestamp expires."""
         clock = FixedClock(datetime(2026, 10, 23, 12, tzinfo=UTC))
