@@ -118,13 +118,14 @@ class JobRunner:
 
         If lanes are still active, return zero without changing running rows.
         Drain or stop active lanes before recovering lanes with store failures.
-        Repeated calls never enqueue work already owned by an active lane.
+        Repeated calls never enqueue work already owned by an active lane. A
+        submission started lane still leaves heartbeat renewal and sweeps on.
         """
         async with self._lifecycle:
-            if self._tasks:
-                return 0
             await self.start_heartbeat()
             self._started = True
+            if self._tasks:
+                return 0
             self._blocked.clear()
             await self._store.requeue_expired(self._clock.now())
             queued = await self._store.queued_jobs()

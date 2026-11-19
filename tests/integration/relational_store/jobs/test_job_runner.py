@@ -125,6 +125,43 @@ class TestJobRunner:
 
         assert released.is_set()
 
+    async def test_start_keeps_heartbeat_sweeps_with_a_submitted_lane(
+        self, job_store: StateStore, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A lane started by submit keeps heartbeat sweeps enabled."""
+        running = asyncio.Event()
+        release = asyncio.Event()
+        swept = asyncio.Event()
+
+        async def blocking(job: Job) -> dict[str, Any]:
+            running.set()
+            await release.wait()
+            return {}
+
+        original_requeue = job_store.requeue_expired
+
+        async def count_requeue(now: object) -> None:
+            swept.set()
+            await original_requeue(now)
+
+        monkeypatch.setattr(job_store, "requeue_expired", count_requeue)
+
+        runner = JobRunner(
+            job_store,
+            {"blocking": blocking},
+            FixedClock(),
+            heartbeat_seconds=0.01,
+        )
+        try:
+            await runner.submit("t", "blocking", {})
+            await asyncio.wait_for(running.wait(), 1)
+            await runner.start()
+            await asyncio.wait_for(swept.wait(), 1)
+        finally:
+            release.set()
+            await asyncio.wait_for(runner.drain(), 2)
+            await runner.stop()
+
     async def test_failed_tenant_recovery_does_not_skip_later_tenants(
         self, job_store: StateStore
     ) -> None:
