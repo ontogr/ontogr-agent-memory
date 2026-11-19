@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from ontogr_mem.paths import model_cache_directory
 from ontogr_mem.vectorstore.builtin import local as local_module
 from ontogr_mem.vectorstore.builtin.formatting import ENCODING_POLICIES
 from ontogr_mem.vectorstore.builtin.local import LocalEmbedder
@@ -625,6 +626,7 @@ class TestLocalEmbedder:
             "model_name": "ibm-granite/granite-embedding-small-english-r2",
             "providers": ["CPUExecutionProvider"],
             "lazy_load": False,
+            "cache_dir": str(model_cache_directory()),
         }
 
     async def test_uses_initialized_model_dimensions_and_tokenizer_limit(
@@ -664,6 +666,7 @@ class TestLocalEmbedder:
                     "threads": 3,
                     "model_name": "ibm-granite/granite-embedding-small-english-r2",
                     "lazy_load": False,
+                    "cache_dir": str(model_cache_directory()),
                 },
                 id="explicit-cuda-option",
             ),
@@ -674,6 +677,7 @@ class TestLocalEmbedder:
                     "threads": 4,
                     "model_name": "ibm-granite/granite-embedding-small-english-r2",
                     "lazy_load": False,
+                    "cache_dir": str(model_cache_directory()),
                 },
                 id="explicit-provider",
             ),
