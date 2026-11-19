@@ -463,7 +463,7 @@ class TestJobRunner:
         assert failed.error is not None
         assert failed.error["type"] == "UnknownJobOpError"
 
-    @pytest.mark.parametrize("method", ["get_job", "save_job"])
+    @pytest.mark.parametrize("method", ["claim_next", "save_job"])
     async def test_store_failure_stops_only_its_lane_until_restart(
         self, job_store: StateStore, method: str
     ) -> None:
@@ -486,11 +486,16 @@ class TestJobRunner:
                 return await job_store.create_job(job)
 
             async def get_job(self, job_id: str) -> Job | None:
-                """Read a job unless its tenant has a simulated outage."""
-                job = await job_store.get_job(job_id)
-                if self.broken and method == "get_job" and job and job.tenant_id == "a":
+                """Read a job through the real adapter."""
+                return await job_store.get_job(job_id)
+
+            async def claim_next(
+                self, tenant_id: str, now: Any, can_run: Any
+            ) -> Job | None:
+                """Claim work unless its tenant has a simulated outage."""
+                if self.broken and method == "claim_next" and tenant_id == "a":
                     raise sqlite3.OperationalError("storage outage")
-                return job
+                return await job_store.claim_next(tenant_id, now, can_run)
 
             async def save_job(self, job: Job) -> bool:
                 """Save a job unless its tenant has a simulated outage."""
