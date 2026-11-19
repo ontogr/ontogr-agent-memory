@@ -1,8 +1,8 @@
 """Postgres lease behavior shared by independent job-store owners."""
 
+import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-import asyncio
 
 import pytest
 
