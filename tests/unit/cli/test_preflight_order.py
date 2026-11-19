@@ -40,7 +40,7 @@ class TestPreflightBeforeOpen:
         ],
     )
     def test_reports_missing_extras_before_opening_stores(
-        self, tmp_path, command, blocked, state_url, expected, expects_uvx
+        self, tmp_path, *, command, blocked, state_url, expected, expects_uvx
     ):
         """One error names every missing extra before any store file appears."""
         state_path = tmp_path / "state.sqlite3"
