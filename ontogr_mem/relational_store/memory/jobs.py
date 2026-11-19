@@ -105,13 +105,14 @@ class MemoryJobStore:
                 for job in self._jobs.values()
                 if job.tenant_id == tenant_id and job.status == JobState.QUEUED
             ),
-            key=lambda j: j.created_at,
+            key=lambda j: (j.created_at, j.job_id),
         )
-        if not jobs or not can_run(jobs[0]):
-            return None
-        claimed = replace(jobs[0], status=JobState.RUNNING)
-        self._jobs[claimed.job_id] = claimed
-        return deepcopy(claimed)
+        for job in jobs:
+            if can_run(job):
+                claimed = replace(job, status=JobState.RUNNING)
+                self._jobs[claimed.job_id] = claimed
+                return deepcopy(claimed)
+        return None
 
     async def tenant_has_live_lease(self, tenant_id: str, now: datetime) -> bool:
         """Report that memory jobs do not have leases."""

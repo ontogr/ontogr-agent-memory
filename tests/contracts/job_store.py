@@ -69,6 +69,21 @@ class JobStoreContract:
         """An unknown id has no record."""
         assert await store.get_job("nope") is None
 
+    async def test_claim_skips_ineligible_older_jobs_and_keeps_fifo(self, store):
+        """Claim the oldest eligible job when an older job cannot run."""
+        first = make_job("j1")
+        second = replace(make_job("j2"), idempotency_key=None)
+        third = replace(make_job("j3"), idempotency_key=None)
+        await store.create_job(first)
+        await store.create_job(second)
+        await store.create_job(third)
+
+        claimed = await store.claim_next("tenant_a", T0, lambda job: job.job_id != "j1")
+
+        assert claimed is not None
+        assert claimed.job_id == "j2"
+        assert [job.job_id for job in await store.queued_jobs()] == ["j1", "j3"]
+
     async def test_same_key_and_same_request_returns_the_stored_job_as_replay(
         self, store
     ):

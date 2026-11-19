@@ -182,24 +182,25 @@ class SqliteJobStore:
 
         def claim(db: sqlite3.Connection) -> Job | None:
             db.execute("BEGIN IMMEDIATE")
-            row = db.execute(
+            rows = db.execute(
                 "SELECT * FROM jobs WHERE tenant_id = ? AND status = 'queued' "
-                "ORDER BY created_at, seq LIMIT 1",
+                "ORDER BY created_at, seq",
                 (tenant_id,),
-            ).fetchone()
-            if row is None:
-                return None
-            job = job_from_row(row)
-            if not can_run(job):
-                return None
-            db.execute(
-                "UPDATE jobs SET status = 'running' WHERE job_id = ?", (job.job_id,)
-            )
-            return job_from_row(
+            ).fetchall()
+            for row in rows:
+                job = job_from_row(row)
+                if not can_run(job):
+                    continue
                 db.execute(
-                    "SELECT * FROM jobs WHERE job_id = ?", (job.job_id,)
-                ).fetchone()
-            )
+                    "UPDATE jobs SET status = 'running' WHERE job_id = ?",
+                    (job.job_id,),
+                )
+                return job_from_row(
+                    db.execute(
+                        "SELECT * FROM jobs WHERE job_id = ?", (job.job_id,)
+                    ).fetchone()
+                )
+            return None
 
         return await asyncio.to_thread(lambda: self._locked(claim))
 
