@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from copy import deepcopy
 from dataclasses import replace
+from math import isfinite
 from typing import Any
 from uuid import uuid4
 
@@ -76,10 +77,14 @@ class JobRunner:
             recover_tenant: Recover tenant state during heartbeat ticks.
 
         Raises:
-            ValueError: If max_attempts is not positive.
+            ValueError: If max_attempts or heartbeat_seconds is invalid.
         """
         if max_attempts < 1:
             raise ValueError("max_attempts must be positive")
+        if heartbeat_seconds is not None and (
+            not isfinite(heartbeat_seconds) or heartbeat_seconds <= 0
+        ):
+            raise ValueError("heartbeat_seconds must be finite and positive")
         self._store = store
         self._handlers = dict(handlers)
         self._clock = clock

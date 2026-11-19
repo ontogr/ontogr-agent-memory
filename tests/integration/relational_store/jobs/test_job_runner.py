@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import sqlite3
 from collections.abc import Sequence
+from math import inf, nan
 from typing import Any
 
 import pytest
@@ -22,6 +23,23 @@ from tests.support.clock import FixedClock
 
 class TestJobRunner:
     """Run handlers through the public runner API and inspect stored outcomes."""
+
+    @pytest.mark.parametrize("heartbeat_seconds", [0, -1, inf, -inf, nan])
+    def test_invalid_heartbeat_interval_is_rejected(
+        self, job_store: StateStore, heartbeat_seconds: float
+    ) -> None:
+        """Heartbeat intervals must permit a finite sleep between renewals."""
+
+        async def index(job: Job) -> dict[str, Any]:
+            return {}
+
+        with pytest.raises(ValueError, match="heartbeat_seconds"):
+            JobRunner(
+                job_store,
+                {"index": index},
+                FixedClock(),
+                heartbeat_seconds=heartbeat_seconds,
+            )
 
     async def test_failed_orphan_release_does_not_skip_renewal_or_sweep(
         self, job_store: StateStore, monkeypatch: pytest.MonkeyPatch
