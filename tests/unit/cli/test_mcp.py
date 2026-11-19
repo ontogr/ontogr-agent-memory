@@ -4,6 +4,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastmcp import FastMCP
@@ -62,10 +63,11 @@ class Harness:
         self.tenants: list[str] = []
         self.ontologies: list[Path | None] = []
 
-    def open_memory(self, *, tenant: str, ontology=None, models=None):
+    def open_memory(self, *, tenant: str, ontology=None, models):
         """Stand in for Memory.open with a memory over a recording service."""
         self.tenants.append(tenant)
         self.ontologies.append(ontology)
+        self.models = models
 
         @asynccontextmanager
         async def opened():
@@ -157,6 +159,19 @@ class TestRunMcp:
         await run_mcp(_settings(tenant="acme"))
 
         assert harness.tenants == ["acme"]
+
+    async def test_passes_shared_models_to_memory_open(self, harness, monkeypatch):
+        """The model set built for startup is shared with the opened memory."""
+
+        async def close_models():
+            return None
+
+        models = SimpleNamespace(aclose=close_models, configured=lambda _role: False)
+        monkeypatch.setattr("ontogr_mem.cli.mcp.build_models", lambda: models)
+
+        await run_mcp(_settings())
+
+        assert harness.models is models
 
     async def test_the_ontology_setting_reaches_memory_open(self, harness):
         """The configured ontology path is passed to Memory.open."""

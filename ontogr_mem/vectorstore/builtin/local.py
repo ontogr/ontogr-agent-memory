@@ -156,8 +156,14 @@ def _ensure_cuda_available() -> None:
     try:
         onnxruntime = import_extra("onnxruntime", "fastembed")
         available_providers = onnxruntime.get_available_providers()
-    except MissingExtraError:
-        raise
+    except MissingExtraError as exc:
+        raise EmbedderUnavailableError(
+            "CUDA provider availability could not be checked",
+            hint=(
+                "Install the fastembed-gpu extra and verify "
+                "CUDAExecutionProvider availability."
+            ),
+        ) from exc
     except Exception as exc:
         raise EmbedderUnavailableError(
             "CUDA provider availability could not be checked",

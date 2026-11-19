@@ -275,7 +275,7 @@ A deployment that shares state between processes can use FalkorDB for the graph 
 
 #### Vector store
 
-*Embeddings are keyed by graph ids and sit beside the graph objects or in Postgres.*
+*Embeddings are stored as properties on graph objects and keyed by their graph ids.*
 
 - **What is embedded:** Entity names, fact statements, and episode text, keyed by the ids of the graph objects they describe. With graph-native vectors they are properties on those objects.
 - **Hash-checked writes:** A vector is replaced only when the hash of its text changes.

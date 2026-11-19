@@ -56,8 +56,9 @@ class MissingExtraError(AgentMemoryError):
         if features:
             lines.append(f"needed for: {', '.join(features)}")
         lines.append(f'install with: uv add "ontogr-mem[{",".join(self.extras)}]"')
-        invocation = "ontogr-mem" + (f" {subcommand}" if subcommand else "")
-        lines.append(
-            f'or run with: uvx --from "ontogr-mem[{",".join(selected)}]" {invocation}'
-        )
+        if subcommand:
+            lines.append(
+                f'or run with: uvx --from "ontogr-mem[{",".join(selected)}]" '
+                f"ontogr-mem {subcommand}"
+            )
         super().__init__("\n".join(lines))
