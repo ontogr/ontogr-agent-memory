@@ -7,10 +7,11 @@ import pytest_asyncio
 
 from ontogr_mem.graphstore.falkordb import FalkorDBGraphStore
 from ontogr_mem.graphstore.neo4j import Neo4jGraphStore
+from ontogr_mem.store_urls import parse_graph_url
 from tests.integration.test_retrieval import RetrievalContract
-from tests.support.falkordb import falkordb_test_settings
+from tests.support.falkordb import falkordb_test_settings, falkordb_test_url
 from tests.support.graph_backend import GraphBackend
-from tests.support.neo4j import neo4j_test_settings
+from tests.support.neo4j import neo4j_test_settings, neo4j_test_url
 from tests.support.retrieval_backends import graph_retrieval_backend
 from tests.support.retrieval_world import RetrievalWorld, build_world
 from tests.support.services import service_unreachable
@@ -20,10 +21,14 @@ from tests.support.services import service_unreachable
 async def class_graph_backend(request) -> AsyncGenerator[GraphBackend]:
     """One backend per class, so the scenario is built once for all its tests."""
     if request.param == "falkordb":
-        store = FalkorDBGraphStore(falkordb_test_settings())
+        store = FalkorDBGraphStore(
+            parse_graph_url(falkordb_test_url()), falkordb_test_settings()
+        )
         address = "FalkorDB"
     else:
-        store = Neo4jGraphStore(neo4j_test_settings())
+        store = Neo4jGraphStore(
+            parse_graph_url(neo4j_test_url()), neo4j_test_settings()
+        )
         address = "Neo4j"
     if not (await store.health()).ok:
         await store.close()

@@ -1,38 +1,33 @@
 """Open state storage while enforcing the service durability policy."""
 
+from pathlib import Path
+
+from ontogr_mem.paths import ensure_directory
 from ontogr_mem.relational_store.config import StateSettings
 from ontogr_mem.relational_store.engine import pg_pool
-from ontogr_mem.relational_store.jobs.errors import EphemeralStateError
 from ontogr_mem.relational_store.jobs.ports import StateStore
-from ontogr_mem.relational_store.memory import MemoryJobStore
 from ontogr_mem.relational_store.postgres.jobs import PostgresJobStore
 from ontogr_mem.relational_store.schema.runner import ensure_postgres_schema
 from ontogr_mem.relational_store.sqlite import SqliteJobStore
+from ontogr_mem.store_urls import (
+    PostgresTarget,
+    SqliteTarget,
+    parse_state_url,
+)
 
 
-def _memory_store(settings: StateSettings) -> StateStore:
-    """Refuse volatile state unless the caller explicitly permits it."""
-    if not settings.allow_ephemeral:
-        raise EphemeralStateError(
-            "use a sqlite path with backend='sqlite', or set "
-            "MEMORY_STATE_ALLOW_EPHEMERAL=true to allow in-memory state"
-        )
-    return MemoryJobStore()
-
-
-def _sqlite_store(settings: StateSettings) -> StateStore:
+def _sqlite_store(target: SqliteTarget) -> StateStore:
     """Open durable job and erasure state at the configured path."""
-    return SqliteJobStore(settings.sqlite_path)
+    path = Path(target.path).expanduser()
+    ensure_directory(path.parent)
+    return SqliteJobStore(str(path))
 
 
-async def _postgres_store(settings: StateSettings) -> StateStore:
+async def _postgres_store(target: PostgresTarget) -> StateStore:
     """Open pooled job and erasure state with its schema ensured."""
-    pool = await pg_pool(settings.dsn)
+    pool = await pg_pool(target.dsn.get_secret_value())
     await ensure_postgres_schema(pool)
     return PostgresJobStore(pool)
-
-
-_SYNC_OPENERS = {"memory": _memory_store, "sqlite": _sqlite_store}
 
 
 async def open_state_store(settings: StateSettings) -> StateStore:
@@ -49,8 +44,9 @@ async def open_state_store(settings: StateSettings) -> StateStore:
         An open store that the caller must close.
 
     Raises:
-        EphemeralStateError: If memory storage was requested without permission.
+        StoreUrlError: If the configured state URL is unsupported.
     """
-    if settings.backend == "postgres":
-        return await _postgres_store(settings)
-    return _SYNC_OPENERS[settings.backend](settings)
+    target = parse_state_url(settings.url.get_secret_value())
+    if isinstance(target, PostgresTarget):
+        return await _postgres_store(target)
+    return _sqlite_store(target)

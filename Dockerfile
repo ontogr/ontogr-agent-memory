@@ -13,7 +13,8 @@ USER memory
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYDANTIC_AI_NO_BANNER=1 \
-    MEMORY_STATE_SQLITE_PATH=/data/state/agent_memory_state.sqlite3 \
+    MEMORY_STATE_URL=sqlite:////data/state/agent_memory_state.sqlite3 \
+    MEMORY_DATA_DIR=/data/state \
     FASTEMBED_CACHE_PATH=/data/models \
     MEMORY_MCP_TRANSPORT=http \
     MEMORY_MCP_HOST=0.0.0.0 \

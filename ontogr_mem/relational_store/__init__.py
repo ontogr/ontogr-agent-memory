@@ -8,7 +8,6 @@ from ontogr_mem.relational_store.jobs.erase_journal import (
     ErasureStatus,
 )
 from ontogr_mem.relational_store.jobs.errors import (
-    EphemeralStateError,
     IdempotencyConflictError,
     UnknownJobOpError,
 )
@@ -28,7 +27,6 @@ from ontogr_mem.relational_store.sqlite import SqliteJobStore, SqliteOperationSt
 
 
 __all__ = [
-    "EphemeralStateError",
     "EraseJournal",
     "ErasureRecord",
     "ErasureStatus",

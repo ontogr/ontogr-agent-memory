@@ -20,9 +20,8 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     environment:
-      MEMORY_FALKORDB_HOST: falkordb
-      MEMORY_FALKORDB_PORT: "6379"
-      MEMORY_STATE_SQLITE_PATH: /data/state/agent_memory_state.sqlite3
+      MEMORY_GRAPH_URL: redis://falkordb:6379
+      MEMORY_STATE_URL: sqlite:////data/state/agent_memory_state.sqlite3
       FASTEMBED_CACHE_PATH: /data/models
       MEMORY_EMBEDDING_PROVIDER: null
       MEMORY_EMBEDDING_MODEL: null

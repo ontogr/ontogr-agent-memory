@@ -9,6 +9,7 @@ from copy import deepcopy
 from typing import TYPE_CHECKING
 
 from ontogr_mem._extras import import_extra
+from ontogr_mem.paths import model_cache_directory
 from ontogr_mem.vectorstore.builtin.formatting import ENCODING_POLICIES, format_text
 from ontogr_mem.vectorstore.builtin.settings import EmbeddingSettings
 from ontogr_mem.vectorstore.embedder import EmbeddingPurpose
@@ -283,7 +284,7 @@ class LocalEmbedder:
         """Load a reviewed FastEmbed model and inspect its initialized limits.
 
         The first open may download model files. fastembed uses
-        FASTEMBED_CACHE_PATH, or fastembed_cache in the system temp directory.
+        FASTEMBED_CACHE_PATH, or the per-user fastembed cache directory.
 
         Args:
             settings: Native FastEmbed options and inference batch size. If
@@ -346,6 +347,7 @@ class LocalEmbedder:
                 _ensure_cuda_available()
 
             options["model_name"] = canonical_name
+            options.setdefault("cache_dir", str(model_cache_directory()))
             model = module.TextEmbedding(**options)
             dim = model.embedding_size
             if not 1 <= dim <= 4000:

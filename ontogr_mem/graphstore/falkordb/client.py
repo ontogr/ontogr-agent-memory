@@ -9,14 +9,16 @@ from redis.exceptions import ResponseError
 
 from ontogr_mem.graphstore.falkordb.runner import GraphLike, QueryRunner
 from ontogr_mem.graphstore.falkordb.settings import FalkorDBSettings
+from ontogr_mem.store_urls import FalkorTarget
 
 
 class FalkorClientPool:
     """One redis pool and one runner shared by every tenant graph."""
 
-    def __init__(self, settings: FalkorDBSettings) -> None:
+    def __init__(self, settings: FalkorDBSettings, target: FalkorTarget) -> None:
         """Store settings; the connection is created on first use."""
         self.settings = settings
+        self.target = target
         self._pool: BlockingConnectionPool | None = None
         self._db: FalkorDB | None = None
         self._create_lock = asyncio.Lock()
@@ -46,10 +48,12 @@ class FalkorClientPool:
     def _pool_kwargs(self) -> dict[str, Any]:
         s = self.settings
         kwargs: dict[str, Any] = {
-            "host": s.host,
-            "port": s.port,
-            "username": s.username,
-            "password": s.password.get_secret_value() if s.password else None,
+            "host": self.target.host,
+            "port": self.target.port,
+            "username": self.target.username,
+            "password": self.target.password.get_secret_value()
+            if self.target.password
+            else None,
             "max_connections": s.max_connections,
             "timeout": s.pool_timeout,
             "socket_connect_timeout": s.socket_connect_timeout,
@@ -57,7 +61,7 @@ class FalkorClientPool:
             "health_check_interval": s.health_check_interval,
             "decode_responses": True,
         }
-        if s.tls:
+        if self.target.tls:
             kwargs["connection_class"] = SSLConnection
         return kwargs
 

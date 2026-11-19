@@ -18,9 +18,10 @@ from ontogr_mem.graphstore.falkordb import FalkorDBGraphStore
 from ontogr_mem.llm import RoleModels
 from ontogr_mem.relational_store.config import StateSettings
 from ontogr_mem.service.bootstrap import ServiceSettings
+from ontogr_mem.store_urls import sqlite_url
 from ontogr_mem.tenant_stores import TenantStores
 from tests.support.embedder import MockEmbedder
-from tests.support.falkordb import falkordb_test_settings
+from tests.support.falkordb import falkordb_test_url
 from tests.support.graph_backend import GraphBackend
 from tests.support.scripted_model import (
     ScriptedCall,
@@ -39,9 +40,7 @@ async def falkordb_environment(
     monkeypatch: pytest.MonkeyPatch, falkordb_store: FalkorDBGraphStore
 ) -> AsyncGenerator[None]:
     """Point the service settings at the compose FalkorDB for each test."""
-    settings = falkordb_test_settings()
-    monkeypatch.setenv("MEMORY_FALKORDB_HOST", settings.host)
-    monkeypatch.setenv("MEMORY_FALKORDB_PORT", str(settings.port))
+    monkeypatch.setenv("MEMORY_GRAPH_URL", falkordb_test_url())
     yield
 
 
@@ -59,10 +58,8 @@ async def _open_session(
     """
     async with Memory.open(
         tenant=tenant,
-        service_settings=ServiceSettings(backend="falkordb", _env_file=None),
-        state_settings=StateSettings(
-            backend="sqlite", sqlite_path=str(state_path), _env_file=None
-        ),
+        service_settings=ServiceSettings(graph_url=falkordb_test_url(), _env_file=None),
+        state_settings=StateSettings(url=sqlite_url(state_path), _env_file=None),
         models=models,
         embedder=MockEmbedder(),
     ) as memory:

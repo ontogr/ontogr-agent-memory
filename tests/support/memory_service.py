@@ -21,7 +21,9 @@ from ontogr_mem.tenant_stores import TenantStores
 from ontogr_mem.vectorstore import Embedder
 from tests.support.clock import FixedClock
 from tests.support.embedder import MockEmbedder
+from tests.support.falkordb import falkordb_test_url
 from tests.support.graph_backend import GraphBackend
+from tests.support.neo4j import neo4j_test_url
 
 
 @dataclass
@@ -72,8 +74,9 @@ async def memory_service_harness(
             return stores
         return replace(stores, keywords=keywords)
 
+    graph_url = falkordb_test_url() if backend.name == "falkordb" else neo4j_test_url()
     service = await build_service(
-        ServiceSettings(backend=backend.name),
+        ServiceSettings(graph_url=graph_url, _env_file=None),
         stores_factory=stores_factory,
         state=state,
         authorizer=authorizer,

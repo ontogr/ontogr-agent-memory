@@ -261,7 +261,7 @@ Every component talks to storage through its own async port. A port has domain v
 | Vector store | Embeddings of entity names, fact statements, and episode text, each with a hash of the embedded text. | Graph-native (default) or pgvector |
 | Relation store | Jobs with their request payloads, operation rows, audit rows, and the erase journal. | SQLite (default) or Postgres |
 
-A deployment that shares state between processes can use FalkorDB for the graph, pgvector for vectors, and Postgres for the relation store. The relation store and the vector store also have in-memory backends for tests and local runs. The relation store requires `allow_ephemeral` to use one.
+A deployment that shares state between processes can use FalkorDB or Neo4j for the graph, pgvector for vectors, and SQLite or Postgres for the relation store. The relation store has no in-memory backend.
 
 - **Contract tests:** Each port has one contract suite. It runs against each live database adapter, and concurrent tenants and queries are tested on live servers.
 
@@ -443,7 +443,7 @@ You need Python 3.11 or newer, Docker with Compose, and a model endpoint with an
 
 3. Say a fact about an invented person. Exit with `/exit` or Ctrl-D and wait for `saving memory`. Start chat again in the same directory with the same Tenant and ask about that fact. The second process has no conversation history; it retrieves stored memory.
 
-4. The graph listens on `127.0.0.1:6379`. Integration tests use a separate service on port 16379. The SQLite state file is `agent_memory_state.sqlite3` in the current directory unless `MEMORY_STATE_SQLITE_PATH` sets another path. Keep that file and the graph volume to retain memory. Stop the graph with `docker compose down` when finished.
+4. The graph listens on `127.0.0.1:6379`. Integration tests use a separate service on port 16379. The SQLite state file is `agent_memory_state.sqlite3` in the per-user data directory unless `MEMORY_STATE_URL` names another SQLite path. Keep that file and the graph volume to retain memory. Stop the graph with `docker compose down` when finished.
 
 5. Each completed Turn queues the user message and final assistant reply as separate Episodes. Extraction runs in the background. A search may report `indexing` before those Jobs finish. Exit waits up to 30 seconds for queued work, and a slow model can need longer. Another Ctrl-C stops waiting; unfinished Jobs resume when the same state store opens again. A Job that stopped after its entities were resolved can fail when it resumes, so its facts may be missing. A failed answer does not queue automatic Turn Episodes. Explicit remember and forget operations that the model already requested are separate operations.
 
@@ -462,7 +462,7 @@ uv run ontogr-mem mcp
 # Or, in a separate terminal:
 uv run ontogr-mem mcp --transport http --host 127.0.0.1 --port 8000
 # Container alternative, with state and model-cache volumes:
-docker compose up -d --build mcp
+docker compose run -d --build --name ontogr-mcp -p 127.0.0.1:8000:8000 mcp --tenant default
 ```
 
 `docker compose up -d --wait falkordb` runs from a clone or a copy of `compose.yaml`, as the earlier sections explain. The container serves HTTP at `http://127.0.0.1:8000/mcp`, and Compose publishes that port on host loopback only. The image sets `MEMORY_MCP_TRANSPORT`, `MEMORY_MCP_HOST` and `MEMORY_MCP_PORT` to `http`, `0.0.0.0` and `8000`, and environment variables or Compose can override them. The image binds all container interfaces and the server only warns when no key is set, so set `MEMORY_MCP_API_KEY` before publishing the port beyond host loopback or sharing the container network.
@@ -590,7 +590,7 @@ uv add "ontogr-mem[falkordb]"
 
 The repository's `make sync` selects the CPU extra by default. To sync the GPU extra instead, run `make sync UV_SYNC_ARGS='--no-extra fastembed'`. The CPU and GPU extras install alternative FastEmbed and ONNX Runtime packages. Users must validate CUDA execution on their hardware.
 
-Run a FalkorDB server before opening `Memory`. The repository's `compose.yaml` starts the graph on `127.0.0.1:6379`, which is the package default. SQLite state is stored in `agent_memory_state.sqlite3` in the current directory. The local embedding model may download files on first use. Set `MEMORY_EMBEDDING_API_KEY` if the embedding endpoint requires authentication.
+Run a FalkorDB server before opening `Memory`. The repository's `compose.yaml` starts the graph on `127.0.0.1:6379`, which is the package default. SQLite state is stored in `agent_memory_state.sqlite3` in the per-user data directory. The local embedding model may download files on first use. Set `MEMORY_EMBEDDING_API_KEY` if the embedding endpoint requires authentication.
 
 Save the example as `example.py` and run it with `uv run python example.py`.
 
@@ -703,13 +703,11 @@ To evaluate answers over a fixed history, follow these steps. First, ingest the 
 The example above already uses FalkorDB for the graph and SQLite for state. The matching environment variables are:
 
 ```bash
-export MEMORY_SERVICE_BACKEND=falkordb
-export MEMORY_STATE_BACKEND=sqlite
-export MEMORY_FALKORDB_HOST=localhost
-export MEMORY_FALKORDB_PORT=6379
+export MEMORY_GRAPH_URL=redis://localhost:6379
+export MEMORY_STATE_URL=sqlite:///agent_memory_state.sqlite3
 ```
 
-The relation store refuses its in-memory backend unless you set `MEMORY_STATE_ALLOW_EPHEMERAL=true`. See [Configuration](https://github.com/ontogr/ontogr-agent-memory#configuration) and [.env.example](https://github.com/ontogr/ontogr-agent-memory/blob/main/.env.example) for more settings.
+The relation store uses SQLite by default. Set `MEMORY_STATE_URL` to a Postgres URL to use Postgres. See [Configuration](https://github.com/ontogr/ontogr-agent-memory#configuration) and [.env.example](https://github.com/ontogr/ontogr-agent-memory/blob/main/.env.example) for more settings.
 
 ## Core concepts
 
@@ -986,7 +984,7 @@ Local vector spaces record the model and its query and document encoding identit
 
 The endpoint never uses `OPENAI_*` settings or the language-model key. Without an embedding key it sends a fixed placeholder for unauthenticated servers. Configured dimensions declare the output width; they do not request dimension reduction. Tenant readiness also performs the vector store's existing probe.
 
-FastEmbed stores model files at `FASTEMBED_CACHE_PATH`, or `fastembed_cache` in the system temporary directory. A persistent cache avoids downloading those files again after temporary files are removed. Check FastEmbed and ONNX Runtime wheel availability before installing a local extra. Use an embedding endpoint when your platform has no compatible wheel.
+FastEmbed stores model files at `FASTEMBED_CACHE_PATH`, or in the `fastembed` folder of the per-user cache directory. A persistent cache avoids downloading those files again after temporary files are removed. Check FastEmbed and ONNX Runtime wheel availability before installing a local extra. Use an embedding endpoint when your platform has no compatible wheel.
 
 ## Observability
 
@@ -1007,10 +1005,10 @@ Settings classes use `pydantic-settings`. They read the `.env` file in the curre
 
 | Prefix | Area |
 | --- | --- |
-| `MEMORY_SERVICE_` | Service graph backend. |
-| `MEMORY_STATE_` | Relation store backend for jobs, operations, and audit rows. |
-| `MEMORY_FALKORDB_` | FalkorDB connection and resilience. |
-| `MEMORY_NEO4J_` | Neo4j connection and resilience. |
+| `MEMORY_GRAPH_URL` | Graph backend and connection URL, selected by URL scheme. |
+| `MEMORY_STATE_URL` | SQLite or Postgres URL for jobs, operations, and audit rows. |
+| `MEMORY_FALKORDB_` | FalkorDB pool and resilience settings. |
+| `MEMORY_NEO4J_` | Neo4j pool and resilience settings. |
 | `MEMORY_PGVECTOR_` | pgvector connection, search, and outbox limits. |
 | `MEMORY_VECTORSTORE_` | Embedding batches, retries, timeouts, and vector indexes. |
 | `MEMORY_RETRIEVAL_` | Candidate counts, fusion constants, penalties, and context shares. |

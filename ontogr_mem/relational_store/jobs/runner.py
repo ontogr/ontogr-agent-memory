@@ -17,6 +17,7 @@ from ontogr_mem.data_models.jobs import Job, JobState
 from ontogr_mem.data_models.tenant import validate_tenant_id
 from ontogr_mem.errors import AgentMemoryError
 from ontogr_mem.observability.ids import accept_trace_id
+from ontogr_mem.observability.redact import redact_text
 from ontogr_mem.relational_store.jobs.errors import UnknownJobOpError
 from ontogr_mem.relational_store.jobs.ports import JobStore
 
@@ -38,7 +39,7 @@ def _request_hash(op: str, payload: Mapping[str, Any]) -> str:
 
 def _error_record(exc: Exception) -> dict[str, str]:
     """Return the caller-visible type and message of a handler error."""
-    return {"type": type(exc).__name__, "message": str(exc)}
+    return {"type": type(exc).__name__, "message": redact_text(str(exc))}
 
 
 class JobRunner:

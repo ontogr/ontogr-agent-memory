@@ -26,6 +26,7 @@ from ontogr_mem.graphstore.types import (
     NodeSelector,
     WriteResult,
 )
+from ontogr_mem.store_urls import FalkorTarget
 
 
 class FalkorDBGraphStore:
@@ -33,12 +34,16 @@ class FalkorDBGraphStore:
 
     def __init__(
         self,
+        target: FalkorTarget,
         settings: FalkorDBSettings | None = None,
         pool: FalkorClientPool | None = None,
     ) -> None:
         """Create a store; the connection opens on first use."""
         self.settings = settings or FalkorDBSettings()
-        self._pool = pool or FalkorClientPool(self.settings)
+        self.target = target
+        if not isinstance(self.target, FalkorTarget):
+            raise ValueError("FalkorDBGraphStore requires a FalkorDB URL")
+        self._pool = pool or FalkorClientPool(self.settings, self.target)
         self._runner = self._pool.runner
         self._tenants = TenantGraphs(self._pool)
 

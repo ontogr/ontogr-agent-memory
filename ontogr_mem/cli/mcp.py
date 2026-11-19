@@ -1,32 +1,15 @@
 """Run the MCP server for the ontogr-mem command."""
 
-import ipaddress
 import logging
 
 from ontogr_mem._extras import import_extra
 from ontogr_mem.client import Memory
 from ontogr_mem.mcp_server.settings import McpSettings
+from ontogr_mem.service.bootstrap import ServiceSettings
+from ontogr_mem.store_urls import is_loopback_host, require_explicit_tenant
 
 
 log = logging.getLogger(__name__)
-
-
-def _loopback(host: str) -> bool:
-    """Tell whether a bind host only accepts connections from this machine.
-
-    Args:
-        host: Host name or IP address the server binds to.
-
-    Returns:
-        True for "localhost" and loopback IP addresses, otherwise False. A name
-        other than "localhost" is not resolved and counts as not loopback.
-    """
-    if host.lower() == "localhost":
-        return True
-    try:
-        return ipaddress.ip_address(host).is_loopback
-    except ValueError:
-        return False
 
 
 async def run_mcp(settings: McpSettings) -> None:
@@ -40,9 +23,15 @@ async def run_mcp(settings: McpSettings) -> None:
     # check above has given a missing install its hint.
     from ontogr_mem.mcp_server.server import build_server  # noqa: PLC0415
 
+    require_explicit_tenant(
+        ServiceSettings().graph_url,
+        tenant_given="tenant" in settings.model_fields_set,
+        hint="set MEMORY_MCP_TENANT or pass --tenant",
+    )
+
     if (
         settings.transport == "http"
-        and not _loopback(settings.host)
+        and not is_loopback_host(settings.host)
         and settings.api_key is None
     ):
         log.warning("MCP HTTP is binding outside loopback without an API key.")

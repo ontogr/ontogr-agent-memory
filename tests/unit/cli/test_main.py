@@ -112,6 +112,15 @@ class TestMain:
 
         assert main(["chat"]) == 0
 
+    def test_chat_requires_tenant_for_remote_graph(self, monkeypatch, capsys):
+        """Chat reports the tenant requirement before starting models."""
+        monkeypatch.setenv("MEMORY_GRAPH_URL", "redis://graph.example:6379")
+
+        status = main(["chat"])
+
+        assert status == 1
+        assert "pass --tenant" in capsys.readouterr().err
+
     def test_keyboard_interrupt_returns_130(self, monkeypatch):
         """An interrupted chat session returns the conventional status 130."""
         monkeypatch.setattr(

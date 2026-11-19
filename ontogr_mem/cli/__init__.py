@@ -20,7 +20,9 @@ from ontogr_mem.llm.failures import ModelNotConfiguredError
 from ontogr_mem.llm.roles import ModelRole
 from ontogr_mem.mcp_server.settings import McpSettings
 from ontogr_mem.ontology.errors import InvalidChange
+from ontogr_mem.service.bootstrap import ServiceSettings
 from ontogr_mem.service.errors import InvalidArgumentError
+from ontogr_mem.store_urls import ExplicitTenantError, require_explicit_tenant
 from ontogr_mem.vectorstore.builtin import EmbedderUnavailableError
 
 
@@ -32,8 +34,13 @@ def _tenant_id_argument(value: str) -> str:
         raise argparse.ArgumentTypeError(str(error)) from error
 
 
-async def _chat(tenant: str, ontology: Path | None) -> None:
+async def _chat(tenant: str | None, ontology: Path | None) -> None:
     """Keep the client open until chat and its drain have finished."""
+    require_explicit_tenant(
+        ServiceSettings().graph_url,
+        tenant_given=tenant is not None,
+        hint="pass --tenant",
+    )
     models = build_models()
     try:
         # Check the models before the graph and the embedder start, so a missing
@@ -46,7 +53,7 @@ async def _chat(tenant: str, ontology: Path | None) -> None:
             if not models.configured(role):
                 raise ModelNotConfiguredError(f"no model configured for {role.value}")
         async with Memory.open(
-            tenant=tenant, models=models, ontology=ontology
+            tenant=tenant or "default", models=models, ontology=ontology
         ) as memory:
             await run_chat(memory, build_default_agent(memory))
     finally:
@@ -63,25 +70,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         Zero on normal exit, one on a runtime failure, or 130 on Ctrl-C.
         Argparse exits with its standard help and usage statuses.
     """
-    parser = argparse.ArgumentParser(prog="ontogr-mem")
-    commands = parser.add_subparsers(dest="command", required=True)
-    chat = commands.add_parser("chat", help="chat with persistent memory")
-    chat.add_argument("--tenant", default="default", type=_tenant_id_argument)
-    chat.add_argument(
-        "--ontology",
-        type=Path,
-        help="Path to an ontology file (.yaml, .yml, .json or .ttl).",
-    )
-    mcp_parser = commands.add_parser("mcp", help="serve memory over MCP")
-    mcp_parser.add_argument("--transport", choices=("stdio", "http"), default=None)
-    mcp_parser.add_argument("--host", default=None)
-    mcp_parser.add_argument("--port", type=int, default=None)
-    mcp_parser.add_argument("--tenant", default=None, type=_tenant_id_argument)
-    mcp_parser.add_argument(
-        "--ontology",
-        type=Path,
-        help="Path to an ontology file (.yaml, .yml, .json or .ttl).",
-    )
+    parser = _command_parser()
     args = parser.parse_args(argv)
     os.environ["PYDANTIC_AI_NO_BANNER"] = "1"
     status = 0
@@ -123,6 +112,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     except InvalidArgumentError as error:
         print(str(error), file=sys.stderr)
         status = 1
+    except ExplicitTenantError as error:
+        print(str(error), file=sys.stderr)
+        status = 1
     except AgentMemoryError:
         print(
             "Memory failed; check database, embedding and model settings.",
@@ -136,6 +128,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         status = 1
     return status
+
+
+def _command_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="ontogr-mem")
+    commands = parser.add_subparsers(dest="command", required=True)
+    chat = commands.add_parser("chat", help="chat with persistent memory")
+    chat.add_argument("--tenant", default=None, type=_tenant_id_argument)
+    chat.add_argument(
+        "--ontology",
+        type=Path,
+        help="Path to an ontology file (.yaml, .yml, .json or .ttl).",
+    )
+    mcp_parser = commands.add_parser("mcp", help="serve memory over MCP")
+    mcp_parser.add_argument("--transport", choices=("stdio", "http"), default=None)
+    mcp_parser.add_argument("--host", default=None)
+    mcp_parser.add_argument("--port", type=int, default=None)
+    mcp_parser.add_argument("--tenant", default=None, type=_tenant_id_argument)
+    mcp_parser.add_argument(
+        "--ontology",
+        type=Path,
+        help="Path to an ontology file (.yaml, .yml, .json or .ttl).",
+    )
+    return parser
 
 
 __all__ = ["main"]

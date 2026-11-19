@@ -1,6 +1,6 @@
 """Settings for the Neo4j graph store."""
 
-from pydantic import Field, SecretStr
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ontogr_mem.graphstore.config import ResilienceSettings
@@ -23,10 +23,6 @@ class Neo4jSettings(BaseSettings):
         frozen=True,
     )
 
-    uri: str = "bolt://localhost:7687"
-    username: str = "neo4j"
-    password: SecretStr | None = None
-    database: str = "neo4j"
     max_connections: int = Field(default=16, ge=1)
     pool_timeout: float = Field(default=30.0, gt=0)
     connect_timeout: float = Field(default=5.0, gt=0)
