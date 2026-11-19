@@ -1,5 +1,7 @@
 """Durability configuration for service state."""
 
+from math import isfinite
+
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -25,7 +27,12 @@ class StateSettings(BaseSettings):
     @model_validator(mode="after")
     def validate_lease_settings(self) -> "StateSettings":
         """Require positive lease timings and a heartbeat within one third."""
-        if self.lease_seconds <= 0 or self.heartbeat_seconds <= 0:
+        if (
+            not isfinite(self.lease_seconds)
+            or not isfinite(self.heartbeat_seconds)
+            or self.lease_seconds <= 0
+            or self.heartbeat_seconds <= 0
+        ):
             raise ValueError("lease and heartbeat seconds must be positive")
         if self.heartbeat_seconds > self.lease_seconds / 3:
             raise ValueError(

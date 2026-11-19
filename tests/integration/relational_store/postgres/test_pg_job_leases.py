@@ -36,6 +36,13 @@ class TestPostgresJobLeases:
         )
         assert await second.tenant_has_live_lease("tenant_a", now)
 
+        assert await second.claim_next(
+            "tenant_a", now + timedelta(seconds=59), lambda job: True
+        ) is None
+        assert await second.tenant_has_live_lease(
+            "tenant_a", now + timedelta(seconds=59)
+        )
+
         await second.requeue_expired(now + timedelta(seconds=61))
         recovered = await second.claim_next(
             "tenant_a", now + timedelta(seconds=61), lambda job: True
