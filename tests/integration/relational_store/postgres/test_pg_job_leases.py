@@ -97,11 +97,23 @@ class TestPostgresJobLeases:
         async with store.tenant_lock(job.tenant_id):
             submission = asyncio.create_task(store.create_job(job))
             async with pool.acquire() as connection:
+                tenant_lock_key = await connection.fetchval(
+                    "SELECT hashtextextended($1, 0)", job.tenant_id
+                )
                 for _ in range(100):
                     waiting = await connection.fetchval(
-                        "SELECT EXISTS (SELECT 1 FROM pg_stat_activity "
-                        "WHERE datname = current_database() "
-                        "AND wait_event_type = 'Lock' AND state = 'active')"
+                        "SELECT EXISTS ("
+                        "SELECT 1 FROM pg_locks AS waiter "
+                        "JOIN pg_stat_activity AS activity "
+                        "ON activity.pid = waiter.pid "
+                        "WHERE activity.datname = current_database() "
+                        "AND waiter.locktype = 'advisory' "
+                        "AND waiter.classid = (($1::bigint >> 32) & 4294967295)::oid "
+                        "AND waiter.objid = ($1::bigint & 4294967295)::oid "
+                        "AND waiter.objsubid = 1 AND NOT waiter.granted "
+                        "AND activity.wait_event_type = 'Lock'"
+                        ")",
+                        tenant_lock_key,
                     )
                     if waiting:
                         break
