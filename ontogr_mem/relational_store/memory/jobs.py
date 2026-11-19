@@ -105,7 +105,7 @@ class MemoryJobStore:
                 for j in self._jobs.values()
                 if j.tenant_id == tenant_id and j.status == JobState.QUEUED
             ),
-            key=lambda j: (j.created_at, j.job_id),
+            key=lambda j: j.created_at,
         )
         if not jobs or not can_run(jobs[0]):
             return None
