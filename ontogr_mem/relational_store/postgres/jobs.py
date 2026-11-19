@@ -174,30 +174,30 @@ class PostgresJobStore:
             )
             if has_live_lease:
                 return None
-            row = await connection.fetchrow(
+            rows = await connection.fetch(
                 "SELECT seq FROM jobs WHERE tenant_id = $1 AND status = 'queued' "
-                "ORDER BY created_at, seq LIMIT 1 FOR UPDATE",
+                "ORDER BY created_at, seq FOR UPDATE",
                 tenant_id,
             )
-            if row is None:
-                return None
-            job_row = await connection.fetchrow(
-                f"{_SELECT_JOB} WHERE seq = $1", row["seq"]
-            )
-            job = job_from_row(job_row)
-            if not can_run(job):
-                return None
-            expiry = to_micros(now) + self._lease_micros
-            updated = await connection.fetchrow(
-                "UPDATE jobs SET status = 'running', owner_id = $1, "
-                "lease_expires_at = $2, heartbeat_at = $3 WHERE seq = $4 "
-                f"RETURNING seq, {JOB_COLUMNS}",
-                self._owner_id,
-                expiry,
-                to_micros(now),
-                row["seq"],
-            )
-            return job_from_row(updated)
+            for row in rows:
+                job_row = await connection.fetchrow(
+                    f"{_SELECT_JOB} WHERE seq = $1", row["seq"]
+                )
+                job = job_from_row(job_row)
+                if not can_run(job):
+                    continue
+                expiry = to_micros(now) + self._lease_micros
+                updated = await connection.fetchrow(
+                    "UPDATE jobs SET status = 'running', owner_id = $1, "
+                    "lease_expires_at = $2, heartbeat_at = $3 WHERE seq = $4 "
+                    f"RETURNING seq, {JOB_COLUMNS}",
+                    self._owner_id,
+                    expiry,
+                    to_micros(now),
+                    row["seq"],
+                )
+                return job_from_row(updated)
+            return None
 
     async def tenant_has_live_lease(self, tenant_id: str, now: datetime) -> bool:
         """Return whether a job or erase row has a live lease for the tenant."""
