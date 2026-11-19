@@ -32,18 +32,27 @@ async def run_mcp(settings: McpSettings) -> None:
         tenant_given="tenant" in settings.model_fields_set,
         hint="set MEMORY_MCP_TENANT or pass --tenant",
     )
+    service = ServiceSettings()
+    state = StateSettings()
+    graph = parse_graph_url(service.graph_url.get_secret_value())
+    state_target = parse_state_url(state.url.get_secret_value())
+    embedding = EmbeddingSettings()
+    check_requirements(
+        models=None,
+        graph=graph,
+        state=state_target,
+        embedding=embedding,
+        mcp=True,
+    ).raise_for_missing(subcommand="mcp")
     models = build_models()
     try:
-        service = ServiceSettings()
-        state = StateSettings()
         report = check_requirements(
             models=models,
-            graph=parse_graph_url(service.graph_url.get_secret_value()),
-            state=parse_state_url(state.url.get_secret_value()),
-            embedding=EmbeddingSettings(),
+            graph=graph,
+            state=state_target,
+            embedding=embedding,
             mcp=True,
         )
-        report.raise_for_missing(subcommand="mcp")
         mode_message = "memory mode: model"
         if report.mode == "keyless":
             mode_message = (

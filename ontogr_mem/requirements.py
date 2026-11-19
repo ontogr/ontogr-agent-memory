@@ -67,7 +67,7 @@ class Preflight:
 
 def check_requirements(
     *,
-    models: RoleModels,
+    models: RoleModels | None,
     graph: GraphTarget,
     state: StateTarget,
     embedding: EmbeddingSettings | None,
@@ -95,11 +95,12 @@ def check_requirements(
     missing_roles = tuple(
         role
         for role in ModelRole
-        if role in required_roles and not models.configured(role)
+        if models is not None and role in required_roles and not models.configured(role)
     )
     mode: Literal["keyless", "model"] = (
         "model"
-        if all(models.configured(role) for role in TEXT_WRITE_ROLES)
+        if models is not None
+        and all(models.configured(role) for role in TEXT_WRITE_ROLES)
         else "keyless"
     )
     return Preflight(tuple(required), tuple(missing), missing_roles, mode)

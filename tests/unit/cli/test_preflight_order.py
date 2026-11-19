@@ -55,6 +55,9 @@ class TestPreflightBeforeOpen:
             import os
             import sys
 
+            for name in tuple(os.environ):
+                if name.startswith("MEMORY_EMBEDDING_"):
+                    os.environ.pop(name)
             os.environ["MEMORY_LLM_MODEL"] = "test-model"
             os.environ["MEMORY_LLM_BASE_URL"] = "http://127.0.0.1:1/v1"
             os.environ["MEMORY_GRAPH_URL"] = "redis://127.0.0.1:6379"
