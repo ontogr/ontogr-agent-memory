@@ -161,6 +161,10 @@ class Neo4jGraphStore:
         """Delete the tenant's data; erasing a missing tenant does nothing."""
         await self._tenants.erase(tenant)
 
+    async def list_tenants(self) -> list[str]:
+        """Return tenants represented by nodes in the shared database."""
+        return await self._tenants.list_tenants()
+
     async def close(self) -> None:
         """Close the driver."""
         await self._client.close()

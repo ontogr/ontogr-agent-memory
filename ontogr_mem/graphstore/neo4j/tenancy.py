@@ -3,8 +3,9 @@
 import asyncio
 from collections.abc import Sequence
 
+from ontogr_mem.graphstore.errors import ValidationError
 from ontogr_mem.graphstore.executor import QuerySpec
-from ontogr_mem.graphstore.ident import tenant_id
+from ontogr_mem.graphstore.ident import quote, tenant_id
 from ontogr_mem.graphstore.indices import IndexSpec, SchemaPart, merge_parts, plan
 from ontogr_mem.graphstore.neo4j.runner import Neo4jRunner
 from ontogr_mem.graphstore.neo4j.schema import SchemaManager
@@ -80,3 +81,38 @@ class TenantGraphs:
         while (await self._runner.run(spec, tenant)).scalar("removed", 0):
             pass
         self._schemas.pop(name, None)
+
+    async def list_tenants(self) -> list[str]:
+        """Return sorted tenant ids represented by nodes in the database."""
+        labels = await self._runner.run(
+            QuerySpec(
+                "CALL db.labels() YIELD label RETURN label",
+                read_only=True,
+                idempotent=True,
+                tag="list_tenant_labels",
+            )
+        )
+        tenants: set[str] = set()
+        for row in labels.rows:
+            label = row.get("label")
+            if not isinstance(label, str):
+                continue
+            try:
+                safe_label = quote(label, "label")
+            except ValidationError:
+                continue
+            rows = await self._runner.run(
+                QuerySpec(
+                    f"MATCH (n:{safe_label}) WHERE n._tenant IS NOT NULL "
+                    "RETURN DISTINCT n._tenant AS tenant",
+                    read_only=True,
+                    idempotent=True,
+                    tag="list_tenants",
+                )
+            )
+            tenants.update(
+                value
+                for result in rows.rows
+                if isinstance((value := result.get("tenant")), str) and value
+            )
+        return sorted(tenants)

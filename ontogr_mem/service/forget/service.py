@@ -388,11 +388,15 @@ class ForgetService:
             principal, tenant, Grant.ADMIN, "clear_tenant", target="tenant"
         )
         async with self._write_lock, self._deps.state.tenant_lock(tenant):
-            pending = await self._deps.state.count_jobs(
-                [tenant], [JobState.QUEUED, JobState.RUNNING]
+            live_lease = await self._deps.state.live_lease_expires_at(
+                tenant, self._deps.clock.now()
             )
-            if pending:
-                raise ConflictError("wait for tenant jobs to finish before clearing")
+            if live_lease is not None:
+                expiry = live_lease.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
+                raise ConflictError(
+                    f"Jobs of tenant {tenant} are leased until {expiry} UTC. "
+                    "Stop every server on this store, then run clear again."
+                )
             async with self._recorder.track(
                 OperationKind.ERASE,
                 principal.id,

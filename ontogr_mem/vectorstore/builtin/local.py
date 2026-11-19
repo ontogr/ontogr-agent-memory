@@ -6,6 +6,7 @@ import json
 from collections.abc import Sequence
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ontogr_mem._extras import import_extra
@@ -27,6 +28,34 @@ if TYPE_CHECKING:
 
 
 _DEFAULT_MODEL_NAME = "ibm-granite/granite-embedding-small-english-r2"
+
+
+def model_cached(settings: EmbeddingSettings | None = None) -> bool | None:
+    """Return whether the configured model directory exists without loading it."""
+    selected = settings if settings is not None else EmbeddingSettings()
+    options = deepcopy(selected.fastembed_kwargs)
+    requested_name = options.get("model_name", _DEFAULT_MODEL_NAME)
+    if not isinstance(requested_name, str):
+        return None
+    try:
+        module = import_extra("fastembed", "fastembed")
+        description = next(
+            (item for item in module.TextEmbedding.list_supported_models()
+             if item["model"].casefold() == requested_name.casefold()),
+            None,
+        )
+    except MissingExtraError:
+        raise
+    except Exception:
+        return None
+    if description is None or not isinstance(description.get("hf"), str):
+        # The hf repository is the canonical cache identity supplied by FastEmbed.
+        return None
+    repository = description["hf"]
+    cache_dir = options.get("cache_dir")
+    cache = Path(cache_dir) if isinstance(cache_dir, str) else model_cache_directory()
+    organization, repo = repository.split("/", 1)
+    return (cache / f"models--{organization}--{repo}").is_dir()
 _SUPPORTED_PROVIDERS = frozenset({"CPUExecutionProvider", "CUDAExecutionProvider"})
 _NON_SEMANTIC_OPTIONS = frozenset(
     {

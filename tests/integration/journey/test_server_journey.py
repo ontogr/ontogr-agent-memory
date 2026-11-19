@@ -4,7 +4,9 @@ import asyncio
 import contextlib
 import json
 import os
+import pty
 import secrets
+import select
 import subprocess
 import time
 from collections.abc import Generator
@@ -50,6 +52,91 @@ def _run_client(
         timeout=60,
         check=False,
     )
+
+
+def _run_data_command_journey(installed_cli: Path, environment: dict[str, str]) -> None:
+    """Check doctor, tenant listing and the clear confirmation flow."""
+    tenant = environment["MEMORY_MCP_TENANT"]
+    doctor = subprocess.run(
+        [str(installed_cli), "doctor"],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert doctor.returncode == 0, doctor.stdout + doctor.stderr
+    tenants = subprocess.run(
+        [str(installed_cli), "tenants"],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert tenants.returncode == 0, tenants.stdout + tenants.stderr
+    assert tenant in tenants.stdout
+
+    stopped = subprocess.run(
+        [str(installed_cli), "server", "stop"],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+    assert stopped.returncode == 0, stopped.stdout + stopped.stderr
+    guarded = subprocess.run(
+        [str(installed_cli), "clear", "--tenant", tenant],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+    assert guarded.returncode == 1
+    assert "interactive terminal" in guarded.stdout + guarded.stderr
+    assert "Stop the server first" not in guarded.stdout + guarded.stderr
+
+    master_fd, slave_fd = pty.openpty()
+    process = subprocess.Popen(
+        [str(installed_cli), "clear", "--tenant", tenant],
+        env=environment,
+        stdin=slave_fd,
+        stdout=slave_fd,
+        stderr=slave_fd,
+        close_fds=True,
+    )
+    os.close(slave_fd)
+    output = bytearray()
+    deadline = time.monotonic() + 30
+    confirmed = False
+    while process.poll() is None and time.monotonic() < deadline:
+        ready, _, _ = select.select([master_fd], [], [], 0.2)
+        if ready:
+            try:
+                output.extend(os.read(master_fd, 4096))
+            except OSError:
+                break
+            if not confirmed and tenant.encode() in output:
+                os.write(master_fd, (tenant + "\n").encode())
+                confirmed = True
+    if process.poll() is None:
+        process.kill()
+    process.wait(timeout=5)
+    os.close(master_fd)
+    assert confirmed, output.decode(errors="replace")
+    assert process.returncode == 0, output.decode(errors="replace")
+    tenants_after = subprocess.run(
+        [str(installed_cli), "tenants"],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert tenants_after.returncode == 0, tenants_after.stdout + tenants_after.stderr
+    assert tenant not in tenants_after.stdout
 
 
 @pytest.fixture(scope="module")
@@ -164,6 +251,8 @@ class TestServerJourney:
                 "forget_memory",
                 "get_skill",
             }
+            forget_tool = next(tool for tool in tools if tool.name == "forget_memory")
+            assert "mode" not in forget_tool.inputSchema.get("properties", {})
             source = "Rina works at the Atlas research team."
             write = await client.call_tool(
                 "write_facts",
@@ -208,6 +297,7 @@ class TestServerJourney:
         artifact_path = Path(os.environ.get("JOURNEY_ARTIFACT", "journey-result.json"))
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text(json.dumps(artifact, indent=2) + "\n")
+        _run_data_command_journey(installed_cli, journey_env)
 
     def test_server_recovers_after_crash(
         self, installed_cli: Path, journey_env: dict[str, str]

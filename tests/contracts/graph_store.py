@@ -53,6 +53,17 @@ class GraphStoreContract:
         """Drop the `Drift.email` unique constraint behind the store's back."""
         raise NotImplementedError
 
+    async def test_list_tenants_shows_a_tenant_with_data_until_it_is_erased(
+        self, store: GraphStore, handle: GraphHandle
+    ) -> None:
+        """Listing reflects persisted tenant data and removes erased tenants."""
+        await store.upsert_nodes(
+            handle, [Node("listed-tenant", "Entity", {"name": "listed"})]
+        )
+        assert handle.tenant in await store.list_tenants()
+        await store.erase_tenant(handle.tenant)
+        assert handle.tenant not in await store.list_tenants()
+
     def create_cypher(self, node_id: str) -> str:
         """Return a statement that creates one `Entity` with `node_id`."""
         return f"CREATE (:Entity {{id: '{node_id}'}})"
