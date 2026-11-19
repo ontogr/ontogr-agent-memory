@@ -34,6 +34,14 @@ class TestParseGraphUrl:
         assert target.tls is tls
         assert target.port == 6379
 
+    def test_accepts_password_only_redis_userinfo(self) -> None:
+        """A Redis URL may supply only the default user's password."""
+        target = parse_graph_url("rediss://:secret@host")
+        assert isinstance(target, FalkorTarget)
+        assert target.username == ""
+        assert target.password == SecretStr("secret")
+        assert target.tls is True
+
     def test_parses_neo4j_credentials_and_safe_identity(self) -> None:
         """Neo4j userinfo is decoded and omitted from the URI and identity."""
         target = parse_graph_url("neo4j+s://user:p%40ss@host/?database=graphs")
@@ -49,6 +57,8 @@ class TestParseGraphUrl:
             "redis://host/0",
             "neo4j://host/db",
             "neo4j://user@host",
+            "neo4j://:secret@host",
+            "redis://user@host",
             "neo4j://host?policy=x",
             "redis://host:99999",
             "https://host",
@@ -60,6 +70,10 @@ class TestParseGraphUrl:
         with pytest.raises(StoreUrlError) as error:
             parse_graph_url(url)
         assert url not in str(error.value)
+        if "://user:" in url:
+            assert url.split("@", maxsplit=1)[0].split(":", maxsplit=2)[2] not in str(
+                error.value
+            )
 
     def test_default_identity_and_tenant_policy(self) -> None:
         """The default URL is loopback and needs no explicit tenant."""
@@ -107,10 +121,19 @@ class TestParseStateUrl:
 
     @pytest.mark.parametrize(
         "url",
-        ["sqlite://host/path", "sqlite:///", "memory://", "mysql://db/name"],
+        [
+            "sqlite://host/path",
+            "sqlite:///",
+            "sqlite:state.db",
+            "sqlite:///state.db?mode=ro",
+            "sqlite:///state.db#fragment",
+            "sqlite:///:memory:",
+            "memory://",
+            "mysql://db/name",
+        ],
     )
     def test_rejects_invalid_state_urls(self, url: str) -> None:
-        """Unknown state schemes and malformed SQLite paths are refused."""
+        """Unknown schemes, malformed paths and volatile SQLite URLs are refused."""
         with pytest.raises(StoreUrlError):
             parse_state_url(url)
 

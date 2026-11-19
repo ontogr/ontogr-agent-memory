@@ -32,6 +32,8 @@ services:
       MEMORY_EMBEDDING_FASTEMBED_KWARGS: null
       MEMORY_EMBEDDING_BATCH_SIZE: null
       MEMORY_MCP_API_KEY: ${MEMORY_MCP_API_KEY:-}
+      MEMORY_MCP_TENANT: default
+      MEMORY_MCP_TENANT: ${MEMORY_MCP_TENANT:-local}
       MEMORY_MCP_TOOLS: ${MEMORY_MCP_TOOLS-search_memory,get_entity,list_entities,get_ontology,get_job,add_memory,write_facts,forget_memory,get_skill}
       MEMORY_MCP_SKILLS_EXTENSION: ${MEMORY_MCP_SKILLS_EXTENSION:-true}
       MEMORY_LLM_MODEL: ${MEMORY_LLM_MODEL:-}

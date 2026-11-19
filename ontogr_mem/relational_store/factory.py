@@ -31,14 +31,15 @@ async def _postgres_store(target: PostgresTarget) -> StateStore:
 
 
 async def open_state_store(settings: StateSettings) -> StateStore:
-    """Open the configured backend, refusing unapproved ephemeral storage.
+    """Open the durable backend selected by the configured state URL.
 
-    The Postgres backend takes a process-wide pool and applies pending
-    schema migrations before the store is returned, so a database that
-    failed its migrations blocks the caller instead of serving writes.
+    A SQLite URL opens a file at the configured path. A Postgres URL takes a
+    process-wide pool and applies pending schema migrations before the store is
+    returned, so a database that failed its migrations blocks the caller
+    instead of serving writes.
 
     Args:
-        settings: Backend configuration and explicit ephemeral permission.
+        settings: Configuration carrying the state store URL.
 
     Returns:
         An open store that the caller must close.

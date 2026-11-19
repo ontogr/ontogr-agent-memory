@@ -5,7 +5,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from pydantic import SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ontogr_mem.combined_extraction.settings import ExtractionSettings
@@ -16,7 +16,6 @@ from ontogr_mem.observability import NoOpTracer, Tracer
 from ontogr_mem.ontology.declaration import OntologyDeclaration
 from ontogr_mem.paths import ensure_directory
 from ontogr_mem.relational_store import (
-    MemoryOperationStore,
     OperationStore,
     SqliteOperationStore,
     StateSettings,
@@ -37,11 +36,7 @@ from ontogr_mem.relational_store.sqlite.audit import SqliteAuditLog
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionPolicy
 from ontogr_mem.retrieval.settings import RetrievalSettings
-from ontogr_mem.service.access.audit_sink import (
-    AuditSink,
-    ChainedAuditSink,
-    InMemoryAuditSink,
-)
+from ontogr_mem.service.access.audit_sink import AuditSink, ChainedAuditSink
 from ontogr_mem.service.access.authz import Authorizer
 from ontogr_mem.service.dependencies import ServiceDeps
 from ontogr_mem.service.forget.confirm import ConfirmTokens
@@ -75,13 +70,17 @@ class ServiceSettings(BaseSettings):
     """Configure the service graph URL."""
 
     model_config = SettingsConfigDict(
-        env_prefix="MEMORY_",
+        env_prefix="MEMORY_GRAPH_",
         env_file=".env",
         extra="ignore",
         frozen=True,
+        populate_by_name=True,
     )
 
-    graph_url: SecretStr = SecretStr(DEFAULT_GRAPH_URL)
+    graph_url: SecretStr = Field(
+        default=SecretStr(DEFAULT_GRAPH_URL),
+        validation_alias="MEMORY_GRAPH_URL",
+    )
 
     @field_validator("graph_url")
     @classmethod
@@ -364,13 +363,6 @@ def _neo4j_stores(target: Neo4jTarget) -> tuple[GraphStore, StoresFactory]:
     return _graph_stores_factory(Neo4jGraphStore(target=target), tenant_keyed=True)
 
 
-async def _memory_audit(
-    settings: StateSettings, resources: AsyncExitStack, clock: Clock
-) -> tuple[OperationStore, AuditLog, AuditSink]:
-    """Keep operation and access audit records in process memory."""
-    return MemoryOperationStore(clock), MemoryAuditLog(clock), InMemoryAuditSink()
-
-
 async def _sqlite_audit(
     settings: StateSettings,
     target: SqliteTarget,
@@ -380,7 +372,7 @@ async def _sqlite_audit(
     """Share one process-wide SQLite connection for operation and audit rows."""
     path = Path(target.path).expanduser()
     ensure_directory(path.parent)
-    connection = sqlite_shared_connection(path)
+    connection = sqlite_shared_connection(str(path))
     audit_log = SqliteAuditLog(connection, clock)
     return (
         SqliteOperationStore(connection, clock),
@@ -402,13 +394,3 @@ async def _postgres_audit(
     await operations.mark_interrupted_runs()
     audit_log = PostgresAuditLog(pool, clock)
     return operations, audit_log, ChainedAuditSink(audit_log)
-
-
-async def _memory_audit(
-    settings: StateSettings, target: object, resources: AsyncExitStack, clock: Clock
-) -> tuple[OperationStore, AuditLog, AuditSink]:
-    """Keep operation and access audit records in process memory."""
-    return MemoryOperationStore(clock), MemoryAuditLog(clock), InMemoryAuditSink()
-
-
-_STATE_AUDITS = {SqliteTarget: _sqlite_audit, PostgresTarget: _postgres_audit}

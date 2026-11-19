@@ -14,7 +14,7 @@ from ontogr_mem.errors import AgentMemoryError
 DEFAULT_GRAPH_URL = "redis://localhost:6379"
 
 
-class StoreUrlError(ValueError):
+class StoreUrlError(AgentMemoryError, ValueError):
     """A store URL is invalid or unsupported."""
 
 
@@ -137,6 +137,8 @@ def parse_graph_url(value: str) -> GraphTarget:
         else None
     )
     password = SecretStr(unquote(raw_password)) if raw_password is not None else None
+    if username is not None and password is None:
+        raise StoreUrlError("MEMORY_GRAPH_URL username requires a password")
     default_port = 6379 if scheme in {"redis", "rediss", "falkor", "falkors"} else 7687
     port = _port(parts, default_port, "MEMORY_GRAPH_URL")
     if parts.path not in {"", "/"}:
@@ -147,8 +149,8 @@ def parse_graph_url(value: str) -> GraphTarget:
         return FalkorTarget(
             host, port, username, password, scheme in {"rediss", "falkors"}
         )
-    if username is not None and password is None:
-        raise StoreUrlError("MEMORY_GRAPH_URL username requires a password")
+    if username == "":
+        raise StoreUrlError("MEMORY_GRAPH_URL username must not be empty")
     query = parse_qs(parts.query, keep_blank_values=True)
     if set(query) - {"database"} or len(query.get("database", [])) > 1:
         raise StoreUrlError("MEMORY_GRAPH_URL supports only one database query value")
@@ -168,9 +170,17 @@ def parse_state_url(value: str) -> StateTarget:
     if parts.scheme == "sqlite":
         if parts.netloc:
             raise StoreUrlError("MEMORY_STATE_URL SQLite URL must not have a host")
+        if parts.query or parts.fragment:
+            raise StoreUrlError(
+                "MEMORY_STATE_URL SQLite URL must not have a query or fragment"
+            )
+        if not parts.path.startswith("/"):
+            raise StoreUrlError("MEMORY_STATE_URL SQLite URL must have a path")
         path = unquote(parts.path[1:])
         if not path:
             raise StoreUrlError("MEMORY_STATE_URL SQLite path must not be empty")
+        if path == ":memory:":
+            raise StoreUrlError("MEMORY_STATE_URL SQLite URL must not be in-memory")
         return SqliteTarget(path)
     if parts.scheme not in {"postgres", "postgresql"}:
         raise StoreUrlError("MEMORY_STATE_URL has an unsupported scheme")

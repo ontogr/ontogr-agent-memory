@@ -29,6 +29,16 @@ class TestDataDirectory:
         monkeypatch.setenv("XDG_DATA_HOME", "/data")
         assert data_directory() == Path("/data/ontogr-mem")
 
+    def test_ignores_empty_windows_localappdata(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An empty Windows data variable falls back to the user's home."""
+        monkeypatch.setattr("ontogr_mem.paths.sys.platform", "win32")
+        monkeypatch.delenv("MEMORY_DATA_DIR", raising=False)
+        monkeypatch.setenv("HOME", "/home/test")
+        monkeypatch.setenv("LOCALAPPDATA", "")
+        assert data_directory() == Path("/home/test/ontogr-mem")
+
 
 class TestCacheDirectory:
     """The cache directory uses the XDG cache home on Linux."""
@@ -38,6 +48,15 @@ class TestCacheDirectory:
         monkeypatch.setattr("ontogr_mem.paths.sys.platform", "linux")
         monkeypatch.setenv("XDG_CACHE_HOME", "/cache")
         assert cache_directory() == Path("/cache/ontogr-mem")
+
+    def test_ignores_empty_windows_localappdata(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An empty Windows cache variable falls back to the user's home."""
+        monkeypatch.setattr("ontogr_mem.paths.sys.platform", "win32")
+        monkeypatch.setenv("HOME", "/home/test")
+        monkeypatch.setenv("LOCALAPPDATA", "")
+        assert cache_directory() == Path("/home/test/ontogr-mem/cache")
 
 
 class TestModelCacheDirectory:
@@ -52,9 +71,11 @@ class TestModelCacheDirectory:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         """Resolving the model cache path leaves the directory absent."""
+        monkeypatch.setattr("ontogr_mem.paths.sys.platform", "linux")
         monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
         monkeypatch.delenv("FASTEMBED_CACHE_PATH", raising=False)
-        model_cache_directory()
+        expected = tmp_path / "cache" / "ontogr-mem" / "fastembed"
+        assert model_cache_directory() == expected
         assert not (tmp_path / "cache").exists()
 
 

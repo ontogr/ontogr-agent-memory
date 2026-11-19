@@ -19,7 +19,7 @@ def falkordb_test_url(*, port: int | None = None) -> str:
     host = parts.hostname or "localhost"
     if ":" in host:
         host = f"[{host}]"
-    userinfo = f"{parts.username}:{parts.password}@" if parts.username else ""
+    userinfo = f"{parts.netloc.rsplit('@', 1)[0]}@" if "@" in parts.netloc else ""
     netloc = f"{userinfo}{host}:{port}"
     return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
 
@@ -39,7 +39,14 @@ def falkordb_test_settings(**resilience: float) -> FalkorDBSettings:
 async def drop_unique_constraint(graph: str, label: str, prop: str) -> None:
     """Drop a unique constraint with a raw command, behind the store's back."""
     target = parse_graph_url(falkordb_test_url())
-    client = Redis(host=target.host, port=target.port, decode_responses=True)
+    client = Redis(
+        host=target.host,
+        port=target.port,
+        username=target.username,
+        password=target.password.get_secret_value() if target.password else None,
+        ssl=target.tls,
+        decode_responses=True,
+    )
     try:
         await client.execute_command(
             "GRAPH.CONSTRAINT",

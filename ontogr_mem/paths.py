@@ -16,7 +16,8 @@ def data_directory() -> Path:
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / "ontogr-mem"
     if sys.platform == "win32":
-        return Path(os.environ.get("LOCALAPPDATA", Path.home())) / "ontogr-mem"
+        local_app_data = os.environ.get("LOCALAPPDATA") or Path.home()
+        return Path(local_app_data) / "ontogr-mem"
     xdg = os.environ.get("XDG_DATA_HOME")
     root = (
         Path(xdg) if xdg and Path(xdg).is_absolute() else Path.home() / ".local/share"
@@ -29,9 +30,8 @@ def cache_directory() -> Path:
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Caches" / "ontogr-mem"
     if sys.platform == "win32":
-        return (
-            Path(os.environ.get("LOCALAPPDATA", Path.home())) / "ontogr-mem" / "cache"
-        )
+        local_app_data = os.environ.get("LOCALAPPDATA") or Path.home()
+        return Path(local_app_data) / "ontogr-mem" / "cache"
     xdg = os.environ.get("XDG_CACHE_HOME")
     root = Path(xdg) if xdg and Path(xdg).is_absolute() else Path.home() / ".cache"
     return root / "ontogr-mem"

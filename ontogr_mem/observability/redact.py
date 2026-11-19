@@ -25,6 +25,11 @@ _WORD_BREAKS = re.compile(r"[\s._-]+|(?<=[a-z0-9])(?=[A-Z])")
 _BEARER_TOKEN = re.compile(r"(\bBearer\s+)\S{3,}", re.IGNORECASE)
 _MINTED_KEY = re.compile(r"mk_[A-Za-z0-9_-]+")
 _URL_USERINFO = re.compile(r"([A-Za-z][A-Za-z0-9+.-]*://)[^/@\s]+@")
+_LABELED_SECRET = re.compile(
+    r"\b(api[_-]?key|password|passwd|secret|token|authorization|cookie)"
+    r"(\s*[=:]\s*)([^\s,;&\"']+)",
+    re.IGNORECASE,
+)
 
 
 def is_secret_name(name: str) -> bool:
@@ -43,10 +48,11 @@ def is_secret_name(name: str) -> bool:
 
 
 def redact_text(value: str) -> str:
-    """Hide bearer tokens, minted keys and URL userinfo in text."""
+    """Hide credential values in bearer, labeled, minted and URL userinfo forms."""
     value = _BEARER_TOKEN.sub(r"\1***", value)
     value = _MINTED_KEY.sub("mk_***", value)
-    return _URL_USERINFO.sub(r"\1***@", value)
+    value = _URL_USERINFO.sub(r"\1***@", value)
+    return _LABELED_SECRET.sub(r"\1\2***", value)
 
 
 def cap(value: str, limit: int = MAX_ATTRIBUTE_CHARS) -> str:

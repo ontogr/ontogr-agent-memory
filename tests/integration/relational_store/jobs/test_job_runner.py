@@ -42,6 +42,23 @@ class TestJobRunner:
         assert "secret-pass" not in stored.error["message"]
         assert "***@db" in stored.error["message"]
 
+    async def test_stored_job_error_hides_labeled_credentials(
+        self, job_store: StateStore
+    ) -> None:
+        """Stored handler errors do not retain labeled credential values."""
+
+        async def fail(job: Job) -> dict[str, Any]:
+            raise RuntimeError("model request failed with api_key=abc123")
+
+        runner = JobRunner(job_store, {"index": fail}, FixedClock())
+        submitted = await runner.submit("t", "index", {}, wait_s=5)
+        await runner.drain()
+
+        stored = await runner.get(submitted.job_id)
+        assert stored is not None and stored.error is not None
+        assert "abc123" not in stored.error["message"]
+        assert "api_key=***" in stored.error["message"]
+
     async def test_a_job_runs_and_stores_its_result(
         self, job_store: StateStore
     ) -> None:

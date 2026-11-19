@@ -58,11 +58,17 @@ class TestRedaction:
             ("key=mk_abcdefghijklmnopqrstuvwxyz1234", "key=mk_***"),
             ("redis://user:pw@host:6379", "redis://***@host:6379"),
             ("https://token@host/x", "https://***@host/x"),
+            ("api_key=abc123", "api_key=***"),
+            ("db-password: s3cret, tenant: t", "db-password: ***, tenant: t"),
+            (
+                "postgresql://u:p@host/db?password=s3cret&sslmode=require",
+                "postgresql://***@host/db?password=***&sslmode=require",
+            ),
             ("the word bearer is harmless", "the word bearer is harmless"),
         ],
     )
     def test_text_credentials_are_redacted(self, value, expected):
-        """Bearer tokens, minted keys and URL userinfo are hidden."""
+        """Bearer, labeled, minted and URL credential values are hidden."""
         assert redact_text(value) == expected
 
     def test_value_is_capped_without_exceeding_the_limit(self):
@@ -83,6 +89,7 @@ class TestRedaction:
             (ValueError("boom\nbody"), "ValueError: boom"),
             (ValueError(""), "ValueError"),
             (ValueError("Bearer secret"), "ValueError: Bearer ***"),
+            (ValueError("api_key=abc123"), "ValueError: api_key=***"),
         ],
     )
     def test_exception_summary_keeps_only_redacted_first_line(self, error, expected):
