@@ -31,7 +31,7 @@ def _server(service: FakeMemoryService) -> FastMCP:
     settings = McpSettings(
         _env_file=None, tools=ALL_TOOLS, api_key=None, skills_extension=False
     )
-    return build_server(build_memory(service), settings=settings)
+    return build_server(lambda tenant: build_memory(service), settings=settings)
 
 
 def _text(result) -> str:

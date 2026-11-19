@@ -22,7 +22,9 @@ def _server(*, tools: tuple[str, ...] = ALL_TOOLS, skills_extension: bool) -> Fa
     settings = McpSettings(
         _env_file=None, tools=tools, api_key=None, skills_extension=skills_extension
     )
-    return build_server(build_memory(FakeMemoryService()), settings=settings)
+    return build_server(
+        lambda tenant: build_memory(FakeMemoryService()), settings=settings
+    )
 
 
 class TestGetSkill:
@@ -114,6 +116,7 @@ class TestSkillsThroughServer:
             "get_entity",
             "list_entities",
             "get_ontology",
+            "stale_episodes",
             "get_job",
             "write_facts",
             "forget_memory",

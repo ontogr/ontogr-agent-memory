@@ -15,6 +15,7 @@ NO_ADD_TOOLS = [
     "get_entity",
     "list_entities",
     "get_ontology",
+    "stale_episodes",
     "get_job",
     "write_facts",
     "forget_memory",
@@ -26,6 +27,7 @@ ALL_ENABLED_TOOLS = [
     "get_entity",
     "list_entities",
     "get_ontology",
+    "stale_episodes",
     "get_job",
     "add_memory",
     "write_facts",
@@ -78,7 +80,7 @@ class TestBuildServer:
         """add_memory is listed only when both extraction roles have a model."""
         memory = build_memory(FakeMemoryService(), *roles)
         settings = _settings(skills_extension=skills_extension)
-        server = build_server(memory, settings=settings)
+        server = build_server(lambda tenant: memory, settings=settings)
 
         names = await _list_tool_names(server)
 
@@ -87,7 +89,9 @@ class TestBuildServer:
     async def test_settings_cannot_enable_add_memory_without_models(self):
         """Listing add_memory in the settings does not enable it without models."""
         memory = build_memory(FakeMemoryService())
-        server = build_server(memory, settings=_settings(("add_memory", "get_job")))
+        server = build_server(
+            lambda tenant: memory, settings=_settings(("add_memory", "get_job"))
+        )
 
         names = await _list_tool_names(server)
 
@@ -97,7 +101,7 @@ class TestBuildServer:
         """Only the tools named in the settings are registered."""
         memory = build_memory(FakeMemoryService())
         server = build_server(
-            memory, settings=_settings(("search_memory", "get_skill"))
+            lambda tenant: memory, settings=_settings(("search_memory", "get_skill"))
         )
 
         names = await _list_tool_names(server)
@@ -107,7 +111,7 @@ class TestBuildServer:
     async def test_empty_tools_setting_registers_no_tools(self):
         """An empty tool list leaves the server without tools."""
         memory = build_memory(FakeMemoryService())
-        server = build_server(memory, settings=_settings(()))
+        server = build_server(lambda tenant: memory, settings=_settings(()))
 
         names = await _list_tool_names(server)
 
@@ -118,7 +122,7 @@ class TestBuildServer:
         memory = build_memory(
             FakeMemoryService(), ModelRole.ENTITY_EXTRACTION, ModelRole.FACT_EXTRACTION
         )
-        server = build_server(memory, settings=_settings())
+        server = build_server(lambda tenant: memory, settings=_settings())
 
         async with Client(server) as client:
             tools = await client.list_tools()
@@ -133,7 +137,7 @@ class TestBuildServer:
         memory = build_memory(
             FakeMemoryService(), ModelRole.ENTITY_EXTRACTION, ModelRole.FACT_EXTRACTION
         )
-        server = build_server(memory, settings=_settings())
+        server = build_server(lambda tenant: memory, settings=_settings())
 
         async with Client(server) as client:
             tools = {tool.name: tool for tool in await client.list_tools()}
@@ -184,7 +188,7 @@ class TestBuildServer:
     async def test_tool_schema_lists_exactly_the_client_arguments(self, name, expected):
         """Each tool exposes the arguments of its client method and nothing more."""
         memory = build_memory(FakeMemoryService())
-        server = build_server(memory, settings=_settings())
+        server = build_server(lambda tenant: memory, settings=_settings())
 
         async with Client(server) as client:
             tools = {tool.name: tool for tool in await client.list_tools()}
@@ -196,7 +200,9 @@ class TestBuildServer:
     ):
         """write_facts stores the source text and facts and returns the receipt."""
         service = FakeMemoryService()
-        server = build_server(build_memory(service), settings=_settings())
+        server = build_server(
+            lambda tenant: build_memory(service), settings=_settings()
+        )
         fact = {
             "subject": "Ada",
             "subject_type": "Person",
@@ -230,7 +236,9 @@ class TestBuildServer:
         """search_memory returns the state and text of the service's context."""
         service = FakeMemoryService()
         service.context = MemoryContext(state="found", rendered="Ada works at Acme.")
-        server = build_server(build_memory(service), settings=_settings())
+        server = build_server(
+            lambda tenant: build_memory(service), settings=_settings()
+        )
 
         async with Client(server) as client:
             result = await client.call_tool("search_memory", {"query": "x"})
@@ -242,7 +250,9 @@ class TestBuildServer:
 
     async def test_instructions_point_clients_at_both_skills(self):
         """The server instructions name the two skills a client should read."""
-        server = build_server(build_memory(FakeMemoryService()), settings=_settings())
+        server = build_server(
+            lambda tenant: build_memory(FakeMemoryService()), settings=_settings()
+        )
 
         instructions = server.instructions or ""
         assert "get_skill('memory-write')" in instructions

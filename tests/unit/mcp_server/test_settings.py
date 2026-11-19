@@ -9,7 +9,6 @@ from ontogr_mem.mcp_server.settings import McpSettings
 
 
 MCP_ENV_NAMES = (
-    "MEMORY_MCP_TRANSPORT",
     "MEMORY_MCP_HOST",
     "MEMORY_MCP_PORT",
     "MEMORY_MCP_TENANT",
@@ -24,6 +23,7 @@ DEFAULT_TOOLS = (
     "get_entity",
     "list_entities",
     "get_ontology",
+    "stale_episodes",
     "get_job",
     "add_memory",
     "write_facts",
@@ -42,14 +42,14 @@ def clear_mcp_environment(monkeypatch: pytest.MonkeyPatch) -> None:
 class TestMcpSettings:
     """Values and validation rules for the MCP server settings."""
 
-    def test_defaults_serve_all_tools_over_stdio(self):
-        """Without variables, the server uses stdio with every tool enabled."""
+    def test_defaults_leave_tenant_and_server_endpoint_unset(self):
+        """Without variables, tenant and endpoint values remain optional."""
         settings = McpSettings(_env_file=None)
 
-        assert settings.transport == "stdio"
         assert settings.host == "127.0.0.1"
-        assert settings.port == 8000
-        assert settings.tenant == "default"
+        assert settings.port is None
+        assert settings.server_url is None
+        assert settings.tenant is None
         assert settings.api_key is None
         assert settings.tools == DEFAULT_TOOLS
         assert settings.skills_extension is True
@@ -70,21 +70,17 @@ class TestMcpSettings:
 
         assert settings.ontology is None
 
-    @pytest.mark.parametrize("transport", ["stdio", "http"])
-    def test_accepts_stdio_and_http_transports(self, monkeypatch, transport):
-        """The two supported transports are accepted as written."""
-        monkeypatch.setenv("MEMORY_MCP_TRANSPORT", transport)
+    def test_reads_server_url_port_and_optional_tenant(self, monkeypatch):
+        """Endpoint and tenant configuration are read from the environment."""
+        monkeypatch.setenv("MEMORY_MCP_SERVER_URL", "http://localhost:9000")
+        monkeypatch.setenv("MEMORY_MCP_PORT", "9000")
+        monkeypatch.setenv("MEMORY_MCP_TENANT", "team-a")
 
         settings = McpSettings(_env_file=None)
 
-        assert settings.transport == transport
-
-    def test_rejects_unknown_transport(self, monkeypatch):
-        """A transport outside stdio and http fails validation."""
-        monkeypatch.setenv("MEMORY_MCP_TRANSPORT", "smtp")
-
-        with pytest.raises(ValidationError):
-            McpSettings(_env_file=None)
+        assert settings.server_url == "http://localhost:9000"
+        assert settings.port == 9000
+        assert settings.tenant == "team-a"
 
     @pytest.mark.parametrize("port", ["0", "70000"])
     def test_rejects_port_outside_one_to_65535(self, monkeypatch, port):
