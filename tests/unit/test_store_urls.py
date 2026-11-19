@@ -57,6 +57,12 @@ class TestParseGraphUrl:
         assert isinstance(target, FalkorTarget)
         assert target.identity() == "redis://[::1]:6380"
 
+    def test_neo4j_ipv6_identity_brackets_host(self) -> None:
+        """An IPv6 Neo4j host is bracketed in the connection identity."""
+        target = parse_graph_url("neo4j://[::1]:7687/?database=graphs")
+        assert isinstance(target, Neo4jTarget)
+        assert target.identity() == "neo4j://[::1]:7687/graphs"
+
     @pytest.mark.parametrize(
         "url",
         [
@@ -125,6 +131,12 @@ class TestParseStateUrl:
         assert target.dsn.get_secret_value() == url
         assert "secret" not in target.identity()
         assert "secret" not in repr(target)
+
+    def test_postgres_ipv6_identity_brackets_host(self) -> None:
+        """An IPv6 Postgres host is bracketed in the connection identity."""
+        target = parse_state_url("postgresql://user:secret@[::1]:5432/memory")
+        assert isinstance(target, PostgresTarget)
+        assert target.identity() == "postgresql://[::1]:5432/memory"
 
     @pytest.mark.parametrize(
         "url",

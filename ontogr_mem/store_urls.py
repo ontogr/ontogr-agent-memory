@@ -14,6 +14,11 @@ from ontogr_mem.errors import AgentMemoryError
 DEFAULT_GRAPH_URL = "redis://localhost:6379"
 
 
+def _bracket_ipv6(host: str) -> str:
+    """Wrap an IPv6 host in brackets so it is unambiguous in a URL authority."""
+    return f"[{host}]" if ":" in host else host
+
+
 class StoreUrlError(AgentMemoryError, ValueError):
     """A store URL is invalid or unsupported."""
 
@@ -36,8 +41,7 @@ class FalkorTarget:
     def identity(self) -> str:
         """Return a credential-free connection identity."""
         scheme = "rediss" if self.tls else "redis"
-        host = f"[{self.host}]" if ":" in self.host else self.host
-        return f"{scheme}://{host}:{self.port}"
+        return f"{scheme}://{_bracket_ipv6(self.host)}:{self.port}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,7 +58,9 @@ class Neo4jTarget:
 
     def identity(self) -> str:
         """Return a credential-free identity including the database name."""
-        return f"{urlsplit(self.uri).scheme}://{self.host}:{self.port}/{self.database}"
+        scheme = urlsplit(self.uri).scheme
+        host = _bracket_ipv6(self.host)
+        return f"{scheme}://{host}:{self.port}/{self.database}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,7 +88,8 @@ class PostgresTarget:
 
     def identity(self) -> str:
         """Return a credential-free PostgreSQL identity."""
-        return f"{self.scheme}://{self.host}:{self.port}/{self.database}"
+        host = _bracket_ipv6(self.host)
+        return f"{self.scheme}://{host}:{self.port}/{self.database}"
 
 
 GraphTarget = FalkorTarget | Neo4jTarget
@@ -93,11 +100,13 @@ def _port(parts: SplitResult, default: int, variable: str) -> int:
     try:
         value = parts.port
     except ValueError:
-        raise StoreUrlError(f"{variable} has an invalid port") from None
+        msg = f"{variable} has an invalid port"
+        raise StoreUrlError(msg) from None
     if value is None:
         return default
     if not 1 <= value <= 65535:
-        raise StoreUrlError(f"{variable} has an invalid port")
+        msg = f"{variable} has an invalid port"
+        raise StoreUrlError(msg)
     return value
 
 
@@ -117,16 +126,17 @@ def parse_graph_url(value: str) -> GraphTarget:
         "neo4j+s",
         "neo4j+ssc",
     }:
-        raise StoreUrlError("MEMORY_GRAPH_URL has an unsupported scheme")
+        msg = "MEMORY_GRAPH_URL has an unsupported scheme"
+        raise StoreUrlError(msg)
     try:
         host = parts.hostname
         url_port = parts.port
     except ValueError:
-        raise StoreUrlError(
-            "MEMORY_GRAPH_URL has an invalid authority or port"
-        ) from None
+        msg = "MEMORY_GRAPH_URL has an invalid authority or port"
+        raise StoreUrlError(msg) from None
     if not host:
-        raise StoreUrlError("MEMORY_GRAPH_URL requires a host")
+        msg = "MEMORY_GRAPH_URL requires a host"
+        raise StoreUrlError(msg)
     username = (
         unquote(parts.netloc.rsplit("@", 1)[0].split(":", 1)[0])
         if "@" in parts.netloc
@@ -139,26 +149,32 @@ def parse_graph_url(value: str) -> GraphTarget:
     )
     password = SecretStr(unquote(raw_password)) if raw_password is not None else None
     if username is not None and password is None:
-        raise StoreUrlError("MEMORY_GRAPH_URL username requires a password")
+        msg = "MEMORY_GRAPH_URL username requires a password"
+        raise StoreUrlError(msg)
     default_port = 6379 if scheme in {"redis", "rediss", "falkor", "falkors"} else 7687
     port = _port(parts, default_port, "MEMORY_GRAPH_URL")
     if parts.path not in {"", "/"}:
-        raise StoreUrlError("MEMORY_GRAPH_URL must not contain a path")
+        msg = "MEMORY_GRAPH_URL must not contain a path"
+        raise StoreUrlError(msg)
     if scheme in {"redis", "rediss", "falkor", "falkors"}:
         if parts.query or parts.fragment:
-            raise StoreUrlError("MEMORY_GRAPH_URL must not contain a query or fragment")
+            msg = "MEMORY_GRAPH_URL must not contain a query or fragment"
+            raise StoreUrlError(msg)
         return FalkorTarget(
             host, port, username, password, scheme in {"rediss", "falkors"}
         )
     if username == "":
-        raise StoreUrlError("MEMORY_GRAPH_URL username must not be empty")
+        msg = "MEMORY_GRAPH_URL username must not be empty"
+        raise StoreUrlError(msg)
     query = parse_qs(parts.query, keep_blank_values=True)
     if set(query) - {"database"} or len(query.get("database", [])) > 1:
-        raise StoreUrlError("MEMORY_GRAPH_URL supports only one database query value")
+        msg = "MEMORY_GRAPH_URL supports only one database query value"
+        raise StoreUrlError(msg)
     database = query.get("database", ["neo4j"])[0]
     if not database:
-        raise StoreUrlError("MEMORY_GRAPH_URL database must not be empty")
-    host_part = f"[{host}]" if ":" in host else host
+        msg = "MEMORY_GRAPH_URL database must not be empty"
+        raise StoreUrlError(msg)
+    host_part = _bracket_ipv6(host)
     if url_port is not None:
         host_part += f":{url_port}"
     uri = f"{scheme}://{host_part}"
@@ -170,29 +186,33 @@ def parse_state_url(value: str) -> StateTarget:
     parts = urlsplit(value)
     if parts.scheme == "sqlite":
         if parts.netloc:
-            raise StoreUrlError("MEMORY_STATE_URL SQLite URL must not have a host")
+            msg = "MEMORY_STATE_URL SQLite URL must not have a host"
+            raise StoreUrlError(msg)
         if parts.query or parts.fragment:
-            raise StoreUrlError(
-                "MEMORY_STATE_URL SQLite URL must not have a query or fragment"
-            )
+            msg = "MEMORY_STATE_URL SQLite URL must not have a query or fragment"
+            raise StoreUrlError(msg)
         if not parts.path.startswith("/"):
-            raise StoreUrlError("MEMORY_STATE_URL SQLite URL must have a path")
+            msg = "MEMORY_STATE_URL SQLite URL must have a path"
+            raise StoreUrlError(msg)
         path = unquote(parts.path[1:])
         if not path:
-            raise StoreUrlError("MEMORY_STATE_URL SQLite path must not be empty")
+            msg = "MEMORY_STATE_URL SQLite path must not be empty"
+            raise StoreUrlError(msg)
         if path == ":memory:":
-            raise StoreUrlError("MEMORY_STATE_URL SQLite URL must not be in-memory")
+            msg = "MEMORY_STATE_URL SQLite URL must not be in-memory"
+            raise StoreUrlError(msg)
         return SqliteTarget(path)
     if parts.scheme not in {"postgres", "postgresql"}:
-        raise StoreUrlError("MEMORY_STATE_URL has an unsupported scheme")
+        msg = "MEMORY_STATE_URL has an unsupported scheme"
+        raise StoreUrlError(msg)
     try:
         host = parts.hostname
     except ValueError:
-        raise StoreUrlError(
-            "MEMORY_STATE_URL has an invalid authority or port"
-        ) from None
+        msg = "MEMORY_STATE_URL has an invalid authority or port"
+        raise StoreUrlError(msg) from None
     if not host:
-        raise StoreUrlError("MEMORY_STATE_URL requires a host")
+        msg = "MEMORY_STATE_URL requires a host"
+        raise StoreUrlError(msg)
     port = _port(parts, 5432, "MEMORY_STATE_URL")
     return PostgresTarget(
         parts.scheme, host, port, unquote(parts.path.lstrip("/")), SecretStr(value)
@@ -220,6 +240,5 @@ def require_explicit_tenant(
     """Require an explicit tenant when the graph host is remote."""
     target = parse_graph_url(graph_url.get_secret_value())
     if not is_loopback_host(target.host) and not tenant_given:
-        raise ExplicitTenantError(
-            f"A non-loopback graph needs an explicit tenant: {hint}."
-        )
+        msg = f"A non-loopback graph needs an explicit tenant: {hint}."
+        raise ExplicitTenantError(msg)
