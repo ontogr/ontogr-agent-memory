@@ -279,11 +279,11 @@ async def open_service(
         state_target = parse_state_url(selected_state.url.get_secret_value())
         if isinstance(state_target, SqliteTarget):
             operations, audit_log, audit_sink = await _sqlite_audit(
-                selected_state, state_target, resources, selected_clock
+                state_target, selected_clock
             )
         else:
             operations, audit_log, audit_sink = await _postgres_audit(
-                selected_state, state_target, resources, selected_clock
+                state_target, selected_clock
             )
 
         authorizer = Authorizer(audit_sink, selected_clock, tracer=tracer)
@@ -365,9 +365,7 @@ def _neo4j_stores(target: Neo4jTarget) -> tuple[GraphStore, StoresFactory]:
 
 
 async def _sqlite_audit(
-    settings: StateSettings,
     target: SqliteTarget,
-    resources: AsyncExitStack,
     clock: Clock,
 ) -> tuple[OperationStore, AuditLog, AuditSink]:
     """Share one process-wide SQLite connection for operation and audit rows."""
@@ -383,9 +381,7 @@ async def _sqlite_audit(
 
 
 async def _postgres_audit(
-    settings: StateSettings,
     target: PostgresTarget,
-    resources: AsyncExitStack,
     clock: Clock,
 ) -> tuple[OperationStore, AuditLog, AuditSink]:
     """Share one process-wide pool for operation and chained audit rows."""
