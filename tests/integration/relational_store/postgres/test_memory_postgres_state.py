@@ -31,20 +31,27 @@ async def falkordb_environment(
 class TestMemoryOnPostgresState:
     """Verify the public client can use Postgres for durable state."""
 
-    async def test_write_fact_finishes_with_postgres_state(self) -> None:
+    async def test_write_fact_finishes_with_postgres_state(
+        self, falkordb_store: FalkorDBGraphStore
+    ) -> None:
         """Persist a completed write and expose its terminal job state."""
         tenant = new_tenant()
-        async with Memory.open(
-            tenant=tenant,
-            service_settings=ServiceSettings(
-                graph_url=falkordb_test_url(), _env_file=None
-            ),
-            state_settings=StateSettings(url=DSN, _env_file=None),
-            models=scripted_role_models(),
-            embedder=MockEmbedder(),
-        ) as memory:
-            receipt = await memory.write_fact("sky", "is", "blue", wait_seconds=10)
-            job = await memory.get_job(receipt.job_id)
+        try:
+            async with Memory.open(
+                tenant=tenant,
+                service_settings=ServiceSettings(
+                    graph_url=falkordb_test_url(), _env_file=None
+                ),
+                state_settings=StateSettings(url=DSN, _env_file=None),
+                models=scripted_role_models(),
+                embedder=MockEmbedder(),
+            ) as memory:
+                receipt = await memory.write_fact(
+                    "sky", "is", "blue", wait_seconds=10
+                )
+                job = await memory.get_job(receipt.job_id)
+        finally:
+            await falkordb_store.erase_tenant(tenant)
 
         assert receipt.status == JobState.DONE
         assert job.status == JobState.DONE
