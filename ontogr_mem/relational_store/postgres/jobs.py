@@ -91,12 +91,15 @@ class PostgresJobStore:
     async def save_job(self, job: Job) -> bool:
         """Replace an existing record without storing its replay flag."""
         async with pg_connection(self._pool) as connection:
+            owner_filter = "owner_id = $14 AND status = 'running'"
+            if job.status is JobState.QUEUED:
+                owner_filter += " OR (owner_id IS NULL AND status = 'queued')"
             status = await connection.execute(
                 "UPDATE jobs SET tenant_id = $1, op = $2, payload = $3, "
                 "request_hash = $4, idempotency_key = $5, status = $6, "
                 "attempts = $7, result = $8, error = $9, created_at = $10, "
-                "updated_at = $11, trace_id = $12 WHERE job_id = $13 "
-                "AND owner_id = $14",
+                f"updated_at = $11, trace_id = $12 WHERE job_id = $13 "
+                f"AND ({owner_filter})",
                 job.tenant_id,
                 job.op,
                 dumps(job.payload),
@@ -312,43 +315,6 @@ class PostgresJobStore:
                 "DELETE FROM jobs WHERE tenant_id = $1", tenant_id
             )
             return int(status.split()[-1])
-
-    async def claim(self, worker_id: str, *, limit: int, now: datetime) -> list[Job]:
-        """Claim queued jobs whose run-after time has passed.
-
-        This query exists only on Postgres: workers claim disjoint batches
-        with ``FOR UPDATE SKIP LOCKED`` while SQLite keeps its single-lane
-        runner (ADR 0084).
-
-        Args:
-            worker_id: Stable identity recorded on each claimed row.
-            limit: Maximum number of jobs to claim; must be positive.
-            now: Current time a job's run-after deadline is compared to.
-
-        Returns:
-            The claimed jobs, oldest first, each marked running.
-
-        Raises:
-            ValueError: If ``worker_id`` is empty or ``limit`` is not positive.
-        """
-        if not worker_id:
-            raise ValueError("worker id must not be empty")
-        if limit < 1:
-            raise ValueError("claim limit must be at least 1")
-        async with pg_connection(self._pool) as connection, connection.transaction():
-            rows = await connection.fetch(
-                "WITH ready AS ("
-                "SELECT seq FROM jobs WHERE status = 'queued' "
-                "AND run_after <= $2 ORDER BY created_at, seq LIMIT $3 "
-                "FOR UPDATE SKIP LOCKED) "
-                "UPDATE jobs SET status = 'running', claimed_by = $1, "
-                "claimed_at = $2 FROM ready WHERE jobs.seq = ready.seq "
-                f"RETURNING jobs.seq, {JOB_COLUMNS}",
-                worker_id,
-                to_micros(now),
-                limit,
-            )
-            return [job_from_row(row) for row in rows]
 
     async def create(self, record: ErasureRecord) -> str:
         """Store a running erase row and return its id."""
