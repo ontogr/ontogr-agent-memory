@@ -150,6 +150,7 @@ def _report_error(error: Exception) -> int:
 
 
 def _run_server_command(args: argparse.Namespace) -> int:
+    _apply_server_env()
     if args.server_command == "run":
         from ontogr_mem.server.app import (  # noqa: PLC0415
             SERVER_ALREADY_RUNNING,
@@ -157,7 +158,6 @@ def _run_server_command(args: argparse.Namespace) -> int:
             serve,
         )
 
-        _apply_server_env()
         settings_kwargs: dict[str, str | Path] = {}
         if args.tenant is not None:
             settings_kwargs["tenant"] = args.tenant
