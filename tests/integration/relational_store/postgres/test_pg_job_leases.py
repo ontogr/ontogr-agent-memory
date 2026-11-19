@@ -46,6 +46,8 @@ class TestPostgresJobLeases:
             ),
         )
         indexed_job = await wait_for_job(harness.service, admin, receipt.job_id)
+        if indexed_job.result is None:
+            pytest.fail("indexed memory job completed without a result")
         fact_id = indexed_job.result["fact_ids"][0]
         selector = ForgetSelector(fact_id=fact_id)
         preview = await harness.service.preview_forget(
