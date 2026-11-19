@@ -9,7 +9,6 @@ import urllib.error
 import urllib.request
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, cast
 
 from dotenv import dotenv_values
 from pydantic import ValidationError
@@ -158,12 +157,14 @@ def _run_server_command(args: argparse.Namespace) -> int:
             serve,
         )
 
-        settings_kwargs: dict[str, str | Path] = {}
-        if args.tenant is not None:
-            settings_kwargs["tenant"] = args.tenant
-        if args.ontology is not None:
-            settings_kwargs["ontology"] = args.ontology
-        settings = McpSettings(**cast(dict[str, Any], settings_kwargs))
+        if args.tenant is None and args.ontology is None:
+            settings = McpSettings()
+        elif args.tenant is None:
+            settings = McpSettings(ontology=args.ontology)
+        elif args.ontology is None:
+            settings = McpSettings(tenant=args.tenant)
+        else:
+            settings = McpSettings(tenant=args.tenant, ontology=args.ontology)
         result = asyncio.run(
             serve(mcp_settings=settings, server_settings=ServerSettings())
         )
@@ -246,7 +247,7 @@ def _server_status() -> int:
                     file=sys.stderr,
                 )
             return 1
-        print("not running")
+        print(f"server responded with HTTP {error.code}", file=sys.stderr)
         return 1
     except (OSError, urllib.error.URLError):
         print("not running")
@@ -296,7 +297,7 @@ def _server_stop() -> int:
                     file=sys.stderr,
                 )
             return 1
-        print("server is unreachable; no process was stopped", file=sys.stderr)
+        print(f"server responded with HTTP {error.code}", file=sys.stderr)
         return 1
     except (OSError, urllib.error.URLError):
         print("server is unreachable; no process was stopped", file=sys.stderr)
