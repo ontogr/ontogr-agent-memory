@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 
 from ontogr_mem import __version__
 from ontogr_mem.errors import AgentMemoryError
+from ontogr_mem.mcp_server.settings import McpSettings
 from ontogr_mem.paths import data_directory, ensure_directory
 from ontogr_mem.server.files import read_server_info, read_server_token
 from ontogr_mem.store_urls import parse_graph_url, parse_state_url
@@ -127,9 +128,10 @@ async def ensure_server(  # noqa: PLR0912, PLR0915
     """Attach to a compatible server or start the per-user server process."""
     explicit_url = os.environ.get("MEMORY_MCP_SERVER_URL")
     directory = ensure_directory(data_directory())
-    token = os.environ.get("MEMORY_MCP_API_KEY") or read_server_token(
-        directory / "server.token"
-    )
+    settings = McpSettings()
+    token = (
+        settings.api_key.get_secret_value() if settings.api_key is not None else None
+    ) or read_server_token(directory / "server.token")
     if explicit_url:
         health = await asyncio.to_thread(_health, explicit_url.rstrip("/"))
         if health is None:
@@ -179,7 +181,7 @@ async def ensure_server(  # noqa: PLR0912, PLR0915
     deadline = time.monotonic() + 30
     process: subprocess.Popen[bytes] | None = None
     while time.monotonic() < deadline:
-        if process is None or process.poll() is not None:
+        if process is None or (process.poll() is not None and process.returncode != 75):
             if process is not None:
                 if process.returncode == 76:
                     if attempts >= 1:
@@ -187,8 +189,6 @@ async def ensure_server(  # noqa: PLR0912, PLR0915
                             f"Memory server failed to start. See {log_path}"
                         )
                     attempts += 1
-                elif process.returncode == 75:
-                    deadline = min(deadline, time.monotonic() + 10)
                 elif process.returncode != 0:
                     raise ServerUnavailableError(
                         f"Memory server failed to start. See {log_path}"
@@ -232,9 +232,12 @@ async def ensure_server(  # noqa: PLR0912, PLR0915
                 and health.get("version") == version
                 and health.get("store") == expected_store
             ):
-                token = os.environ.get("MEMORY_MCP_API_KEY") or read_server_token(
-                    directory / "server.token"
-                )
+                refreshed = McpSettings()
+                token = (
+                    refreshed.api_key.get_secret_value()
+                    if refreshed.api_key is not None
+                    else None
+                ) or read_server_token(directory / "server.token")
                 return _endpoint(current_url, health, token)
         await asyncio.sleep(0.2)
     raise ServerUnavailableError(f"Memory server did not become ready. See {log_path}")

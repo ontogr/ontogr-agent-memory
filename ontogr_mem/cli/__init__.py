@@ -9,6 +9,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from dotenv import dotenv_values
 from pydantic import ValidationError
@@ -120,6 +121,8 @@ def _report_error(error: Exception) -> int:
         message = str(error)
     elif isinstance(error, EmbedderUnavailableError):
         message = f"{error}\n{error.hint}"
+    elif isinstance(error, ServerUnavailableError):
+        message = f"{error}\n{error.hint}" if error.hint else str(error)
     elif isinstance(error, ModelNotConfiguredError):
         message = (
             "Configure MEMORY_LLM_MODEL, MEMORY_LLM_BASE_URL and "
@@ -135,7 +138,6 @@ def _report_error(error: Exception) -> int:
             InvalidArgumentError,
             ExplicitTenantError,
             StoreInUseError,
-            ServerUnavailableError,
             ValueError,
         ),
     ):
@@ -153,7 +155,12 @@ def _run_server_command(args: argparse.Namespace) -> int:
         from ontogr_mem.server.app import serve  # noqa: PLC0415
 
         _apply_server_env()
-        settings = McpSettings(tenant=args.tenant, ontology=args.ontology)
+        settings_kwargs: dict[str, Any] = {}
+        if args.tenant is not None:
+            settings_kwargs["tenant"] = args.tenant
+        if args.ontology is not None:
+            settings_kwargs["ontology"] = args.ontology
+        settings = McpSettings(**settings_kwargs)
         return asyncio.run(
             serve(mcp_settings=settings, server_settings=ServerSettings())
         )

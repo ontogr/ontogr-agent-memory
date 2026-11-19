@@ -248,6 +248,11 @@ class RemoteService:
                     pending.remove(job_id)
             if pending:
                 await asyncio.sleep(0.5)
+        if pending:
+            raise TimeoutError(
+                "remote memory writes did not finish within 30 seconds: "
+                + ", ".join(sorted(pending))
+            )
 
     async def aclose(self) -> None:
         """Close the MCP connection."""

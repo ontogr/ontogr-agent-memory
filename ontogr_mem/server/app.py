@@ -87,6 +87,11 @@ async def serve(  # noqa: C901, PLR0912, PLR0915
     *, mcp_settings: McpSettings, server_settings: ServerSettings
 ) -> int:
     """Serve the shared MCP endpoint and own its state-store locks."""
+    from ontogr_mem._extras import import_extra  # noqa: PLC0415
+
+    import_extra("fastmcp", "mcp")
+    import_extra("starlette", "mcp")
+
     from fastmcp.server.dependencies import get_http_headers  # noqa: PLC0415
     from starlette.requests import Request  # noqa: PLC0415
     from starlette.responses import JSONResponse, Response  # noqa: PLC0415
