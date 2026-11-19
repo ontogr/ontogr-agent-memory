@@ -248,7 +248,7 @@ class PostgresJobStore:
                 )
 
     async def renew_leases(self, now: datetime) -> None:
-        """Renew this owner's running job leases."""
+        """Renew this owner's live job and erasure leases."""
         async with pg_connection(self._pool) as connection:
             await connection.execute(
                 "UPDATE jobs SET lease_expires_at = $1, heartbeat_at = $2 "
@@ -258,12 +258,25 @@ class PostgresJobStore:
                 to_micros(now),
                 self._owner_id,
             )
+            await connection.execute(
+                "UPDATE erasures SET lease_expires_at = $1, heartbeat_at = $2 "
+                "WHERE status = 'running' AND owner_id = $3 "
+                "AND lease_expires_at > $2",
+                to_micros(now) + self._lease_micros,
+                to_micros(now),
+                self._owner_id,
+            )
 
     async def release_leases(self) -> None:
-        """Release every job lease held by this owner."""
+        """Release every job and erasure lease held by this owner."""
         async with pg_connection(self._pool) as connection:
             await connection.execute(
                 "UPDATE jobs SET owner_id = NULL, lease_expires_at = NULL "
+                "WHERE owner_id = $1",
+                self._owner_id,
+            )
+            await connection.execute(
+                "UPDATE erasures SET owner_id = NULL, lease_expires_at = NULL "
                 "WHERE owner_id = $1",
                 self._owner_id,
             )
@@ -325,8 +338,9 @@ class PostgresJobStore:
                 "INSERT INTO erasures (erasure_id, tenant, mode, principal_id, "
                 "selector_kind, target, episode_ids, fact_ids, observation_ids, "
                 "entity_ids, created_at, status, last_step, finished_at, residue, "
-                "counts) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, "
-                "$12, $13, NULL, $14, $15)",
+                "counts, owner_id, lease_expires_at, heartbeat_at) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, "
+                "$12, $13, NULL, $14, $15, $16, $17, $18)",
                 record.erasure_id,
                 record.tenant,
                 record.mode,
@@ -342,6 +356,9 @@ class PostgresJobStore:
                 record.last_step,
                 dumps(record.residue),
                 dumps(record.counts),
+                self._owner_id,
+                to_micros(record.created_at) + self._lease_micros,
+                to_micros(record.created_at),
             )
             return record.erasure_id
 
