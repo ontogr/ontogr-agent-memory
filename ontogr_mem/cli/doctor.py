@@ -16,9 +16,8 @@ from ontogr_mem.paths import cache_directory, data_directory, model_cache_direct
 from ontogr_mem.relational_store.config import StateSettings
 from ontogr_mem.requirements import REQUIREMENTS, TEXT_WRITE_ROLES, check_requirements
 from ontogr_mem.server.files import read_server_info, read_server_token
-from ontogr_mem.service.bootstrap import open_graph_store
+from ontogr_mem.service.bootstrap import ServiceSettings, open_graph_store
 from ontogr_mem.store_urls import (
-    DEFAULT_GRAPH_URL,
     is_loopback_host,
     parse_graph_url,
     parse_state_url,
@@ -52,7 +51,7 @@ async def run_doctor() -> int:
 def _check_urls(results):
     graph = state = None
     try:
-        graph = parse_graph_url(os.environ.get("MEMORY_GRAPH_URL") or DEFAULT_GRAPH_URL)
+        graph = parse_graph_url(ServiceSettings().graph_url.get_secret_value())
         results.append(("pass", "graph URL", graph.identity(), None))
     except Exception:
         results.append(
@@ -190,6 +189,7 @@ def _check_tenant_rules(results, graph, state):
         graph is not None
         and not is_loopback_host(graph.host)
         and getattr(graph, "backend", None)
+        and state is not None
         and state.backend == "sqlite"
     ):
         results.append(

@@ -2,6 +2,7 @@
 
 import json
 from contextlib import asynccontextmanager
+from pathlib import Path
 from types import SimpleNamespace
 
 from ontogr_mem.cli import doctor
@@ -45,6 +46,18 @@ class TestRunDoctor:
                 doctor.StateSettings().url.get_secret_value()
             ).path
         )
+
+    def test_graph_url_uses_service_settings_and_redacts_identity(self, monkeypatch):
+        """Doctor graph parsing follows service settings and redacts credentials."""
+        monkeypatch.delenv("MEMORY_GRAPH_URL", raising=False)
+        monkeypatch.chdir(Path.cwd())
+
+        monkeypatch.setenv("MEMORY_GRAPH_URL", "redis://user:secret@localhost:6379")
+        results = []
+        graph, _ = doctor._check_urls(results)
+
+        assert graph.identity() == "redis://localhost:6379"
+        assert "secret" not in repr(results)
 
     async def test_reports_missing_extra_and_redacts_credentials(
         self, monkeypatch, capsys
@@ -115,6 +128,28 @@ class TestRunDoctor:
         assert status == 1
         assert "remote graph requires an explicit tenant" in output
         assert "SQLite state is local to this machine" in output
+
+    async def test_remote_graph_with_invalid_state_reports_without_crashing(
+        self, monkeypatch, capsys
+    ):
+        """An invalid state URL does not crash remote graph tenant diagnostics."""
+        self._quiet_unrelated_checks(monkeypatch)
+        monkeypatch.setenv("MEMORY_GRAPH_URL", "redis://graph.example:6379")
+        monkeypatch.setenv("MEMORY_STATE_URL", "invalid-state-url")
+        monkeypatch.delenv("MEMORY_MCP_TENANT", raising=False)
+        async def no_graph_check(*_args):
+            return 0
+
+        monkeypatch.setattr(doctor, "_check_graph", no_graph_check)
+        monkeypatch.setattr(doctor, "_check_server_env", lambda _results: None)
+        monkeypatch.setattr(doctor, "_check_server", lambda _results: None)
+
+        status = await doctor.run_doctor()
+
+        output = capsys.readouterr().out
+        assert status == 1
+        assert "state: invalid URL" in output
+        assert "remote graph requires an explicit tenant" in output
 
     async def test_server_env_reports_keys_redacts_values_and_flags_invalid_settings(
         self, monkeypatch, tmp_path, capsys
