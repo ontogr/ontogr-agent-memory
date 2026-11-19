@@ -27,11 +27,11 @@ class JobStore(Protocol):
         """Return a detached record, or None for an unknown job id."""
         ...
 
-    async def save_job(self, job: Job) -> None:
+    async def save_job(self, job: Job) -> bool:
         """Replace an existing job record without changing its insertion order.
 
-        The response-only replay flag is discarded. An unknown job id raises
-        KeyError rather than inserting a new job.
+        The response-only replay flag is discarded. Returns False if a leased
+        job is no longer owned by this process.
         """
         ...
 

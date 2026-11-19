@@ -17,7 +17,7 @@ from ontogr_mem.data_models.tenant import validate_tenant_id
 from ontogr_mem.errors import AgentMemoryError
 from ontogr_mem.observability.ids import accept_trace_id
 from ontogr_mem.observability.redact import redact_text
-from ontogr_mem.relational_store.jobs.errors import UnknownJobOpError
+from ontogr_mem.relational_store.jobs.errors import LeaseLostError, UnknownJobOpError
 from ontogr_mem.relational_store.jobs.ports import JobStore, LeaseHolder
 
 
@@ -301,9 +301,14 @@ class JobRunner:
                 result=None,
                 error=None,
             )
-            await self._store.save_job(job)
+            if not await self._store.save_job(job):
+                self._finish(job_id)
+                return
             try:
                 result = await handler(job)
+            except LeaseLostError:
+                self._finish(job_id)
+                return
             except AgentMemoryError as exc:
                 error = _error_record(exc)
                 break
@@ -311,7 +316,7 @@ class JobRunner:
                 log.exception("job %s attempt %d failed", job_id, job.attempts)
                 error = _error_record(exc)
                 continue
-            await self._store.save_job(
+            saved = await self._store.save_job(
                 replace(
                     job,
                     status=JobState.DONE,
@@ -320,12 +325,15 @@ class JobRunner:
                     updated_at=self._clock.now(),
                 )
             )
+            if not saved:
+                self._finish(job_id)
+                return
             self._finish(job_id)
             return
         await self._fail(job, error)
 
     async def _fail(self, job: Job, error: dict[str, str]) -> None:
-        await self._store.save_job(
+        saved = await self._store.save_job(
             replace(
                 job,
                 status=JobState.FAILED,
@@ -334,6 +342,9 @@ class JobRunner:
                 updated_at=self._clock.now(),
             )
         )
+        if not saved:
+            self._finish(job.job_id)
+            return
         self._finish(job.job_id)
 
     def _finish(self, job_id: str) -> None:

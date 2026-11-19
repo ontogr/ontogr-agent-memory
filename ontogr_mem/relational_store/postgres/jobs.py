@@ -14,7 +14,10 @@ from ontogr_mem.relational_store.jobs.erase_journal import (
     ErasureRecord,
     ErasureStatus,
 )
-from ontogr_mem.relational_store.jobs.errors import IdempotencyConflictError
+from ontogr_mem.relational_store.jobs.errors import (
+    IdempotencyConflictError,
+    LeaseLostError,
+)
 from ontogr_mem.relational_store.jobs.rows import (
     JOB_COLUMNS,
     dumps,
@@ -85,14 +88,15 @@ class PostgresJobStore:
             row = await connection.fetchrow(f"{_SELECT_JOB} WHERE job_id = $1", job_id)
             return None if row is None else job_from_row(row)
 
-    async def save_job(self, job: Job) -> None:
+    async def save_job(self, job: Job) -> bool:
         """Replace an existing record without storing its replay flag."""
         async with pg_connection(self._pool) as connection:
             status = await connection.execute(
                 "UPDATE jobs SET tenant_id = $1, op = $2, payload = $3, "
                 "request_hash = $4, idempotency_key = $5, status = $6, "
                 "attempts = $7, result = $8, error = $9, created_at = $10, "
-                "updated_at = $11, trace_id = $12 WHERE job_id = $13",
+                "updated_at = $11, trace_id = $12 WHERE job_id = $13 "
+                "AND owner_id = $14",
                 job.tenant_id,
                 job.op,
                 dumps(job.payload),
@@ -106,29 +110,32 @@ class PostgresJobStore:
                 to_micros(job.updated_at),
                 job.trace_id,
                 job.job_id,
+                self._owner_id,
             )
-            if status == "UPDATE 0":
-                raise KeyError(job.job_id)
+            return status != "UPDATE 0"
 
     async def set_job_progress(self, job_id: str, progress: JobProgress) -> None:
         """Persist monotonic progress inside one serialized transaction."""
         async with pg_connection(self._pool) as connection, connection.transaction():
             row = await connection.fetchrow(
-                "SELECT progress_done FROM jobs WHERE job_id = $1 FOR UPDATE",
+                "SELECT progress_done FROM jobs WHERE job_id = $1 "
+                "AND owner_id = $2 FOR UPDATE",
                 job_id,
+                self._owner_id,
             )
             if row is None:
-                raise KeyError(job_id)
+                raise LeaseLostError(job_id)
             previous_done = row["progress_done"]
             if previous_done is not None and progress.done < previous_done:
                 raise ValueError("job progress cannot move backwards")
             await connection.execute(
                 "UPDATE jobs SET progress_stage = $1, progress_done = $2, "
-                "progress_total = $3 WHERE job_id = $4",
+                "progress_total = $3 WHERE job_id = $4 AND owner_id = $5",
                 progress.stage,
                 progress.done,
                 progress.total,
                 job_id,
+                self._owner_id,
             )
 
     async def queued_jobs(self) -> list[Job]:
@@ -459,25 +466,24 @@ class PostgresJobStore:
         if kind == "step":
             status = await connection.execute(
                 "UPDATE erasures SET last_step = $1 "
-                "WHERE erasure_id = $2 AND status = 'running'",
+                "WHERE erasure_id = $2 AND status = 'running' "
+                "AND owner_id = $3",
                 values[0],
                 erasure_id,
+                self._owner_id,
             )
         else:
             status = await connection.execute(
                 "UPDATE erasures SET status = $1, residue = $2, counts = $3, "
-                "finished_at = $4 WHERE erasure_id = $5 AND status = 'running'",
+                "finished_at = $4 WHERE erasure_id = $5 AND status = 'running' "
+                "AND owner_id = $6",
                 values[0],
                 values[1],
                 values[2],
                 values[3],
                 erasure_id,
+                self._owner_id,
             )
         if status != "UPDATE 0":
             return
-        row = await connection.fetchval(
-            "SELECT status FROM erasures WHERE erasure_id = $1", erasure_id
-        )
-        if row is None:
-            raise KeyError(erasure_id)
-        raise ValueError("erase journal row is already finished")
+        raise LeaseLostError(erasure_id)
