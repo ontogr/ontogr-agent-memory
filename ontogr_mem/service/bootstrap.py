@@ -285,7 +285,9 @@ async def open_service(
             )
         else:
             operations, audit_log, audit_sink = await _postgres_audit(
-                state_target, selected_clock, owner_id=owner_id,
+                state_target,
+                selected_clock,
+                owner_id=owner_id,
                 lease_seconds=selected_state.lease_seconds,
             )
 
