@@ -134,14 +134,18 @@ class PostgresJobStore:
         """Persist monotonic progress inside one serialized transaction."""
         async with pg_connection(self._pool) as connection, connection.transaction():
             row = await connection.fetchrow(
-                "SELECT progress_done FROM jobs WHERE job_id = $1 "
-                "AND owner_id = $2 AND status = 'running' "
-                "AND lease_expires_at > $3 FOR UPDATE",
+                "SELECT progress_done, owner_id, status, lease_expires_at "
+                "FROM jobs WHERE job_id = $1 FOR UPDATE",
                 job_id,
-                self._owner_id,
-                to_micros(self._clock.now()),
             )
             if row is None:
+                raise KeyError(job_id)
+            if (
+                row["owner_id"] != self._owner_id
+                or row["status"] != "running"
+                or row["lease_expires_at"] is None
+                or row["lease_expires_at"] <= to_micros(self._clock.now())
+            ):
                 raise LeaseLostError(job_id)
             previous_done = row["progress_done"]
             if previous_done is not None and progress.done < previous_done:

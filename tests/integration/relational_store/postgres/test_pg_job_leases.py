@@ -75,8 +75,17 @@ class TestPostgresJobLeases:
 
         async with store.tenant_lock(job.tenant_id):
             submission = asyncio.create_task(store.create_job(job))
-            await asyncio.sleep(0)
-            assert not submission.done()
+            async with pool.acquire() as connection:
+                for _ in range(100):
+                    waiting = await connection.fetchval(
+                        "SELECT EXISTS (SELECT 1 FROM pg_stat_activity "
+                        "WHERE datname = current_database() "
+                        "AND wait_event_type = 'Lock' AND state = 'active')"
+                    )
+                    if waiting:
+                        break
+                    await asyncio.sleep(0.01)
+                assert waiting
 
         created, replayed = await submission
 
@@ -142,6 +151,19 @@ class TestPostgresJobLeases:
             )
 
         assert await store.get_job(claimed.job_id) == before
+
+    async def test_missing_job_progress_raises_key_error(self, pool, clean_tables):
+        """Report a missing job separately from a lost lease."""
+        store = PostgresJobStore(
+            pool,
+            FixedClock(datetime(2026, 10, 23, 12, tzinfo=UTC)),
+            owner_id="owner",
+        )
+
+        with pytest.raises(KeyError, match="missing"):
+            await store.set_job_progress(
+                "missing", JobProgress(stage="index", done=1, total=3)
+            )
 
     async def test_running_to_queued_save_clears_lease_for_reclaim(
         self, pool, clean_tables
