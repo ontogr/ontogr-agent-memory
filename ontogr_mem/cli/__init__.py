@@ -215,16 +215,40 @@ def _apply_server_env() -> None:
             os.environ.setdefault(key, value)
 
 
+def _server_token() -> str | None:
+    """Return the token for the local server from the environment or token file."""
+    api_key = McpSettings().api_key
+    if api_key is not None:
+        return api_key.get_secret_value()
+    return read_server_token(data_directory() / "server.token")
+
+
+def _report_server_http_error(error: urllib.error.HTTPError, token: str | None) -> int:
+    """Print why the memory server rejected a request and return a failure code."""
+    if error.code != 401:
+        print(f"server responded with HTTP {error.code}", file=sys.stderr)
+    elif token:
+        print(
+            "server authentication failed; the stored token does not match "
+            "MEMORY_MCP_API_KEY. Remove the stale server.token or set "
+            "MEMORY_MCP_API_KEY to the value used to start the server.",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            "server requires authentication but no token was sent; "
+            "set MEMORY_MCP_API_KEY or provide server.token",
+            file=sys.stderr,
+        )
+    return 1
+
+
 def _server_status() -> int:
     info = read_server_info(data_directory() / "server.json")
     if not info:
         print("not running")
         return 1
-    api_key = McpSettings().api_key
-    if api_key is not None:
-        token = api_key.get_secret_value()
-    else:
-        token = read_server_token(data_directory() / "server.token")
+    token = _server_token()
     request = urllib.request.Request(
         f"http://127.0.0.1:{info['port']}/health",
         headers={"Authorization": f"Bearer {token}"} if token else {},
@@ -233,22 +257,7 @@ def _server_status() -> int:
         with urllib.request.urlopen(request, timeout=2) as response:
             health = json.load(response)
     except urllib.error.HTTPError as error:
-        if error.code == 401:
-            if token:
-                print(
-                    "server authentication failed; stored token does not match "
-                    "MEMORY_MCP_API_KEY",
-                    file=sys.stderr,
-                )
-            else:
-                print(
-                    "server requires authentication but no token was sent; "
-                    "set MEMORY_MCP_API_KEY or provide server.token",
-                    file=sys.stderr,
-                )
-            return 1
-        print(f"server responded with HTTP {error.code}", file=sys.stderr)
-        return 1
+        return _report_server_http_error(error, token)
     except (OSError, urllib.error.URLError):
         print("not running")
         return 1
@@ -267,11 +276,7 @@ def _server_stop() -> int:
     if not info:
         print("not running")
         return 1
-    api_key = McpSettings().api_key
-    if api_key is not None:
-        token = api_key.get_secret_value()
-    else:
-        token = read_server_token(data_directory() / "server.token")
+    token = _server_token()
     request = urllib.request.Request(
         f"http://127.0.0.1:{info['port']}/shutdown",
         data=b"{}",
@@ -282,23 +287,7 @@ def _server_stop() -> int:
         with urllib.request.urlopen(request, timeout=2) as response:
             return 0 if response.status == 202 else 1
     except urllib.error.HTTPError as error:
-        if error.code == 401:
-            if token:
-                print(
-                    "server authentication failed; the stored token does not match "
-                    "MEMORY_MCP_API_KEY. Remove the stale server.token or set "
-                    "MEMORY_MCP_API_KEY to the value used to start the server.",
-                    file=sys.stderr,
-                )
-            else:
-                print(
-                    "server requires authentication but no token was sent; "
-                    "set MEMORY_MCP_API_KEY or provide server.token",
-                    file=sys.stderr,
-                )
-            return 1
-        print(f"server responded with HTTP {error.code}", file=sys.stderr)
-        return 1
+        return _report_server_http_error(error, token)
     except (OSError, urllib.error.URLError):
         print("server is unreachable; no process was stopped", file=sys.stderr)
         return 1
