@@ -17,7 +17,9 @@ from tests.support.falkordb import falkordb_test_url
 
 
 @pytest.fixture
-def server_process(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[subprocess.Popen[str], Path]]:
+def server_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[tuple[subprocess.Popen[str], Path]]:
     """Start a server with isolated state and stop it after the test."""
     data_directory = tmp_path / "data"
     data_directory.mkdir()
@@ -35,13 +37,13 @@ def server_process(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[
     )
     with server_log.open("w") as log_file:
         process = subprocess.Popen(
-        [sys.executable, "-m", "ontogr_mem", "server", "run"],
-        env=environment,
-        stdout=log_file,
-        stderr=subprocess.STDOUT,
-        text=True,
-        start_new_session=True,
-    )
+            [sys.executable, "-m", "ontogr_mem", "server", "run"],
+            env=environment,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            text=True,
+            start_new_session=True,
+        )
     monkeypatch.setenv("MEMORY_DATA_DIR", str(data_directory))
     try:
         server_info = data_directory / "server.json"
@@ -77,7 +79,12 @@ def server_process(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[
 
 
 class TestServerLifecycle:
-    def test_health_auth_and_shutdown(self, server_process: tuple[subprocess.Popen[str], Path]) -> None:
+    """Verify health, authentication, and shutdown behavior."""
+
+    def test_health_auth_and_shutdown(
+        self, server_process: tuple[subprocess.Popen[str], Path]
+    ) -> None:
+        """Check health access and authenticated server shutdown."""
         process, data_directory = server_process
         info = json.loads((data_directory / "server.json").read_text())
         base_url = f"http://127.0.0.1:{info['port']}"
@@ -105,10 +112,20 @@ class TestServerLifecycle:
         shutdown = Request(
             f"{base_url}/shutdown",
             data=b"{}",
+            headers={"Authorization": "Bearer wrong-token"},
+            method="POST",
+        )
+        with pytest.raises(HTTPError) as unauthorized_shutdown:
+            urlopen(shutdown, timeout=2)
+        assert unauthorized_shutdown.value.code == 401
+
+        shutdown = Request(
+            f"{base_url}/shutdown",
+            data=b"{}",
             headers={"Authorization": "Bearer lifecycle-test-key"},
             method="POST",
         )
         with urlopen(shutdown, timeout=2) as response:
             assert response.status == 202
-        assert process.wait(timeout=10) == 0
+        assert process.wait(timeout=40) == 0
         assert not (data_directory / "server.json").exists()

@@ -1,6 +1,7 @@
 """Run the shared HTTP memory server."""
 
 import asyncio
+import hmac
 import ipaddress
 import logging
 import os
@@ -156,27 +157,33 @@ async def serve(  # noqa: PLR0912, PLR0915
             async def health(_: Request) -> Response:
                 embedder = embedder_source.state.value
                 loaded = getattr(embedder_source, "_embedder", None)
-                return JSONResponse({
-                    "version": __import__("ontogr_mem").__version__,
-                    "pid": process_id,
-                    "store": state_target.identity,
-                    "embedder": embedder,
-                    "roles": {
-                        role: models.configured(role) for role in TEXT_WRITE_ROLES
-                    },
-                    "embedding_model": embedding_settings.model,
-                    "llm_model": os.getenv("MEMORY_LLM_MODEL"),
-                    "dimension": loaded.dim if embedder == "ready" and loaded else None,
-                    "ontology": (
-                        mcp_settings.ontology.name
-                        if mcp_settings.ontology
-                        else "default"
-                    ),
-                })
+                return JSONResponse(
+                    {
+                        "version": __import__("ontogr_mem").__version__,
+                        "pid": process_id,
+                        "store": state_target.identity(),
+                        "embedder": embedder,
+                        "roles": {
+                            role: models.configured(role) for role in TEXT_WRITE_ROLES
+                        },
+                        "embedding_model": embedding_settings.model,
+                        "llm_model": os.getenv("MEMORY_LLM_MODEL"),
+                        "dimension": loaded.dim
+                        if embedder == "ready" and loaded
+                        else None,
+                        "ontology": (
+                            mcp_settings.ontology.name
+                            if mcp_settings.ontology
+                            else "default"
+                        ),
+                    }
+                )
 
             async def shutdown(_: Request) -> Response:
-                headers = get_http_headers()
-                if token and headers.get("authorization") != f"Bearer {token}":
+                headers = get_http_headers(include={"authorization"})
+                if token and not hmac.compare_digest(
+                    headers.get("authorization", ""), f"Bearer {token}"
+                ):
                     return Response(status_code=401)
                 stop_event.set()
                 return Response(status_code=202)
@@ -184,9 +191,7 @@ async def serve(  # noqa: PLR0912, PLR0915
             server.custom_route("/health", methods=["GET"])(health)
             server.custom_route("/shutdown", methods=["POST"])(shutdown)
             task = asyncio.create_task(
-                server.run_async(
-                    transport="http", host=mcp_settings.host, port=port
-                )
+                server.run_async(transport="http", host=mcp_settings.host, port=port)
             )
             preload = asyncio.create_task(embedder_source())
             try:
@@ -196,13 +201,16 @@ async def serve(  # noqa: PLR0912, PLR0915
                         return 76
                     await asyncio.sleep(0.1)
                     break
-                write_server_info(info_path, {
-                    "pid": process_id,
-                    "port": port,
-                    "version": __import__("ontogr_mem").__version__,
-                    "store": state_target.identity,
-                    "started_at": datetime.now(UTC).isoformat(),
-                })
+                write_server_info(
+                    info_path,
+                    {
+                        "pid": process_id,
+                        "port": port,
+                        "version": __import__("ontogr_mem").__version__,
+                        "store": state_target.identity(),
+                        "started_at": datetime.now(UTC).isoformat(),
+                    },
+                )
                 await stop_event.wait()
                 await asyncio.wait_for(runtime.service.drain(), timeout=30)
             finally:
