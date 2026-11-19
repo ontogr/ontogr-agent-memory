@@ -72,6 +72,21 @@ class VerbService(Protocol):
     ) -> EntityView:
         """Return one entity view."""
 
+    async def list_entities(
+        self, principal: Principal, request: ListEntities
+    ) -> EntityPage:
+        """List active entities for one tenant."""
+
+    async def get_ontology(
+        self, principal: Principal, request: GetOntology
+    ) -> OntologyView:
+        """Return the ontology vocabulary for one tenant."""
+
+    async def stale_episodes(
+        self, principal: Principal, request: ListStaleEpisodes
+    ) -> StaleEpisodePage:
+        """List episodes that need extraction under the current ontology."""
+
     async def get_job(self, principal: Principal, job_id: str) -> JobView:
         """Return the status of one write job."""
 

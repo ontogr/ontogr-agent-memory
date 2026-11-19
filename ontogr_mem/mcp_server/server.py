@@ -1,6 +1,7 @@
 """Build the MCP server that exposes memory tools for request-selected tenants."""
 
 from collections.abc import Callable
+from inspect import signature
 from typing import Any
 
 from fastmcp import FastMCP
@@ -33,6 +34,8 @@ def build_server(
     enabled = set(server_settings.tools)
 
     def register(name: str, method: str, tags: set[str]) -> None:
+        memory = memory_for_request(None)
+
         async def call(**kwargs: Any) -> Any:
             from fastmcp.server.dependencies import get_http_headers  # noqa: PLC0415
 
@@ -41,6 +44,9 @@ def build_server(
             memory = memory_for_request(tenant)
             return await getattr(memory, method)(**kwargs)
 
+        memory_method = getattr(memory, method)
+        call.__signature__ = signature(memory_method)
+        call.__annotations__ = memory_method.__annotations__.copy()
         server.tool(guard_errors(call), name=name, tags=tags)
 
     if "add_memory" in enabled:
@@ -55,6 +61,7 @@ def build_server(
         "get_entity": ("get_entity", {"read"}),
         "list_entities": ("list_entities", {"read"}),
         "get_ontology": ("get_ontology", {"read"}),
+        "stale_episodes": ("stale_episodes", {"read"}),
         "get_job": ("get_job", {"read"}),
         "add_memory": ("write_text", {"write"}),
         "write_facts": ("write_facts", {"write"}),

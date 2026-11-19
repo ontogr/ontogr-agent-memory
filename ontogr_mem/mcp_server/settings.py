@@ -14,6 +14,7 @@ ALL_TOOLS = (
     "get_entity",
     "list_entities",
     "get_ontology",
+    "stale_episodes",
     "get_job",
     "add_memory",
     "write_facts",

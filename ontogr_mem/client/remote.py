@@ -7,12 +7,18 @@ from typing import Any
 from ontogr_mem._extras import import_extra
 from ontogr_mem.service.contracts import (
     AddMemory,
+    EntityPage,
     EntityView,
     GetEntity,
+    GetOntology,
     InvalidateMemory,
     JobView,
+    ListEntities,
+    ListStaleEpisodes,
     MemoryContext,
+    OntologyView,
     SearchMemory,
+    StaleEpisodePage,
     WriteReceipt,
 )
 from ontogr_mem.service.errors import (
@@ -99,7 +105,7 @@ class RemoteService:
                 "source_text": request.content,
                 "facts": [
                     fact.model_dump(mode="json", exclude_none=True)
-                    for fact in request.facts
+                    for fact in request.facts or ()
                 ],
                 "role": request.role.value,
                 "idempotency_key": request.idempotency_key,
@@ -143,6 +149,44 @@ class RemoteService:
                     "name": request.name,
                     "include_history": request.include_history,
                 },
+            )
+        )
+
+    async def list_entities(
+        self, principal: Principal, request: ListEntities
+    ) -> EntityPage:
+        """List active entities through the remote server."""
+        del principal
+        return EntityPage.model_validate(
+            await self._call(
+                "list_entities",
+                {
+                    "entity_type": request.entity_type,
+                    "cursor": request.cursor,
+                    "limit": request.limit,
+                },
+            )
+        )
+
+    async def get_ontology(
+        self, principal: Principal, request: GetOntology
+    ) -> OntologyView:
+        """Return the remote tenant ontology."""
+        del principal
+        return OntologyView.model_validate(
+            await self._call(
+                "get_ontology", {"include_deprecated": request.include_deprecated}
+            )
+        )
+
+    async def stale_episodes(
+        self, principal: Principal, request: ListStaleEpisodes
+    ) -> StaleEpisodePage:
+        """List stale episodes through the remote server."""
+        del principal
+        return StaleEpisodePage.model_validate(
+            await self._call(
+                "stale_episodes", {"cursor": request.cursor, "limit": request.limit}
             )
         )
 
