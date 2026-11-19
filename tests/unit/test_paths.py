@@ -35,7 +35,7 @@ class TestDataDirectory:
         """An empty Windows data variable falls back to the user's home."""
         monkeypatch.setattr("ontogr_mem.paths.sys.platform", "win32")
         monkeypatch.delenv("MEMORY_DATA_DIR", raising=False)
-        monkeypatch.setenv("HOME", "/home/test")
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: Path("/home/test")))
         monkeypatch.setenv("LOCALAPPDATA", "")
         assert data_directory() == Path("/home/test/ontogr-mem")
 
@@ -54,7 +54,7 @@ class TestCacheDirectory:
     ) -> None:
         """An empty Windows cache variable falls back to the user's home."""
         monkeypatch.setattr("ontogr_mem.paths.sys.platform", "win32")
-        monkeypatch.setenv("HOME", "/home/test")
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: Path("/home/test")))
         monkeypatch.setenv("LOCALAPPDATA", "")
         assert cache_directory() == Path("/home/test/ontogr-mem/cache")
 

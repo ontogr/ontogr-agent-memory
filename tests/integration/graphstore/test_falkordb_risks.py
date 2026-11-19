@@ -105,7 +105,7 @@ class TestFalkorDBRisks:
     ):
         """Five failures open the breaker; it closes again once the server is back."""
         target = parse_graph_url(falkordb_test_url())
-        proxy = TcpProxy("127.0.0.1", target.port)
+        proxy = TcpProxy(target.host, target.port)
         await proxy.start()
         store = FalkorDBGraphStore(
             replace(target, host="127.0.0.1", port=proxy.port),
