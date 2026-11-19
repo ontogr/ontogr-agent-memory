@@ -97,7 +97,12 @@ class PostgresJobStore:
 
     async def save_job(self, job: Job) -> bool:
         """Replace an existing record without storing its replay flag."""
-        async with pg_connection(self._pool) as connection:
+        async with pg_connection(self._pool) as connection, connection.transaction():
+            existing_job_id = await connection.fetchval(
+                "SELECT job_id FROM jobs WHERE job_id = $1 FOR UPDATE", job.job_id
+            )
+            if existing_job_id is None:
+                raise KeyError(job.job_id)
             owner_filter = (
                 "(owner_id = $14 AND status = 'running' AND lease_expires_at > $15)"
             )

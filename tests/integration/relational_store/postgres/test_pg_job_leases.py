@@ -153,6 +153,18 @@ class TestPostgresJobLeases:
 
         assert not await first.save_job(replace(claimed, attempts=2))
 
+    async def test_saving_unknown_job_raises_key_error(self, pool, clean_tables):
+        """Report a missing job separately from a lost lease."""
+        store = PostgresJobStore(
+            pool,
+            FixedClock(datetime(2026, 10, 23, 12, tzinfo=UTC)),
+            owner_id="owner",
+            lease_seconds=60,
+        )
+
+        with pytest.raises(KeyError, match="missing"):
+            await store.save_job(make_job(job_id="missing"))
+
     async def test_expired_owner_cannot_change_progress(self, pool, clean_tables):
         """Reject progress writes after the owner's lease expires."""
         clock = FixedClock(datetime(2026, 10, 23, 12, tzinfo=UTC))
