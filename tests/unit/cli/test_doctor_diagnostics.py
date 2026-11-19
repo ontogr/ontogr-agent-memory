@@ -137,6 +137,7 @@ class TestRunDoctor:
         monkeypatch.setenv("MEMORY_GRAPH_URL", "redis://graph.example:6379")
         monkeypatch.setenv("MEMORY_STATE_URL", "invalid-state-url")
         monkeypatch.delenv("MEMORY_MCP_TENANT", raising=False)
+
         async def no_graph_check(*_args):
             return 0
 
