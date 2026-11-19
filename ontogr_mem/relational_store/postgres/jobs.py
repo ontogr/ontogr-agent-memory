@@ -442,7 +442,55 @@ class PostgresJobStore:
     ) -> list[ErasureRecord]:
         """Claim expired running erase rows, optionally filtered by Tenant."""
         lease_expiry = to_micros(now) + self._lease_micros
-        async with pg_connection(self._pool) as connection:
+        async with pg_connection(self._pool) as connection, connection.transaction():
+            if tenant is not None:
+                await connection.fetchval(
+                    "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", tenant
+                )
+                if await connection.fetchval(
+                    "SELECT EXISTS (SELECT 1 FROM jobs WHERE tenant_id = $1 "
+                    "AND status = 'running' AND lease_expires_at > $2)",
+                    tenant,
+                    to_micros(now),
+                ):
+                    return []
+            else:
+                tenants = await connection.fetch(
+                    "SELECT DISTINCT tenant FROM erasures WHERE status = 'running' "
+                    "AND (lease_expires_at IS NULL OR lease_expires_at <= $1) "
+                    "ORDER BY tenant",
+                    to_micros(now),
+                )
+                records: list[ErasureRecord] = []
+                for row in tenants:
+                    tenant_id = row["tenant"]
+                    await connection.fetchval(
+                        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                        tenant_id,
+                    )
+                    if await connection.fetchval(
+                        "SELECT EXISTS (SELECT 1 FROM jobs WHERE tenant_id = $1 "
+                        "AND status = 'running' AND lease_expires_at > $2)",
+                        tenant_id,
+                        to_micros(now),
+                    ):
+                        continue
+                    claimed = await connection.fetch(
+                        "WITH candidates AS (SELECT seq FROM erasures "
+                        "WHERE tenant = $4 AND status = 'running' AND "
+                        "(lease_expires_at IS NULL OR lease_expires_at <= $1) AND "
+                        "(owner_id IS NULL OR lease_expires_at <= $1) "
+                        "ORDER BY created_at, seq FOR UPDATE SKIP LOCKED) "
+                        "UPDATE erasures SET owner_id = $2, lease_expires_at = $3, "
+                        "heartbeat_at = $1 WHERE seq IN "
+                        "(SELECT seq FROM candidates) RETURNING seq, erasure_id, "
+                        "tenant, mode, principal_id, selector_kind, target, "
+                        "episode_ids, fact_ids, observation_ids, entity_ids, "
+                        "created_at, status, last_step, finished_at, residue, counts",
+                        to_micros(now), self._owner_id, lease_expiry, tenant_id,
+                    )
+                    records.extend(erasure_from_row(item) for item in claimed)
+                return records
             rows = await connection.fetch(
                 "WITH candidates AS (SELECT seq FROM erasures "
                 "WHERE status = 'running' AND "
