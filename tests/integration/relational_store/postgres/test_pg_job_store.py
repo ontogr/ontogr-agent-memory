@@ -15,7 +15,7 @@ from ontogr_mem.relational_store.schema.runner import (
     revision_checksum,
 )
 from tests.contracts.erase_journal import EraseJournalContract
-from tests.contracts.job_store import JobStoreContract, T0
+from tests.contracts.job_store import T0, JobStoreContract
 from tests.support.clock import FixedClock
 
 
