@@ -1,6 +1,8 @@
 """Async persistence contracts for service state."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from contextlib import AbstractAsyncContextManager
+from datetime import datetime
 from typing import Protocol
 
 from ontogr_mem.data_models.jobs import Job, JobProgress, JobState
@@ -41,12 +43,50 @@ class JobStore(Protocol):
         """
         ...
 
-    async def requeue_running(self) -> list[Job]:
-        """Requeue running jobs and return all queued jobs oldest first.
+    async def requeue_expired(self, now: datetime) -> None:
+        """Requeue expired running jobs; recovery is the sweep's job."""
+        ...
 
-        Creation time orders the result, with insertion order breaking ties.
-        Attempts, timestamps, results and errors remain unchanged.
-        """
+    async def queued_jobs(self) -> list[Job]:
+        """Return queued jobs oldest first."""
+        ...
+
+    async def claim_next(
+        self, tenant_id: str, now: datetime, can_run: Callable[[Job], bool]
+    ) -> Job | None:
+        """Claim the oldest runnable job for one Tenant."""
+        ...
+
+    async def tenant_has_live_lease(self, tenant_id: str, now: datetime) -> bool:
+        """Return whether a running job or erase row has a live lease."""
+        ...
+
+    async def live_lease_expires_at(
+        self, tenant_id: str, now: datetime
+    ) -> datetime | None:
+        """Return the latest live job lease expiry for one Tenant."""
+        ...
+
+    def tenant_lock(self, tenant_id: str) -> AbstractAsyncContextManager[None]:
+        """Return a context manager that serializes work for one Tenant."""
+        ...
+
+    async def renew_leases(self, now: datetime) -> None:
+        """Renew this store owner's running leases."""
+        ...
+
+    async def release_leases(self) -> None:
+        """Release this store owner's leases."""
+        ...
+
+    async def release_job(self, job_id: str) -> None:
+        """Release one job lease."""
+        ...
+
+    async def claim_recoverable(
+        self, tenant: str | None, now: datetime
+    ) -> list[object]:
+        """Return expired running erase rows for recovery."""
         ...
 
     async def count_jobs(
