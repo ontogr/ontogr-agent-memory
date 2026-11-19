@@ -27,7 +27,7 @@ class ServerUnavailableError(AgentMemoryError):
         self.hint = hint
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ServerEndpoint:
     """Connection details and capabilities reported by the server."""
 
@@ -180,14 +180,19 @@ async def ensure_server(  # noqa: PLR0912, PLR0915
     process: subprocess.Popen[bytes] | None = None
     while time.monotonic() < deadline:
         if process is None or process.poll() is not None:
-            if process is not None and process.returncode == 76 and attempts < 2:
-                attempts += 1
-            elif process is not None and process.returncode == 75:
-                deadline = min(deadline, time.monotonic() + 10)
-            elif process is not None and process.returncode not in (0, 75, 76):
-                raise ServerUnavailableError(
-                    f"Memory server failed to start. See {log_path}"
-                )
+            if process is not None:
+                if process.returncode == 76:
+                    if attempts >= 1:
+                        raise ServerUnavailableError(
+                            f"Memory server failed to start. See {log_path}"
+                        )
+                    attempts += 1
+                elif process.returncode == 75:
+                    deadline = min(deadline, time.monotonic() + 10)
+                elif process.returncode != 0:
+                    raise ServerUnavailableError(
+                        f"Memory server failed to start. See {log_path}"
+                    )
             arguments = [sys.executable, "-m", "ontogr_mem", "server", "run"]
             output = log_path.open("ab")
             try:
@@ -227,6 +232,9 @@ async def ensure_server(  # noqa: PLR0912, PLR0915
                 and health.get("version") == version
                 and health.get("store") == expected_store
             ):
+                token = os.environ.get("MEMORY_MCP_API_KEY") or read_server_token(
+                    directory / "server.token"
+                )
                 return _endpoint(current_url, health, token)
         await asyncio.sleep(0.2)
     raise ServerUnavailableError(f"Memory server did not become ready. See {log_path}")

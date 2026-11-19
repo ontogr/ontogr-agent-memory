@@ -3,6 +3,7 @@
 from ontogr_mem.vectorstore.errors import EmbedderUnavailableError
 from ontogr_mem.vectorstore.memory.backend import InMemoryBackend
 from ontogr_mem.vectorstore.models import VectorKind
+from ontogr_mem.vectorstore.settings import VectorStoreSettings
 from ontogr_mem.vectorstore.source import EmbedderSource
 from ontogr_mem.vectorstore.vector_store import VectorStore
 from tests.support.embedder import MockEmbedder
@@ -62,3 +63,20 @@ class TestLazyEmbedder:
 
         await store.upsert(VectorKind.NODE, [])
         assert attempts == 2
+
+    async def test_lazy_gateway_uses_vector_store_settings(self) -> None:
+        """Apply configured gateway limits after lazy embedder loading."""
+        settings = VectorStoreSettings(
+            batch_size=7, max_attempts=5, attempt_timeout_s=12.0
+        )
+
+        async def load_embedder():
+            return MockEmbedder()
+
+        store = VectorStore(
+            InMemoryBackend(), EmbedderSource(load_embedder), settings=settings
+        )
+
+        gateway = await store.embedding_gateway()
+
+        assert gateway.settings == settings

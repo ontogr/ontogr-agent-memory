@@ -1,12 +1,16 @@
 """Run the stdio MCP front for the shared memory server."""
 
+from ontogr_mem._extras import import_extra
 from ontogr_mem.mcp_server.instructions import INSTRUCTIONS
 from ontogr_mem.mcp_server.settings import McpSettings
 
 
 async def run_mcp() -> None:
     """Forward the host's stdio MCP connection to the shared server."""
+    import_extra("fastmcp", "mcp")
+
     from fastmcp import Client  # noqa: PLC0415
+    from fastmcp.client.transports import StreamableHttpTransport  # noqa: PLC0415
     from fastmcp.server.server import create_proxy  # noqa: PLC0415
 
     from ontogr_mem.relational_store.config import StateSettings  # noqa: PLC0415
@@ -22,7 +26,6 @@ async def run_mcp() -> None:
     if settings.tenant:
         headers["X-Memory-Tenant"] = settings.tenant
 
-    proxy = create_proxy(
-        Client(f"{endpoint.url}/mcp", headers=headers), instructions=INSTRUCTIONS
-    )
+    transport = StreamableHttpTransport(f"{endpoint.url}/mcp", headers=headers)
+    proxy = create_proxy(Client(transport), instructions=INSTRUCTIONS)
     await proxy.run_async(transport="stdio", show_banner=False)

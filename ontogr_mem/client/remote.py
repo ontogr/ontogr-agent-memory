@@ -77,13 +77,10 @@ class RemoteService:
         from fastmcp import Client  # noqa: PLC0415
         from fastmcp.client.transports import StreamableHttpTransport  # noqa: PLC0415
 
-        transport = StreamableHttpTransport(
-            _mcp_url(url),
-            headers={
-                "Authorization": f"Bearer {token}",
-                "X-Memory-Tenant": tenant,
-            },
-        )
+        headers = {"X-Memory-Tenant": tenant}
+        if token is not None:
+            headers["Authorization"] = f"Bearer {token}"
+        transport = StreamableHttpTransport(_mcp_url(url), headers=headers)
         client = Client(transport)
         await client.__aenter__()
         return cls(client)
@@ -141,9 +138,19 @@ class RemoteService:
                 {
                     "query": request.query,
                     "as_of": request.valid_at,
+                    "overlaps_start": request.overlaps_start,
+                    "overlaps_end": request.overlaps_end,
+                    "session_id": request.session_id,
+                    "known_at": request.known_at,
+                    "mentions": request.mentions,
                     "include_history": request.include_history,
                     "limit": request.limit,
                     "budget_tokens": request.budget_tokens,
+                    "entity_types": request.entity_types,
+                    "exclude_entity_types": request.exclude_entity_types,
+                    "relation_types": request.relation_types,
+                    "exclude_relation_types": request.exclude_relation_types,
+                    "modalities": request.modalities,
                 },
             )
         )

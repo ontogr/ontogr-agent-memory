@@ -98,6 +98,15 @@ def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "server":
         return _run_server_command(args)
     if args.command == "mcp":
+        service = ServiceSettings()
+        state = StateSettings()
+        check_requirements(
+            models=None,
+            graph=parse_graph_url(service.graph_url.get_secret_value()),
+            state=parse_state_url(state.url.get_secret_value()),
+            embedding=EmbeddingSettings(),
+            mcp=True,
+        ).raise_for_missing(subcommand="mcp")
         from ontogr_mem.cli.mcp import run_mcp  # noqa: PLC0415
 
         asyncio.run(run_mcp())

@@ -124,7 +124,9 @@ class VectorStore:
             if self._ready:
                 return
             embedder = await self.source()
-            gateway = EmbeddingGateway(embedder, tracer=self.tracer)
+            gateway = EmbeddingGateway(
+                embedder, settings=self.settings, tracer=self.tracer
+            )
             specs = {
                 kind: SpaceSpec(
                     kind,

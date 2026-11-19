@@ -33,6 +33,8 @@ def server_process(
             "MEMORY_STATE_URL": f"sqlite:///{state_database}",
             "MEMORY_MCP_API_KEY": "lifecycle-test-key",
             "MEMORY_SERVER_IDLE_MINUTES": "30",
+            "MEMORY_LLM_MODEL": "configured-model",
+            "MEMORY_LLM_BASE_URL": "http://127.0.0.1:9999/v1",
         }
     )
     with server_log.open("w") as log_file:
@@ -93,6 +95,7 @@ class TestServerLifecycle:
             health = json.load(response)
         assert health["version"]
         assert health["store"]
+        assert health["llm_model"] == "configured-model"
 
         with pytest.raises(HTTPError) as unauthorized:
             urlopen(f"{base_url}/mcp", timeout=2)

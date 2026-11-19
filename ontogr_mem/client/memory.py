@@ -269,9 +269,7 @@ class Memory:
                     state_url=state_settings.url.get_secret_value(),
                 )
                 if not all(
-                    selected_models.configured(ModelRole(role))
-                    for role in TEXT_WRITE_ROLES
-                    if endpoint.roles.get(role.value, False)
+                    endpoint.roles.get(role.value, False) for role in TEXT_WRITE_ROLES
                 ):
                     logging.getLogger(__name__).warning(
                         "Memory server lacks a configured extraction role."
@@ -283,7 +281,7 @@ class Memory:
                 if (
                     endpoint.roles != client_roles
                     or endpoint.embedding_model != embedding_settings.model
-                    or endpoint.llm_model != llm_config.model
+                    or endpoint.llm_model != llm_config.resolve(ModelRole.ANSWER).model
                 ):
                     logging.getLogger(__name__).warning(
                         "Memory client settings differ from the connected server."
@@ -450,6 +448,11 @@ class Memory:
         include_history: bool = False,
         limit: int = 10,
         budget_tokens: int = 2000,
+        overlaps_start: datetime | None = None,
+        overlaps_end: datetime | None = None,
+        session_id: str | None = None,
+        known_at: datetime | None = None,
+        mentions: Sequence[str] | None = None,
         entity_types: Sequence[str] | None = None,
         exclude_entity_types: Sequence[str] | None = None,
         relation_types: Sequence[str] | None = None,
@@ -465,6 +468,11 @@ class Memory:
 
         Args:
             query: Search text, between 1 and 2000 characters.
+            overlaps_start: Start of the validity window to overlap.
+            overlaps_end: End of the validity window to overlap.
+            session_id: Limit facts to one session.
+            known_at: Knowledge-time instant with a timezone.
+            mentions: Restrict facts to these mentioned names.
             as_of: Valid-time instant with a timezone, or now.
             include_history: Include closed fact history.
             limit: Maximum facts, between 1 and 100.
@@ -490,6 +498,11 @@ class Memory:
                 "include_history": include_history,
                 "limit": limit,
                 "budget_tokens": budget_tokens,
+                "overlaps_start": overlaps_start,
+                "overlaps_end": overlaps_end,
+                "session_id": session_id,
+                "known_at": known_at,
+                "mentions": list(mentions or ()),
                 "format": "both",
                 "entity_types": list(entity_types or ()),
                 "exclude_entity_types": list(exclude_entity_types or ()),

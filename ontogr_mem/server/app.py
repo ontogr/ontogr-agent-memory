@@ -8,15 +8,19 @@ import os
 import secrets
 import socket
 import time
+from collections.abc import Callable
 from contextlib import AsyncExitStack
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from urllib.error import URLError
 from urllib.request import urlopen
 
 from ontogr_mem.client import Memory
 from ontogr_mem.data_models.tenant import validate_tenant_id
 from ontogr_mem.llm import build_models
+from ontogr_mem.llm.config import LLMConfig
+from ontogr_mem.llm.roles import ModelRole
 from ontogr_mem.mcp_server.server import build_server
 from ontogr_mem.mcp_server.settings import McpSettings
 from ontogr_mem.ontology.loader import load_ontology
@@ -44,6 +48,20 @@ from ontogr_mem.vectorstore.source import EmbedderSource
 
 
 logger = logging.getLogger(__name__)
+
+
+class _ActivityMiddleware:
+    """Record one activity timestamp for every HTTP request."""
+
+    def __init__(self, app: Any, record: Callable[[], None]) -> None:
+        self._app = app
+        self._record = record
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        """Mark activity, then delegate to the wrapped application."""
+        if scope["type"] == "http":
+            self._record()
+        await self._app(scope, receive, send)
 
 
 def _health_ready(host: str, port: int) -> None:
@@ -86,6 +104,7 @@ async def serve(  # noqa: C901, PLR0912, PLR0915
     try:
         service_settings = ServiceSettings()
         state_settings = StateSettings()
+        llm_config = LLMConfig()
         state_target = parse_state_url(state_settings.url.get_secret_value())
         if isinstance(state_target, SqliteTarget):
             store_lock = ServerLock(Path(f"{state_target.path}.lock"))
@@ -93,7 +112,7 @@ async def serve(  # noqa: C901, PLR0912, PLR0915
                 store_lock.acquire()
             except OSError:
                 return 75
-        models = build_models()
+        models = build_models(llm_config)
         ontology = (
             load_ontology(mcp_settings.ontology) if mcp_settings.ontology else None
         )
@@ -148,7 +167,10 @@ async def serve(  # noqa: C901, PLR0912, PLR0915
                 token = secrets.token_urlsafe(32)
                 write_server_token(directory / "server.token", token)
             if not loopback and token is None:
-                logger.warning("MCP server is bound beyond loopback without an API key")
+                logger.error(
+                    "MCP server requires an API key when bound beyond loopback"
+                )
+                return 78
             settings = mcp_settings
             # A generated token must also protect the HTTP routes and MCP endpoint.
             if token and settings.api_key is None:
@@ -177,7 +199,7 @@ async def serve(  # noqa: C901, PLR0912, PLR0915
                             role: models.configured(role) for role in TEXT_WRITE_ROLES
                         },
                         "embedding_model": embedding_settings.model,
-                        "llm_model": os.getenv("MEMORY_LLM_MODEL"),
+                        "llm_model": llm_config.resolve(ModelRole.ANSWER).model,
                         "dimension": loaded.dim
                         if embedder == "ready" and loaded
                         else None,
@@ -200,18 +222,21 @@ async def serve(  # noqa: C901, PLR0912, PLR0915
 
             server.custom_route("/health", methods=["GET"])(health)
             server.custom_route("/shutdown", methods=["POST"])(shutdown)
-            from starlette.types import Receive, Scope, Send  # noqa: PLC0415
+            from starlette.middleware import Middleware  # noqa: PLC0415
 
-            inner_app = server.http_app()
-
-            async def app(scope: Scope, receive: Receive, send: Send) -> None:
+            def record_activity() -> None:
                 nonlocal last_request
-                if scope["type"] == "http":
-                    last_request = time.monotonic()
-                await inner_app(scope, receive, send)
+                last_request = time.monotonic()
 
             task = asyncio.create_task(
-                server.run_async(transport="http", host=mcp_settings.host, port=port)
+                server.run_async(
+                    transport="http",
+                    host=mcp_settings.host,
+                    port=port,
+                    middleware=[
+                        Middleware(_ActivityMiddleware, record=record_activity)
+                    ],
+                )
             )
             preload = asyncio.create_task(embedder_source())
             try:
