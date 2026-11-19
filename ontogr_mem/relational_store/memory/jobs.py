@@ -90,8 +90,8 @@ class MemoryJobStore:
         """Return queued jobs oldest first."""
         return deepcopy(
             sorted(
-                (j for j in self._jobs.values() if j.status == JobState.QUEUED),
-                key=lambda j: (j.created_at, j.job_id),
+                (job for job in self._jobs.values() if job.status == JobState.QUEUED),
+                key=lambda job: (job.created_at, job.job_id),
             )
         )
 
@@ -101,9 +101,9 @@ class MemoryJobStore:
         """Mark the oldest runnable tenant job as running."""
         jobs = sorted(
             (
-                j
-                for j in self._jobs.values()
-                if j.tenant_id == tenant_id and j.status == JobState.QUEUED
+                job
+                for job in self._jobs.values()
+                if job.tenant_id == tenant_id and job.status == JobState.QUEUED
             ),
             key=lambda j: j.created_at,
         )
