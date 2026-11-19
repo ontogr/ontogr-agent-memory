@@ -98,6 +98,33 @@ class TestJobRunner:
         finally:
             await runner.stop()
 
+    async def test_stop_releases_holder_leases_without_heartbeat(
+        self, job_store: StateStore
+    ) -> None:
+        """Release configured holder leases even when renewal is not enabled."""
+        released = asyncio.Event()
+
+        class Lease:
+            async def renew_leases(self, now: object) -> None:
+                pass
+
+            async def release_leases(self) -> None:
+                released.set()
+
+        async def index(job: Job) -> dict[str, Any]:
+            return {}
+
+        runner = JobRunner(
+            job_store,
+            {"index": index},
+            FixedClock(),
+            lease_holders=[Lease()],
+        )
+        await runner.start()
+        await runner.stop()
+
+        assert released.is_set()
+
     async def test_failed_tenant_recovery_does_not_skip_later_tenants(
         self, job_store: StateStore
     ) -> None:

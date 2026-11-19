@@ -230,9 +230,8 @@ class JobRunner:
                     task.cancel()
                 await asyncio.gather(*tasks, return_exceptions=True)
                 self._tasks.clear()
-                if self._heartbeat_seconds is not None:
-                    for holder in self._lease_holders:
-                        await holder.release_leases()
+                for holder in self._lease_holders:
+                    await holder.release_leases()
             finally:
                 self._stopping = False
 
