@@ -463,8 +463,25 @@ class ForgetService:
             result = await self.recover_tenant(tenant_id)
             if result is None:
                 continue
-            recovered, records, results = result
+            recovered, _, results = result
             episodes_recovered += recovered
+            erases.extend(results)
+        return RecoveryReport(tenant_ids, episodes_recovered, tuple(erases))
+
+    async def recover_tenant(
+        self, tenant_id: str
+    ) -> tuple[int, list[ErasureRecord], list[ForgetResult]] | None:
+        """Recover temporal episodes and erase rows when no worker owns a lease."""
+        async with self._deps.state.tenant_lock(tenant_id):
+            now = self._deps.clock.now()
+            if await self._deps.state.tenant_has_live_lease(tenant_id, now):
+                return None
+
+            runtime = await self._deps.tenants.get(tenant_id, create=True)
+            ontology = await runtime.ontology.catalog()
+            report = await runtime.engine(ontology, runtime.resolver.store).recover()
+            records = await self._deps.state.claim_recoverable(tenant_id, now)
+            results = await self._deps.workflow.recover(records)
             for record, result in zip(records, results, strict=True):
                 async with self._recorder.track(
                     OperationKind.ERASE, "system", record.tenant
@@ -493,23 +510,6 @@ class ForgetService:
                         },
                     )
                 )
-                erases.append(result)
-        return RecoveryReport(tenant_ids, episodes_recovered, tuple(erases))
-
-    async def recover_tenant(
-        self, tenant_id: str
-    ) -> tuple[int, list[ErasureRecord], list[ForgetResult]] | None:
-        """Recover temporal episodes and erase rows when no worker owns a lease."""
-        async with self._deps.state.tenant_lock(tenant_id):
-            now = self._deps.clock.now()
-            if await self._deps.state.tenant_has_live_lease(tenant_id, now):
-                return None
-
-            runtime = await self._deps.tenants.get(tenant_id, create=True)
-            ontology = await runtime.ontology.catalog()
-            report = await runtime.engine(ontology, runtime.resolver.store).recover()
-            records = await self._deps.state.claim_recoverable(tenant_id, now)
-            results = await self._deps.workflow.recover(records)
         return report.counts[Outcome.EPISODE_RECOVERED.value], records, results
 
     async def _audit_forget(
