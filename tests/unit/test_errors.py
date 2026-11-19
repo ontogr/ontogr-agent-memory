@@ -37,14 +37,15 @@ class TestMissingExtraError:
 
     def test_is_an_ontogr_mem_error(self):
         """Callers can catch it through the package root error."""
-        assert isinstance(MissingExtraError("falkordb"), AgentMemoryError)
+        assert isinstance(MissingExtraError(("falkordb",)), AgentMemoryError)
 
     def test_message_names_the_install_command(self):
         """The message tells the user how to install the extra."""
-        error = MissingExtraError("falkordb")
+        error = MissingExtraError(("falkordb",))
 
-        assert 'pip install "ontogr-mem[falkordb]"' in str(error)
-        assert error.extra == "falkordb"
+        assert 'uv add "ontogr-mem[falkordb]"' in str(error)
+        assert error.extras == ("falkordb",)
+        assert "pip" not in str(error)
 
 
 class TestStoreError:

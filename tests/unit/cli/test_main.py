@@ -133,8 +133,8 @@ class TestMain:
         ("error", "expected_texts"),
         [
             pytest.param(
-                MissingExtraError("falkordb"),
-                ('pip install "ontogr-mem[falkordb]"',),
+                MissingExtraError(("falkordb",)),
+                ('uv add "ontogr-mem[falkordb]"',),
                 id="missing-extra",
             ),
             pytest.param(

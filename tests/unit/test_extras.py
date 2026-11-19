@@ -21,7 +21,7 @@ class TestImportExtra:
         with pytest.raises(MissingExtraError) as excinfo:
             import_extra("no_such_module_xyz", "falkordb")
 
-        assert excinfo.value.extra == "falkordb"
+        assert excinfo.value.extras == ("falkordb",)
         assert isinstance(excinfo.value.__cause__, ImportError)
 
     def test_does_not_hide_a_broken_installed_module(self, tmp_path, monkeypatch):

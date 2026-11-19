@@ -5,12 +5,12 @@ from fastmcp.server.providers.skills import SkillsDirectoryProvider
 from fastmcp.skills.extension import SkillsExtension
 
 from ontogr_mem.client import Memory
-from ontogr_mem.llm.roles import ModelRole
 from ontogr_mem.mcp_server.auth import ApiKeyVerifier
 from ontogr_mem.mcp_server.instructions import INSTRUCTIONS
 from ontogr_mem.mcp_server.settings import McpSettings
 from ontogr_mem.mcp_server.skills import SKILLS_ROOT, get_skill
 from ontogr_mem.mcp_server.tools import guard_errors
+from ontogr_mem.requirements import TEXT_WRITE_ROLES
 
 
 def build_server(memory: Memory, *, settings: McpSettings | None = None) -> FastMCP:
@@ -36,10 +36,7 @@ def build_server(memory: Memory, *, settings: McpSettings | None = None) -> Fast
         auth=auth,
     )
     enabled = set(server_settings.tools)
-    if not (
-        memory.models.configured(ModelRole.ENTITY_EXTRACTION)
-        and memory.models.configured(ModelRole.FACT_EXTRACTION)
-    ):
+    if not all(memory.models.configured(role) for role in TEXT_WRITE_ROLES):
         enabled.discard("add_memory")
     if "search_memory" in enabled:
         server.tool(guard_errors(memory.search), name="search_memory", tags={"read"})

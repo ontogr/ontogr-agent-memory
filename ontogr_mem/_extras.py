@@ -26,4 +26,4 @@ def import_extra(module: str, extra: str) -> ModuleType:
     except ModuleNotFoundError as exc:
         if exc.name not in {module, module.partition(".")[0]}:
             raise
-        raise MissingExtraError(extra) from exc
+        raise MissingExtraError((extra,)) from exc

@@ -25,7 +25,7 @@ OntoGr Agent Memory is an open source Python library that stores what an agent l
 - **Facts with sources:** Every fact keeps the verbatim quote and the episode it came from. A hash-chained ledger records each temporal write, so an edited, inserted, or deleted entry can be found.
 - **Facts that change over time:** Each fact has a validity window and a record of when the system learned it. A new value closes the old version, so a read can ask what was true on a date or what the system believed on that date.
 - **Contradictions get a ruling:** Rules, one optional model call per new fact with candidates, and a person's decision settle which facts conflict. A failed call leaves both facts live.
-- **Fits your stack:** The graph runs on FalkorDB or Neo4j, vectors live on the graph or in pgvector, and jobs and audit rows live in SQLite or Postgres. Each tenant is a separate partition.
+- **Fits your stack:** The graph runs on FalkorDB or Neo4j, vectors live on the graph, and jobs and audit rows live in SQLite or Postgres. Each tenant is a separate partition.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/hero.svg" alt="Source items enter the extraction layer as episodes. Extracted facts go to the temporal and consistency engine, which writes fact versions to the storage layer. Retrieval reads the storage layer and returns a budgeted context block." width="860">
@@ -250,7 +250,7 @@ Every fact can be traced back to the text that supports it, and every temporal w
 *The graph holds the memory, vectors have their own store, and a separate relation store holds jobs and audit rows.*
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/storage-layer.svg" alt="Components reach storage through async ports. The graph store holds entities and facts, and it holds episodes with their raw content. The vector store holds embeddings keyed by graph ids, on the graph or in pgvector. The relation store holds jobs, operation rows, audit rows, and the erase journal in SQLite or Postgres." width="860">
+  <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/storage-layer.svg" alt="Components reach storage through async ports. The graph store holds entities and facts, and it holds episodes with their raw content. The vector store holds embeddings keyed by graph ids, on the graph. The relation store holds jobs, operation rows, audit rows, and the erase journal in SQLite or Postgres." width="860">
 </p>
 
 Every component talks to storage through its own async port. A port has domain verbs and no raw query method, so domain code sees only ports.
@@ -258,10 +258,10 @@ Every component talks to storage through its own async port. A port has domain v
 | Store | Holds | Backends |
 | --- | --- | --- |
 | Graph store | Episodes with their sources and actors, entities, aliases, mentions, observations, fact versions, the temporal ledger, the ontology, and consolidation records. | FalkorDB (default) or Neo4j |
-| Vector store | Embeddings of entity names, fact statements, and episode text, each with a hash of the embedded text. | Graph-native (default) or pgvector |
+| Vector store | Embeddings of entity names, fact statements, and episode text, each with a hash of the embedded text. | Graph-native |
 | Relation store | Jobs with their request payloads, operation rows, audit rows, and the erase journal. | SQLite (default) or Postgres |
 
-A deployment that shares state between processes can use FalkorDB or Neo4j for the graph, pgvector for vectors, and SQLite or Postgres for the relation store. The relation store has no in-memory backend.
+A deployment that shares state between processes can use FalkorDB for the graph and Postgres for the relation store. The relation store has no in-memory backend.
 
 - **Contract tests:** Each port has one contract suite. It runs against each live database adapter, and concurrent tenants and queries are tested on live servers.
 
@@ -277,7 +277,7 @@ A deployment that shares state between processes can use FalkorDB or Neo4j for t
 
 *Embeddings are keyed by graph ids and sit beside the graph objects or in Postgres.*
 
-- **What is embedded:** Entity names, fact statements, and episode text, keyed by the ids of the graph objects they describe. With graph-native vectors they are properties on those objects, and pgvector keeps them in Postgres tables with HNSW indexes, an outbox, and a reconciler.
+- **What is embedded:** Entity names, fact statements, and episode text, keyed by the ids of the graph objects they describe. With graph-native vectors they are properties on those objects.
 - **Hash-checked writes:** A vector is replaced only when the hash of its text changes.
 - **Pinned spaces:** A registry pins the model for each kind along with its dimension and text template, and a different model on the same tenant raises a space mismatch error.
 - **Honest search:** Every backend returns a normalized cosine score, and a failed search raises instead of returning an empty list.
@@ -432,7 +432,7 @@ You need Python 3.11 or newer, Docker with Compose, and a model endpoint with an
    Then install the package in your own project:
 
    ```bash
-   uv add "ontogr-mem[falkordb,fastembed]"
+   uv add "ontogr-mem[local]"
    ```
 
 2. Set `MEMORY_LLM_MODEL`, `MEMORY_LLM_BASE_URL` and `MEMORY_LLM_API_KEY` in your environment or in a `.env` file in the current directory. Use your provider's model name and endpoint. Supported model prefixes are `openai-chat:`, `openai-responses:` and `anthropic:`. A name without a prefix uses OpenAI-compatible chat. Do not put credentials in Git. Then run this command:
@@ -456,7 +456,7 @@ The server uses stdio by default. Pass `--transport http` to serve Streamable HT
 Install the package and start the graph, then run the server:
 
 ```bash
-uv add "ontogr-mem[falkordb,fastembed,mcp]"
+uv add "ontogr-mem[local]"
 docker compose up -d --wait falkordb
 uv run ontogr-mem mcp
 # Or, in a separate terminal:
@@ -467,7 +467,7 @@ docker compose up -d --build mcp
 
 `docker compose up -d --wait falkordb` runs from a clone or a copy of `compose.yaml`, as the earlier sections explain. The container serves HTTP at `http://127.0.0.1:8000/mcp`, and Compose publishes that port on host loopback only. The image sets `MEMORY_MCP_TRANSPORT`, `MEMORY_MCP_HOST` and `MEMORY_MCP_PORT` to `http`, `0.0.0.0` and `8000`, and environment variables or Compose can override them. The image binds all container interfaces and the server only warns when no key is set, so set `MEMORY_MCP_API_KEY` before publishing the port beyond host loopback or sharing the container network.
 
-Connect a host with one of these snippets. They assume `ontogr-mem` is on the host's PATH, for example after `uv tool install "ontogr-mem[falkordb,fastembed,mcp]"`. Inside a uv project, prefix the command with `uv run`.
+Connect a host with one of these snippets. They assume `ontogr-mem` is on the host's PATH, for example after `uv tool install "ontogr-mem[local]"`. Inside a uv project, prefix the command with `uv run`.
 
 ```bash
 claude mcp add --transport stdio memory -- ontogr-mem mcp
@@ -566,9 +566,11 @@ uv add ontogr-mem
 The core package has no database driver. Add the extra for your backend:
 
 ```bash
+# Install FalkorDB, FastEmbed and MCP together
+uv add "ontogr-mem[local]"
+
 uv add "ontogr-mem[falkordb]"
 uv add "ontogr-mem[neo4j]"
-uv add "ontogr-mem[pgvector]"
 uv add "ontogr-mem[postgres]"
 uv add "ontogr-mem[otel]"
 ```
@@ -588,7 +590,7 @@ uv add "ontogr-mem[falkordb,fastembed-gpu]"
 uv add "ontogr-mem[falkordb]"
 ```
 
-The repository's `make sync` selects the CPU extra by default. To sync the GPU extra instead, run `make sync UV_SYNC_ARGS='--no-extra fastembed'`. The CPU and GPU extras install alternative FastEmbed and ONNX Runtime packages. Users must validate CUDA execution on their hardware.
+The repository's `make sync` selects the CPU extra by default. To sync the GPU extra instead, run `make sync UV_SYNC_ARGS='--no-extra fastembed --no-extra local'`. The CPU and GPU extras install alternative FastEmbed and ONNX Runtime packages. Users must validate CUDA execution on their hardware.
 
 Run a FalkorDB server before opening `Memory`. The repository's `compose.yaml` starts the graph on `127.0.0.1:6379`, which is the package default. SQLite state is stored in `agent_memory_state.sqlite3` in the per-user data directory. The local embedding model may download files on first use. Set `MEMORY_EMBEDDING_API_KEY` if the embedding endpoint requires authentication.
 
@@ -765,7 +767,6 @@ Each step is safe to run again after a crash:
 - The engine marks an episode pending before it writes observations, and appends the ledger entry before the committed mark. At startup, the service settles episodes left pending and commits them.
 - At startup, the job runner puts running jobs back in the queue. A replayed job finds the episode already committed with the same hash and skips it.
 - A failed vector write does not roll back the fact. The writer keeps the failed item for a retry.
-- With pgvector, vector work goes through an outbox that a reconciler drains, as described in the Storage layer.
 
 ### A read
 
@@ -1008,7 +1009,6 @@ Settings classes use `pydantic-settings`. They read the `.env` file in the curre
 | `MEMORY_STATE_URL` | SQLite or Postgres URL for jobs, operations, and audit rows. |
 | `MEMORY_FALKORDB_` | FalkorDB pool and resilience settings. |
 | `MEMORY_NEO4J_` | Neo4j pool and resilience settings. |
-| `MEMORY_PGVECTOR_` | pgvector connection, search, and outbox limits. |
 | `MEMORY_VECTORSTORE_` | Embedding batches, retries, timeouts, and vector indexes. |
 | `MEMORY_RETRIEVAL_` | Candidate counts, fusion constants, penalties, and context shares. |
 | `MEMORY_RETRIEVAL_FILTER_RECHECKS` | Maximum additional candidate windows fetched when type filters leave too few results; set to `0` to disable refills. |
@@ -1155,7 +1155,7 @@ make test
 | `make lint-typing` | Type check with `ty`. |
 | `make lint-all` | Format, apply lint fixes, type check, check typos, and audit workflows. |
 | `make security` | Run Bandit and a dependency audit. |
-| `make services-up` | Start the FalkorDB, Neo4j, pgvector, and Postgres test services. `SERVICES=<names>` starts only those. |
+| `make services-up` | Start the FalkorDB, Neo4j, and Postgres test services. `SERVICES=<names>` starts only those. |
 | `make services-down` | Stop the test services and remove their volumes. |
 | `make build` | Build the sdist and wheel. |
 | `make wheel-test` | Build the wheel and import it in a clean environment. |

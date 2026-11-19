@@ -48,8 +48,8 @@ test-integration:
 		--cov=ontogr_mem --cov-report=xml:coverage-integration.xml \
 		--junitxml=pytest-integration-results.xml
 
-# SERVICES names the compose services to start: falkordb, neo4j, pgvector and
-# relational. It starts all of them when empty.
+# SERVICES names the compose services to start: falkordb, neo4j and relational.
+# It starts all of them when empty.
 SERVICES ?=
 
 services-up:

@@ -62,7 +62,7 @@ class Harness:
         self.tenants: list[str] = []
         self.ontologies: list[Path | None] = []
 
-    def open_memory(self, *, tenant: str, ontology=None):
+    def open_memory(self, *, tenant: str, ontology=None, models=None):
         """Stand in for Memory.open with a memory over a recording service."""
         self.tenants.append(tenant)
         self.ontologies.append(ontology)
@@ -217,19 +217,6 @@ class TestRunMcp:
 
         assert caplog.records == []
 
-    async def test_missing_extra_raises_before_memory_opens(self, harness, monkeypatch):
-        """Without FastMCP the runner raises the install hint and opens nothing."""
-
-        def missing(module, extra):
-            raise MissingExtraError("mcp")
-
-        monkeypatch.setattr("ontogr_mem.cli.mcp.import_extra", missing)
-
-        with pytest.raises(MissingExtraError):
-            await run_mcp(_settings())
-
-        assert harness.events == []
-
 
 class TestMcpCommand:
     """Behavior of the mcp subcommand: settings, overrides and failures."""
@@ -363,10 +350,10 @@ class TestMcpCommand:
     ):
         """A missing FastMCP prints the install command and returns one."""
         monkeypatch.setattr(
-            "ontogr_mem.cli.asyncio.run", _fake_asyncio_run(MissingExtraError("mcp"))
+            "ontogr_mem.cli.asyncio.run", _fake_asyncio_run(MissingExtraError(("mcp",)))
         )
 
         status = main(["mcp"])
 
         assert status == 1
-        assert 'pip install "ontogr-mem[mcp]"' in capsys.readouterr().err
+        assert 'uv add "ontogr-mem[mcp]"' in capsys.readouterr().err

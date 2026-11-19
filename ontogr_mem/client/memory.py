@@ -12,6 +12,7 @@ from ontogr_mem.llm.config import LLMConfig
 from ontogr_mem.llm.models import RoleModels, build_models
 from ontogr_mem.ontology.loader import OntologySource, load_ontology
 from ontogr_mem.relational_store.config import StateSettings
+from ontogr_mem.requirements import check_requirements
 from ontogr_mem.service.bootstrap import ServiceSettings, open_service
 from ontogr_mem.service.contracts import (
     AddMemory,
@@ -37,12 +38,14 @@ from ontogr_mem.service.contracts import (
 )
 from ontogr_mem.service.memory_service import MemoryService
 from ontogr_mem.service.principal import Grant, Principal
+from ontogr_mem.store_urls import parse_graph_url, parse_state_url
 from ontogr_mem.temporal.settings import ClosureSettings
 from ontogr_mem.vectorstore.builtin import (
     EndpointEmbedder,
     LocalEmbedder,
     select_embedder,
 )
+from ontogr_mem.vectorstore.builtin.settings import EmbeddingSettings
 from ontogr_mem.vectorstore.embedder import Embedder
 
 
@@ -135,15 +138,28 @@ class Memory:
                 if selected_models is None:
                     selected_models = build_models(llm_config)
                     resources.push_async_callback(selected_models.aclose)
+                selected_service_settings = service_settings or ServiceSettings()
+                selected_state_settings = state_settings or StateSettings()
+                embedding_settings = EmbeddingSettings() if embedder is None else None
+                check_requirements(
+                    models=selected_models,
+                    graph=parse_graph_url(
+                        selected_service_settings.graph_url.get_secret_value()
+                    ),
+                    state=parse_state_url(
+                        selected_state_settings.url.get_secret_value()
+                    ),
+                    embedding=embedding_settings,
+                ).raise_for_missing()
                 selected_embedder = embedder
                 if selected_embedder is None:
-                    selected_embedder = await select_embedder()
+                    selected_embedder = await select_embedder(embedding_settings)
                     if isinstance(selected_embedder, (EndpointEmbedder, LocalEmbedder)):
                         resources.push_async_callback(selected_embedder.aclose)
                 runtime = await resources.enter_async_context(
                     open_service(
-                        service_settings,
-                        state_settings=state_settings,
+                        selected_service_settings,
+                        state_settings=selected_state_settings,
                         models=selected_models,
                         embedder=selected_embedder,
                         closure_settings=ClosureSettings(),

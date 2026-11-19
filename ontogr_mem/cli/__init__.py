@@ -20,10 +20,18 @@ from ontogr_mem.llm.failures import ModelNotConfiguredError
 from ontogr_mem.llm.roles import ModelRole
 from ontogr_mem.mcp_server.settings import McpSettings
 from ontogr_mem.ontology.errors import InvalidChange
+from ontogr_mem.relational_store.config import StateSettings
+from ontogr_mem.requirements import check_requirements
 from ontogr_mem.service.bootstrap import ServiceSettings
 from ontogr_mem.service.errors import InvalidArgumentError
-from ontogr_mem.store_urls import ExplicitTenantError, require_explicit_tenant
+from ontogr_mem.store_urls import (
+    ExplicitTenantError,
+    parse_graph_url,
+    parse_state_url,
+    require_explicit_tenant,
+)
 from ontogr_mem.vectorstore.builtin import EmbedderUnavailableError
+from ontogr_mem.vectorstore.builtin.settings import EmbeddingSettings
 
 
 def _tenant_id_argument(value: str) -> str:
@@ -43,15 +51,21 @@ async def _chat(tenant: str | None, ontology: Path | None) -> None:
     )
     models = build_models()
     try:
-        # Check the models before the graph and the embedder start, so a missing
-        # setting does not first cost a model download.
-        for role in (
-            ModelRole.ANSWER,
-            ModelRole.ENTITY_EXTRACTION,
-            ModelRole.FACT_EXTRACTION,
-        ):
-            if not models.configured(role):
-                raise ModelNotConfiguredError(f"no model configured for {role.value}")
+        service = ServiceSettings()
+        state = StateSettings()
+        check_requirements(
+            models=models,
+            graph=parse_graph_url(service.graph_url.get_secret_value()),
+            state=parse_state_url(state.url.get_secret_value()),
+            embedding=EmbeddingSettings(),
+            required_roles=frozenset(
+                {
+                    ModelRole.ANSWER,
+                    ModelRole.ENTITY_EXTRACTION,
+                    ModelRole.FACT_EXTRACTION,
+                }
+            ),
+        ).raise_for_missing(subcommand="chat")
         async with Memory.open(
             tenant=tenant or "default", models=models, ontology=ontology
         ) as memory:
