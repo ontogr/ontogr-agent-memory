@@ -62,7 +62,8 @@ class PostgresOperationStore:
             await connection.execute(
                 "UPDATE operation_rows SET ended_at = $1, outcome = 'failed', "
                 "error_class = 'Interrupted', "
-                "error = 'operation was still running when the store opened' "
+                "error = 'operation was still running when the store opened', "
+                "owner_id = NULL, lease_expires_at = NULL "
                 "WHERE outcome = 'running' AND "
                 "(lease_expires_at IS NULL OR lease_expires_at <= $2)",
                 to_micros(self._clock.now()),
@@ -150,6 +151,7 @@ class PostgresOperationStore:
                 "UPDATE operation_rows SET ended_at = $1, outcome = $2, "
                 "error_class = $3, error = $4, tokens_in = $5, tokens_out = $6, "
                 "cost_usd = $7 WHERE id = $8 AND outcome = 'running' "
+                "AND owner_id = $9 AND lease_expires_at > $10 "
                 "RETURNING id",
                 to_micros(self._clock.now()),
                 outcome.value,
@@ -159,6 +161,8 @@ class PostgresOperationStore:
                 usage.tokens_out,
                 usage.cost_usd,
                 operation_id,
+                self._owner_id,
+                to_micros(self._clock.now()),
             )
             if row is None:
                 raise OperationStateError(f"operation {operation_id!r} is not running")
