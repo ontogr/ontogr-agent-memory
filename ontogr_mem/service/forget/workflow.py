@@ -142,10 +142,10 @@ class EraseWorkflow:
             recovered=False,
         )
 
-    async def recover(self, tenant: str | None = None) -> list[ForgetResult]:
-        """Resume all running journal rows, oldest first."""
+    async def recover(self, records: Sequence[ErasureRecord]) -> list[ForgetResult]:
+        """Resume the claimed journal rows in order."""
         results = []
-        for record in await self._journal.running(tenant):
+        for record in records:
             plan = ForgetPlan(
                 selector_kind=record.selector_kind,
                 episode_ids=record.episode_ids,

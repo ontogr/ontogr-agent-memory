@@ -450,13 +450,20 @@ class ForgetService:
         erases: list[ForgetResult] = []
         workflow = self._deps.workflow
         for tenant_id in tenant_ids:
-            runtime = await self._deps.tenants.get(tenant_id, create=True)
-            ontology = await runtime.ontology.catalog()
-            report = await runtime.engine(ontology, runtime.resolver.store).recover()
-            episodes_recovered += report.counts[Outcome.EPISODE_RECOVERED.value]
+            async with self._deps.state.tenant_lock(tenant_id):
+                now = self._deps.clock.now()
+                if await self._deps.state.tenant_has_live_lease(tenant_id, now):
+                    continue
 
-            records = await self._deps.state.running(tenant_id)
-            results = await workflow.recover(tenant_id)
+                runtime = await self._deps.tenants.get(tenant_id, create=True)
+                ontology = await runtime.ontology.catalog()
+                report = await runtime.engine(
+                    ontology, runtime.resolver.store
+                ).recover()
+                episodes_recovered += report.counts[Outcome.EPISODE_RECOVERED.value]
+
+                records = await self._deps.state.claim_recoverable(tenant_id, now)
+                results = await workflow.recover(records)
             for record, result in zip(records, results, strict=True):
                 async with self._recorder.track(
                     OperationKind.ERASE, "system", record.tenant
