@@ -150,7 +150,7 @@ class PostgresJobStore:
             )
 
     async def claim_next(
-        self, tenant_id: str, now: datetime, can_run: Callable[[str], bool]
+        self, tenant_id: str, now: datetime, can_run: Callable[[Job], bool]
     ) -> Job | None:
         """Claim the oldest queued job when this tenant has no live lease."""
         async with pg_connection(self._pool) as connection, connection.transaction():
@@ -168,7 +168,7 @@ class PostgresJobStore:
                 f"{_SELECT_JOB} WHERE seq = $1", row["seq"]
             )
             job = job_from_row(job_row)
-            if not can_run(job.op):
+            if not can_run(job):
                 return None
             expiry = to_micros(now) + self._lease_micros
             updated = await connection.fetchrow(

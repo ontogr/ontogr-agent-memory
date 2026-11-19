@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Protocol
 
 from ontogr_mem.data_models.jobs import Job, JobProgress, JobState
-from ontogr_mem.relational_store.jobs.erase_journal import EraseJournal
+from ontogr_mem.relational_store.jobs.erase_journal import EraseJournal, ErasureRecord
 
 
 class JobStore(Protocol):
@@ -85,7 +85,7 @@ class JobStore(Protocol):
 
     async def claim_recoverable(
         self, tenant: str | None, now: datetime
-    ) -> list[object]:
+    ) -> list[ErasureRecord]:
         """Return expired running erase rows for recovery."""
         ...
 

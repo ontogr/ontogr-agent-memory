@@ -1,6 +1,7 @@
 """SQLite-backed operation rows on a caller-owned connection."""
 
 import sqlite3
+from datetime import datetime
 from uuid import uuid4
 
 from ontogr_mem.data_models.clock import Clock
@@ -51,6 +52,12 @@ class SqliteOperationStore:
             )
         except sqlite3.Error as exc:
             raise StoreError("could not initialize operation storage") from exc
+
+    async def renew_leases(self, now: datetime) -> None:
+        """Keep the SQLite adapter's no-lease behavior."""
+
+    async def release_leases(self) -> None:
+        """Keep the SQLite adapter's no-lease behavior."""
 
     async def start(
         self,

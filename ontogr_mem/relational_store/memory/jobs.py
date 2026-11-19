@@ -1,6 +1,7 @@
 """In-memory job persistence with no durable storage."""
 
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
+from contextlib import asynccontextmanager
 from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime
@@ -78,17 +79,71 @@ class MemoryJobStore:
             raise ValueError("job progress cannot move backwards")
         self._jobs[job_id] = replace(job, progress=progress)
 
-    async def requeue_running(self) -> list[Job]:
-        """Requeue interrupted jobs and return all queued work oldest first."""
+    async def requeue_expired(self, now: datetime) -> None:
+        """Requeue every running job; memory stores have one process."""
         for job_id, job in self._jobs.items():
             if job.status == JobState.RUNNING:
                 self._jobs[job_id] = replace(job, status=JobState.QUEUED)
+
+    async def queued_jobs(self) -> list[Job]:
+        """Return queued jobs oldest first."""
         return deepcopy(
             sorted(
-                (job for job in self._jobs.values() if job.status == JobState.QUEUED),
-                key=lambda job: job.created_at,
+                (j for j in self._jobs.values() if j.status == JobState.QUEUED),
+                key=lambda j: (j.created_at, j.job_id),
             )
         )
+
+    async def claim_next(
+        self, tenant_id: str, now: datetime, can_run: Callable[[Job], bool]
+    ) -> Job | None:
+        """Mark the oldest runnable tenant job as running."""
+        jobs = sorted(
+            (
+                j
+                for j in self._jobs.values()
+                if j.tenant_id == tenant_id and j.status == JobState.QUEUED
+            ),
+            key=lambda j: (j.created_at, j.job_id),
+        )
+        if not jobs or not can_run(jobs[0]):
+            return None
+        claimed = replace(jobs[0], status=JobState.RUNNING)
+        self._jobs[claimed.job_id] = claimed
+        return deepcopy(claimed)
+
+    async def tenant_has_live_lease(self, tenant_id: str, now: datetime) -> bool:
+        """Report that memory jobs do not have leases."""
+        return False
+
+    async def live_lease_expires_at(
+        self, tenant_id: str, now: datetime
+    ) -> datetime | None:
+        """Return no expiry because memory jobs do not have leases."""
+        return None
+
+    @asynccontextmanager
+    async def tenant_lock(self, tenant_id: str) -> AsyncIterator[None]:
+        """Yield without locking the single-process store."""
+        yield
+
+    async def renew_leases(self, now: datetime) -> None:
+        """Keep the memory adapter's no-lease behavior."""
+        return
+
+    async def release_leases(self) -> None:
+        """Keep the memory adapter's no-lease behavior."""
+        return
+
+    async def release_job(self, job_id: str) -> None:
+        """Keep the memory adapter's no-lease behavior."""
+        return
+
+    async def claim_recoverable(
+        self, tenant: str | None, now: datetime
+    ) -> list[ErasureRecord]:
+        """Return all running erase rows for single-process recovery."""
+        return await self.running(tenant)
 
     async def count_jobs(
         self, tenant_ids: Sequence[str], statuses: Sequence[JobState]
