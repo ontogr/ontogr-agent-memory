@@ -164,6 +164,7 @@ class TestRunDoctor:
         monkeypatch.setattr(
             doctor.urllib.request, "urlopen", lambda *_args, **_kwargs: Response()
         )
+
         @asynccontextmanager
         async def healthy_graph():
             class Store:

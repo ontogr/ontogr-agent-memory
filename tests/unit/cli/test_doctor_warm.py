@@ -99,9 +99,7 @@ class TestDoctor:
         monkeypatch.setattr(doctor, "model_cached", failed_probe)
         results = []
         doctor._check_embedding(results)
-        assert results == [
-            ("warn", "embedder", "cache probe failed (OSError)", None)
-        ]
+        assert results == [("warn", "embedder", "cache probe failed (OSError)", None)]
 
 
 class TestWarm:
