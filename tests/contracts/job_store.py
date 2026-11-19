@@ -51,8 +51,10 @@ class JobStoreContract:
         """All record fields survive creation, saving, and reading."""
         job = make_job()
         created, replay = await store.create_job(job)
+        claimed = await store.claim_next(job.tenant_id, T0, lambda _: True)
+        assert claimed == job
         saved = replace(
-            job,
+            claimed,
             status=JobState.FAILED,
             attempts=2,
             result={"nested": ["résultat", {"ok": False}]},
@@ -60,7 +62,7 @@ class JobStoreContract:
             updated_at=T0 + timedelta(seconds=1),
         )
 
-        await store.save_job(saved)
+        assert await store.save_job(saved)
 
         assert (created, replay) == (job, False)
         assert await store.get_job(job.job_id) == saved
@@ -90,8 +92,10 @@ class JobStoreContract:
         """A replay returns the first record, including its latest state."""
         job = make_job()
         await store.create_job(job)
-        done = replace(job, status=JobState.DONE, result={"ok": True})
-        await store.save_job(done)
+        claimed = await store.claim_next(job.tenant_id, T0, lambda _: True)
+        assert claimed == job
+        done = replace(claimed, status=JobState.DONE, result={"ok": True})
+        assert await store.save_job(done)
 
         replay = await store.create_job(replace(job, job_id="j2"))
 
@@ -144,15 +148,17 @@ class JobStoreContract:
         job = make_job()
         await store.create_job(job)
         await store.save_job(replace(job, error={"type": "Error", "message": "x"}))
+        claimed = await store.claim_next(job.tenant_id, T0, lambda _: True)
+        assert claimed is not None
         done = replace(
-            job,
+            claimed,
             status=JobState.DONE,
             attempts=3,
             result={"count": 2},
             updated_at=T0 + timedelta(microseconds=1),
         )
 
-        await store.save_job(done)
+        assert await store.save_job(done)
 
         assert await store.get_job("j1") == done
 
@@ -178,7 +184,9 @@ class JobStoreContract:
         for job in jobs:
             await store.create_job(job)
         for job in jobs[:2]:
-            await store.save_job(replace(job, status=JobState.RUNNING, attempts=1))
+            claimed = await store.claim_next(job.tenant_id, T0, lambda _: True)
+            assert claimed == job
+            await store.save_job(replace(claimed, attempts=1))
 
         await store.requeue_expired(T0)
         recovered = await store.queued_jobs()
