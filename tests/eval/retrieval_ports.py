@@ -21,7 +21,7 @@ class SilentVectors(VectorStore):
             rechecker=inner.rechecker,
         )
         self.inner = inner
-        self.kinds = kinds
+        self.silenced_kinds = kinds
 
     async def search(
         self,
@@ -33,7 +33,7 @@ class SilentVectors(VectorStore):
         min_score: float | None = None,
     ) -> list[Hit]:
         """Return no hits for silenced kinds and delegate other searches."""
-        if kind in self.kinds:
+        if kind in self.silenced_kinds:
             return []
         return await self.inner.search(
             kind, vector, k=k, filters=filters, min_score=min_score

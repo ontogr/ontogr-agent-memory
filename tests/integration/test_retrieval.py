@@ -439,7 +439,7 @@ class _FailingReranker:
 
 class _FailingVectors:
     def __init__(self, vectors) -> None:
-        self.gateway = vectors.gateway
+        self.embedding_gateway = vectors.embedding_gateway
 
     async def search(self, *args, **kwargs):
         raise VectorStoreError("vector search unavailable")
