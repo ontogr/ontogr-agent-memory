@@ -4,8 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
-from collections import deque
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from copy import deepcopy
 from dataclasses import replace
@@ -19,7 +18,7 @@ from ontogr_mem.errors import AgentMemoryError
 from ontogr_mem.observability.ids import accept_trace_id
 from ontogr_mem.observability.redact import redact_text
 from ontogr_mem.relational_store.jobs.errors import UnknownJobOpError
-from ontogr_mem.relational_store.jobs.ports import JobStore
+from ontogr_mem.relational_store.jobs.ports import JobStore, LeaseHolder
 
 
 log = logging.getLogger(__name__)
@@ -57,6 +56,10 @@ class JobRunner:
         clock: Clock,
         *,
         max_attempts: int = 3,
+        heartbeat_seconds: float | None = None,
+        lease_holders: Sequence[LeaseHolder] = (),
+        can_run: Callable[[Job], bool] | None = None,
+        prepare_tenant: Callable[[str], Awaitable[object]] | None = None,
     ) -> None:
         """Configure persistence, operations, time and the attempt limit.
 
@@ -65,6 +68,10 @@ class JobRunner:
             handlers: Operation names and their async handlers.
             clock: Time source for submission and state changes.
             max_attempts: Positive limit including attempts before a restart.
+            heartbeat_seconds: Optional interval for renewing hosted leases.
+            lease_holders: Stores whose leases this runner renews and releases.
+            can_run: Filter for jobs this process can execute.
+            prepare_tenant: Open a tenant runtime before claiming its jobs.
 
         Raises:
             ValueError: If max_attempts is not positive.
@@ -75,11 +82,18 @@ class JobRunner:
         self._handlers = dict(handlers)
         self._clock = clock
         self._max_attempts = max_attempts
-        self._queues: dict[str, deque[str]] = {}
+        self._heartbeat_seconds = heartbeat_seconds
+        self._lease_holders = tuple(lease_holders)
+        self._can_run = can_run or (lambda job: True)
+        self._prepare_tenant = prepare_tenant
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._finished: dict[str, asyncio.Event] = {}
         self._blocked: set[str] = set()
         self._lifecycle = asyncio.Lock()
+        self._orphans: set[str] = set()
+        self._started = False
+        self._stopping = False
+        self._heartbeat_task: asyncio.Task[None] | None = None
 
     async def start(self) -> int:
         """Recover queued and interrupted jobs and return the number enqueued.
@@ -91,10 +105,13 @@ class JobRunner:
         async with self._lifecycle:
             if self._tasks:
                 return 0
-            queued = await self._store.requeue_running()
+            await self.start_heartbeat()
+            self._started = True
             self._blocked.clear()
-            for job in queued:
-                self._enqueue(job)
+            await self._store.requeue_expired(self._clock.now())
+            queued = await self._store.queued_jobs()
+            for tenant_id in dict.fromkeys(job.tenant_id for job in queued):
+                self._start_lane(tenant_id)
             return len(queued)
 
     async def submit(
@@ -147,7 +164,8 @@ class JobRunner:
         async with self._lifecycle:
             job, replayed = await self._store.create_job(candidate)
             if not replayed:
-                self._enqueue(job)
+                self._finished.setdefault(job.job_id, asyncio.Event())
+                self._start_lane(job.tenant_id)
             event = self._finished.get(job.job_id)
         if wait_s > 0 and not job.status.is_terminal:
             if event is not None:
@@ -156,6 +174,8 @@ class JobRunner:
             latest = await self._store.get_job(job.job_id)
             if latest is not None:
                 job = latest
+            if event is not None:
+                self._finished.pop(job.job_id, None)
         return replace(job, replayed=replayed)
 
     async def get(self, job_id: str) -> Job | None:
@@ -174,30 +194,80 @@ class JobRunner:
         close the store or prohibit future submissions.
         """
         async with self._lifecycle:
-            tasks = list(self._tasks.values())
-            for task in tasks:
-                task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
-            self._tasks.clear()
-            self._queues.clear()
+            self._stopping = True
+            try:
+                if self._heartbeat_task is not None:
+                    self._heartbeat_task.cancel()
+                    await asyncio.gather(self._heartbeat_task, return_exceptions=True)
+                    self._heartbeat_task = None
+                tasks = list(self._tasks.values())
+                for task in tasks:
+                    task.cancel()
+                await asyncio.gather(*tasks, return_exceptions=True)
+                self._tasks.clear()
+                if self._heartbeat_seconds is not None:
+                    for holder in self._lease_holders:
+                        await holder.release_leases()
+            finally:
+                self._stopping = False
 
-    def _enqueue(self, job: Job) -> None:
-        self._finished.setdefault(job.job_id, asyncio.Event())
-        if job.tenant_id in self._blocked:
+    async def start_heartbeat(self) -> None:
+        """Start lease renewal and queued-work sweeps once."""
+        if self._heartbeat_seconds is None or self._heartbeat_task is not None:
             return
-        queue = self._queues.setdefault(job.tenant_id, deque())
-        queue.append(job.job_id)
-        if job.tenant_id not in self._tasks:
-            self._tasks[job.tenant_id] = asyncio.create_task(
-                self._run_lane(job.tenant_id), name=f"job-lane:{job.tenant_id}"
+        self._heartbeat_task = asyncio.create_task(
+            self._heartbeat(), name="job-heartbeat"
+        )
+
+    async def _heartbeat(self) -> None:
+        while True:
+            await asyncio.sleep(self._heartbeat_seconds)
+            try:
+                for job_id in tuple(self._orphans):
+                    await self._store.release_job(job_id)
+                    self._orphans.discard(job_id)
+                now = self._clock.now()
+                for holder in self._lease_holders:
+                    await holder.renew_leases(now)
+                if self._started and not self._stopping:
+                    await self._sweep()
+            except Exception:
+                log.exception("job heartbeat failed")
+
+    async def _sweep(self) -> None:
+        await self._store.requeue_expired(self._clock.now())
+        queued = await self._store.queued_jobs()
+        for tenant_id in dict.fromkeys(job.tenant_id for job in queued):
+            if tenant_id not in self._blocked:
+                self._start_lane(tenant_id)
+
+    def _start_lane(self, tenant_id: str) -> None:
+        if tenant_id not in self._tasks and tenant_id not in self._blocked:
+            self._tasks[tenant_id] = asyncio.create_task(
+                self._run_lane(tenant_id), name=f"job-lane:{tenant_id}"
             )
 
     async def _run_lane(self, tenant_id: str) -> None:
-        queue = self._queues[tenant_id]
+        claimed_id: str | None = None
         try:
-            while queue:
-                await self._run_one(queue.popleft())
+            while True:
+                if self._prepare_tenant is not None:
+                    try:
+                        await self._prepare_tenant(tenant_id)
+                    except Exception:
+                        log.exception("tenant preparation failed for %s", tenant_id)
+                        return
+                job = await self._store.claim_next(
+                    tenant_id, self._clock.now(), self._can_run
+                )
+                if job is None:
+                    return
+                claimed_id = job.job_id
+                await self._run_claimed(job)
+                claimed_id = None
         except Exception:
+            if claimed_id is not None:
+                self._orphans.add(claimed_id)
             self._blocked.add(tenant_id)
             log.exception(
                 "job lane for tenant %s stopped after a store failure", tenant_id
@@ -205,14 +275,10 @@ class JobRunner:
         finally:
             # No await separates the empty check from removal, so enqueue cannot
             # append work to a lane that has already decided to exit.
-            self._queues.pop(tenant_id, None)
             self._tasks.pop(tenant_id, None)
 
-    async def _run_one(self, job_id: str) -> None:
-        job = await self._store.get_job(job_id)
-        if job is None or job.status.is_terminal:
-            self._finish(job_id)
-            return
+    async def _run_claimed(self, job: Job) -> None:
+        job_id = job.job_id
         handler = self._handlers.get(job.op)
         if handler is None:
             await self._fail(
