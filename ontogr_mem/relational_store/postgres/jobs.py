@@ -204,15 +204,12 @@ class PostgresJobStore:
             if has_live_lease:
                 return None
             rows = await connection.fetch(
-                "SELECT seq FROM jobs WHERE tenant_id = $1 AND status = 'queued' "
-                "ORDER BY created_at, seq FOR UPDATE",
+                f"SELECT seq, {JOB_COLUMNS} FROM jobs WHERE tenant_id = $1 "
+                "AND status = 'queued' ORDER BY created_at, seq FOR UPDATE",
                 tenant_id,
             )
             for row in rows:
-                job_row = await connection.fetchrow(
-                    f"{_SELECT_JOB} WHERE seq = $1", row["seq"]
-                )
-                job = job_from_row(job_row)
+                job = job_from_row(row)
                 if not can_run(job):
                     continue
                 expiry = to_micros(now) + self._lease_micros
