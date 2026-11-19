@@ -35,7 +35,7 @@ class MemoryServiceHarness:
     principal: Principal
     clock: Clock
     operations: MemoryOperationStore
-    state: MemoryJobStore
+    state: StateStore
 
 
 async def memory_service_harness(
