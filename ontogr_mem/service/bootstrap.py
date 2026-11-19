@@ -3,8 +3,9 @@
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
-from typing import Literal
+from pathlib import Path
 
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ontogr_mem.combined_extraction.settings import ExtractionSettings
@@ -13,8 +14,8 @@ from ontogr_mem.graphstore.protocol import GraphStore
 from ontogr_mem.llm import RoleModels, build_models
 from ontogr_mem.observability import NoOpTracer, Tracer
 from ontogr_mem.ontology.declaration import OntologyDeclaration
+from ontogr_mem.paths import ensure_directory
 from ontogr_mem.relational_store import (
-    MemoryOperationStore,
     OperationStore,
     SqliteOperationStore,
     StateSettings,
@@ -35,11 +36,7 @@ from ontogr_mem.relational_store.sqlite.audit import SqliteAuditLog
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionPolicy
 from ontogr_mem.retrieval.settings import RetrievalSettings
-from ontogr_mem.service.access.audit_sink import (
-    AuditSink,
-    ChainedAuditSink,
-    InMemoryAuditSink,
-)
+from ontogr_mem.service.access.audit_sink import AuditSink, ChainedAuditSink
 from ontogr_mem.service.access.authz import Authorizer
 from ontogr_mem.service.dependencies import ServiceDeps
 from ontogr_mem.service.forget.confirm import ConfirmTokens
@@ -48,6 +45,15 @@ from ontogr_mem.service.limits import CallerRateLimiter
 from ontogr_mem.service.memory_service import MemoryService
 from ontogr_mem.service.runtime import TenantRuntime, build_tenant_runtime
 from ontogr_mem.service.tenants import StoresFactory, TenantRuntimeCache
+from ontogr_mem.store_urls import (
+    DEFAULT_GRAPH_URL,
+    FalkorTarget,
+    Neo4jTarget,
+    PostgresTarget,
+    SqliteTarget,
+    parse_graph_url,
+    parse_state_url,
+)
 from ontogr_mem.temporal.settings import ClosureSettings
 from ontogr_mem.tenant_stores import TenantStores
 from ontogr_mem.vectorstore import Embedder
@@ -61,22 +67,28 @@ class ServiceRuntime:
 
 
 class ServiceSettings(BaseSettings):
-    """Configure the service graph backend.
-
-    Environment variables use the ``MEMORY_SERVICE_`` prefix.
-
-    Attributes:
-        backend: Tenant graph backend. Env: ``MEMORY_SERVICE_BACKEND``.
-    """
+    """Configure the service graph URL."""
 
     model_config = SettingsConfigDict(
-        env_prefix="MEMORY_SERVICE_",
+        env_prefix="MEMORY_GRAPH_",
         env_file=".env",
         extra="ignore",
         frozen=True,
+        validate_by_name=True,
+        validate_by_alias=True,
     )
 
-    backend: Literal["falkordb", "neo4j"] = "falkordb"
+    graph_url: SecretStr = Field(
+        default=SecretStr(DEFAULT_GRAPH_URL),
+        validation_alias="MEMORY_GRAPH_URL",
+    )
+
+    @field_validator("graph_url")
+    @classmethod
+    def validate_graph_url(cls, value: SecretStr) -> SecretStr:
+        """Reject unsupported graph store URLs."""
+        parse_graph_url(value.get_secret_value())
+        return value
 
 
 async def build_service(
@@ -179,7 +191,7 @@ async def build_service(
             operations=operations,
             clock=clock,
             models=models,
-            backend=settings.backend,
+            backend=parse_graph_url(settings.graph_url.get_secret_value()).backend,
             limiter=limiter,
             max_attempts=max_attempts,
             tracer=selected_tracer,
@@ -258,13 +270,21 @@ async def open_service(
 
         selected_stores_factory = stores_factory
         if selected_stores_factory is None:
-            graph_store, selected_stores_factory = _BACKENDS[service_settings.backend]()
+            graph_store, selected_stores_factory = _graph_stores(
+                parse_graph_url(service_settings.graph_url.get_secret_value())
+            )
             resources.push_async_callback(graph_store.close)
             drop_graph = graph_store.erase_tenant
 
-        operations, audit_log, audit_sink = await _STATE_AUDITS[selected_state.backend](
-            selected_state, resources, selected_clock
-        )
+        state_target = parse_state_url(selected_state.url.get_secret_value())
+        if isinstance(state_target, SqliteTarget):
+            operations, audit_log, audit_sink = await _sqlite_audit(
+                state_target, selected_clock
+            )
+        else:
+            operations, audit_log, audit_sink = await _postgres_audit(
+                state_target, selected_clock
+            )
 
         authorizer = Authorizer(audit_sink, selected_clock, tracer=tracer)
         service = await build_service(
@@ -321,38 +341,37 @@ def _graph_stores_factory(
     return store, create_stores
 
 
-def _falkordb_stores() -> tuple[GraphStore, StoresFactory]:
+def _graph_stores(
+    target: FalkorTarget | Neo4jTarget,
+) -> tuple[GraphStore, StoresFactory]:
+    """Build the graph adapter selected by its parsed connection target."""
+    if isinstance(target, FalkorTarget):
+        return _falkordb_stores(target)
+    return _neo4j_stores(target)
+
+
+def _falkordb_stores(target: FalkorTarget) -> tuple[GraphStore, StoresFactory]:
     """Open the FalkorDB adapter with one graph per tenant."""
     from ontogr_mem.graphstore.falkordb import FalkorDBGraphStore
 
-    return _graph_stores_factory(FalkorDBGraphStore(), tenant_keyed=False)
+    return _graph_stores_factory(FalkorDBGraphStore(target=target), tenant_keyed=False)
 
 
-def _neo4j_stores() -> tuple[GraphStore, StoresFactory]:
+def _neo4j_stores(target: Neo4jTarget) -> tuple[GraphStore, StoresFactory]:
     """Open the Neo4j adapter with tenant-keyed graph rows."""
     from ontogr_mem.graphstore.neo4j import Neo4jGraphStore
 
-    return _graph_stores_factory(Neo4jGraphStore(), tenant_keyed=True)
-
-
-_BACKENDS = {
-    "falkordb": _falkordb_stores,
-    "neo4j": _neo4j_stores,
-}
-
-
-async def _memory_audit(
-    settings: StateSettings, resources: AsyncExitStack, clock: Clock
-) -> tuple[OperationStore, AuditLog, AuditSink]:
-    """Keep operation and access audit records in process memory."""
-    return MemoryOperationStore(clock), MemoryAuditLog(clock), InMemoryAuditSink()
+    return _graph_stores_factory(Neo4jGraphStore(target=target), tenant_keyed=True)
 
 
 async def _sqlite_audit(
-    settings: StateSettings, resources: AsyncExitStack, clock: Clock
+    target: SqliteTarget,
+    clock: Clock,
 ) -> tuple[OperationStore, AuditLog, AuditSink]:
     """Share one process-wide SQLite connection for operation and audit rows."""
-    connection = sqlite_shared_connection(settings.sqlite_path)
+    path = Path(target.path).expanduser()
+    ensure_directory(path.parent)
+    connection = sqlite_shared_connection(str(path))
     audit_log = SqliteAuditLog(connection, clock)
     return (
         SqliteOperationStore(connection, clock),
@@ -362,19 +381,13 @@ async def _sqlite_audit(
 
 
 async def _postgres_audit(
-    settings: StateSettings, resources: AsyncExitStack, clock: Clock
+    target: PostgresTarget,
+    clock: Clock,
 ) -> tuple[OperationStore, AuditLog, AuditSink]:
     """Share one process-wide pool for operation and chained audit rows."""
-    pool = await pg_pool(settings.dsn)
+    pool = await pg_pool(target.dsn.get_secret_value())
     await ensure_postgres_schema(pool)
     operations = PostgresOperationStore(pool, clock)
     await operations.mark_interrupted_runs()
     audit_log = PostgresAuditLog(pool, clock)
     return operations, audit_log, ChainedAuditSink(audit_log)
-
-
-_STATE_AUDITS = {
-    "memory": _memory_audit,
-    "sqlite": _sqlite_audit,
-    "postgres": _postgres_audit,
-}

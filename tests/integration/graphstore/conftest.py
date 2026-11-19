@@ -6,9 +6,10 @@ import pytest
 
 from ontogr_mem.graphstore.falkordb import FalkorDBGraphStore
 from ontogr_mem.graphstore.neo4j import Neo4jGraphStore
-from tests.support.falkordb import falkordb_test_settings
+from ontogr_mem.store_urls import parse_graph_url
+from tests.support.falkordb import falkordb_test_settings, falkordb_test_url
 from tests.support.graph_schema import TEST_PART
-from tests.support.neo4j import neo4j_test_settings
+from tests.support.neo4j import neo4j_test_settings, neo4j_test_url
 from tests.support.tenants import new_tenant
 
 
@@ -28,7 +29,9 @@ async def falkordb_store_factory() -> AsyncGenerator[
     made: list[FalkorDBGraphStore] = []
 
     async def make(**resilience: float) -> FalkorDBGraphStore:
-        store = FalkorDBGraphStore(falkordb_test_settings(**resilience))
+        store = FalkorDBGraphStore(
+            parse_graph_url(falkordb_test_url()), falkordb_test_settings(**resilience)
+        )
         made.append(store)
         return store
 
@@ -41,7 +44,8 @@ async def falkordb_store_factory() -> AsyncGenerator[
 async def falkordb_unreachable_store() -> AsyncGenerator[FalkorDBGraphStore]:
     """A store pointed at a port nothing listens on."""
     store = FalkorDBGraphStore(
-        falkordb_test_settings(port=1, max_attempts=2, retry_delay=0.01)
+        parse_graph_url(falkordb_test_url(port=1)),
+        falkordb_test_settings(max_attempts=2, retry_delay=0.01),
     )
     yield store
     await store.close()
@@ -63,7 +67,9 @@ async def neo4j_store_factory() -> AsyncGenerator[
     made: list[Neo4jGraphStore] = []
 
     async def make(**resilience: float) -> Neo4jGraphStore:
-        store = Neo4jGraphStore(neo4j_test_settings(**resilience))
+        store = Neo4jGraphStore(
+            parse_graph_url(neo4j_test_url()), neo4j_test_settings(**resilience)
+        )
         made.append(store)
         return store
 
@@ -76,7 +82,8 @@ async def neo4j_store_factory() -> AsyncGenerator[
 async def neo4j_unreachable_store() -> AsyncGenerator[Neo4jGraphStore]:
     """A store pointed at a port nothing listens on."""
     store = Neo4jGraphStore(
-        neo4j_test_settings(uri="bolt://localhost:1", max_attempts=2, retry_delay=0.01)
+        parse_graph_url(neo4j_test_url(uri="bolt://localhost:1")),
+        neo4j_test_settings(max_attempts=2, retry_delay=0.01),
     )
     yield store
     await store.close()

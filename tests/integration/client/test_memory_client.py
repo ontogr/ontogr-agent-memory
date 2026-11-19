@@ -1,8 +1,8 @@
 """Integration tests for the Memory client on the compose FalkorDB service.
 
-Each test opens a client on an isolated tenant with in-memory state and scripted
-models, and erases the tenant from FalkorDB afterwards. The tests fail when the
-service is unreachable at MEMORY_FALKORDB_HOST and MEMORY_FALKORDB_PORT.
+Each test opens a client on an isolated tenant with SQLite state and scripted
+models, and erases the tenant from FalkorDB afterwards. The graph URL comes
+from ``falkordb_test_url()``; the tests fail when that service is unreachable.
 """
 
 import asyncio
@@ -37,7 +37,6 @@ from ontogr_mem.data_models.jobs import JobState
 from ontogr_mem.graphstore.falkordb import FalkorDBGraphStore
 from ontogr_mem.llm import LLMConfig, ModelRole, RoleModels, build_models
 from ontogr_mem.relational_store.config import StateSettings
-from ontogr_mem.relational_store.jobs.errors import EphemeralStateError
 from ontogr_mem.service.bootstrap import ServiceSettings
 from ontogr_mem.service.contracts import ForgetMode, HostFact
 from ontogr_mem.service.errors import (
@@ -49,7 +48,7 @@ from ontogr_mem.service.errors import (
 )
 from ontogr_mem.service.limits import MAX_CONTENT_BYTES
 from tests.support.embedder import MockEmbedder
-from tests.support.falkordb import falkordb_test_settings
+from tests.support.falkordb import falkordb_test_url
 from tests.support.graph_backend import GraphBackend
 from tests.support.scripted_model import (
     ScriptedCall,
@@ -64,9 +63,7 @@ async def falkordb_environment(
     monkeypatch: pytest.MonkeyPatch, falkordb_store: FalkorDBGraphStore
 ) -> AsyncGenerator[None]:
     """Point the service settings at the compose FalkorDB for each test."""
-    settings = falkordb_test_settings()
-    monkeypatch.setenv("MEMORY_FALKORDB_HOST", settings.host)
-    monkeypatch.setenv("MEMORY_FALKORDB_PORT", str(settings.port))
+    monkeypatch.setenv("MEMORY_GRAPH_URL", falkordb_test_url())
     yield
 
 
@@ -74,7 +71,7 @@ async def falkordb_environment(
 async def open_memory(
     tenant: str, models: RoleModels | None = None
 ) -> AsyncGenerator[Memory]:
-    """Open a Memory client on FalkorDB with ephemeral state.
+    """Open a Memory client on FalkorDB with durable SQLite state.
 
     Args:
         tenant: Tenant the client writes to and reads from.
@@ -83,10 +80,8 @@ async def open_memory(
     """
     async with Memory.open(
         tenant=tenant,
-        service_settings=ServiceSettings(backend="falkordb", _env_file=None),
-        state_settings=StateSettings(
-            backend="memory", allow_ephemeral=True, _env_file=None
-        ),
+        service_settings=ServiceSettings(graph_url=falkordb_test_url(), _env_file=None),
+        state_settings=StateSettings(_env_file=None),
         models=scripted_role_models() if models is None else models,
         embedder=MockEmbedder(),
     ) as memory:
@@ -156,15 +151,14 @@ def open_default_memory(
 
     Args:
         tenant: Tenant the client writes to and reads from.
-        state_settings: State settings. Defaults to ephemeral in-memory state.
+        state_settings: State settings. Defaults to the SQLite URL configured
+            for the test through the per-test data directory.
     """
     if state_settings is None:
-        state_settings = StateSettings(
-            backend="memory", allow_ephemeral=True, _env_file=None
-        )
+        state_settings = StateSettings(_env_file=None)
     return Memory.open(
         tenant=tenant,
-        service_settings=ServiceSettings(backend="falkordb", _env_file=None),
+        service_settings=ServiceSettings(graph_url=falkordb_test_url(), _env_file=None),
         state_settings=state_settings,
         llm_config=LLMConfig.model_construct(),
     )
@@ -822,10 +816,10 @@ class TestMemoryClient:
         try:
             async with Memory.open(
                 tenant=tenant,
-                service_settings=ServiceSettings(backend="falkordb", _env_file=None),
-                state_settings=StateSettings(
-                    backend="memory", allow_ephemeral=True, _env_file=None
+                service_settings=ServiceSettings(
+                    graph_url=falkordb_test_url(), _env_file=None
                 ),
+                state_settings=StateSettings(_env_file=None),
                 models=models,
                 embedder=embedder,
             ) as memory:
@@ -917,27 +911,6 @@ class TestMemoryClient:
                 async with open_default_memory(tenant) as memory:
                     await memory.write_fact("Ana", "works_at", "Acme", wait_seconds=10)
                     raise DefaultBodyFailureError("body failed")
-
-            assert fake_embedding_client.close_count == 1
-        finally:
-            await falkordb_store.erase_tenant(tenant)
-
-    async def test_default_open_closes_the_embedder_when_startup_fails(
-        self,
-        falkordb_store: FalkorDBGraphStore,
-        fake_embedding_client: FakeEmbeddingClient,
-    ):
-        """A service that fails to start raises and still closes the embedder."""
-        tenant = new_tenant()
-        try:
-            with pytest.raises(EphemeralStateError):
-                async with open_default_memory(
-                    tenant,
-                    state_settings=StateSettings(
-                        backend="memory", allow_ephemeral=False, _env_file=None
-                    ),
-                ):
-                    pass
 
             assert fake_embedding_client.close_count == 1
         finally:

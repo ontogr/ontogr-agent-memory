@@ -13,6 +13,7 @@ from ontogr_mem.cli import main
 from ontogr_mem.cli.mcp import run_mcp
 from ontogr_mem.errors import MissingExtraError
 from ontogr_mem.mcp_server.settings import McpSettings
+from ontogr_mem.store_urls import ExplicitTenantError
 from tests.support.mcp_memory import FakeMemoryService, build_memory
 
 
@@ -103,6 +104,33 @@ def _settings(**values) -> McpSettings:
 
 class TestRunMcp:
     """Behavior of the runner that serves memory over MCP."""
+
+    async def test_remote_graph_requires_explicit_tenant_before_open(
+        self, harness, monkeypatch
+    ):
+        """A remote graph cannot use the implicit default tenant."""
+        monkeypatch.setenv("MEMORY_GRAPH_URL", "redis://graph.example:6379")
+
+        with pytest.raises(ExplicitTenantError, match="MEMORY_MCP_TENANT"):
+            await run_mcp(_settings())
+
+        assert harness.events == []
+
+    async def test_loopback_graph_allows_implicit_tenant(self, harness, monkeypatch):
+        """The implicit default tenant remains valid for a loopback graph."""
+        monkeypatch.setenv("MEMORY_GRAPH_URL", "redis://localhost:6379")
+
+        await run_mcp(_settings())
+
+        assert harness.tenants == ["default"]
+
+    async def test_explicit_tenant_allows_remote_graph(self, harness, monkeypatch):
+        """An explicit tenant allows a remote graph connection."""
+        monkeypatch.setenv("MEMORY_GRAPH_URL", "redis://graph.example:6379")
+
+        await run_mcp(_settings(tenant="acme"))
+
+        assert harness.tenants == ["acme"]
 
     async def test_stdio_serves_without_banner_and_drains_before_close(self, harness):
         """Stdio runs with no banner and writes finish before memory closes."""
@@ -208,9 +236,9 @@ class TestMcpCommand:
 
     @pytest.fixture(autouse=True)
     def isolated_environment(self, monkeypatch, tmp_path):
-        """Clear MEMORY_MCP_ variables and the banner variable after each test."""
+        """Clear MCP and graph URL variables and the banner variable after each test."""
         for name in list(os.environ):
-            if name.startswith("MEMORY_MCP_"):
+            if name.startswith("MEMORY_MCP_") or name == "MEMORY_GRAPH_URL":
                 monkeypatch.delenv(name)
         # An empty directory keeps a developer dotenv file out of the settings.
         monkeypatch.chdir(tmp_path)

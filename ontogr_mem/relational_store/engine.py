@@ -22,6 +22,8 @@ _PRAGMAS = (
     "PRAGMA foreign_keys = ON",
 )
 
+_shared_sqlite_connections: dict[str, sqlite3.Connection] = {}
+
 
 def open_sqlite_connection(path: str, *, autocommit: bool) -> sqlite3.Connection:
     """Open one SQLite connection with the store's discipline applied.
@@ -70,7 +72,21 @@ def sqlite_shared_connection(path: str) -> sqlite3.Connection:
         connection.close()
         sqlite_shared_connection.cache_clear()
         raise
+    _shared_sqlite_connections[path] = connection
     return connection
+
+
+def close_shared_sqlite_connections() -> None:
+    """Close and drop every cached shared SQLite connection.
+
+    Production callers keep the process-wide connections for their lifetime.
+    Test suites that point the data directory at a fresh path per test use this
+    to release file handles and stale cache entries between tests.
+    """
+    for connection in tuple(_shared_sqlite_connections.values()):
+        connection.close()
+    _shared_sqlite_connections.clear()
+    sqlite_shared_connection.cache_clear()
 
 
 _pg_pools: dict[str, "asyncpg.Pool"] = {}

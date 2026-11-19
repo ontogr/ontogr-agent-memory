@@ -1,16 +1,12 @@
 """Operation kinds, outcomes, records and usage summaries."""
 
-import re
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
-from typing import Final
 
 from ontogr_mem.data_models.tenant import validate_tenant_id
 from ontogr_mem.data_models.usage import OperationUsage
-
-
-MINTED_KEY_PATTERN: Final = re.compile(r"mk_[A-Za-z0-9_-]+")
+from ontogr_mem.observability.redact import redact_text
 
 
 class OperationKind(StrEnum):
@@ -109,4 +105,4 @@ def summarise_error(error: BaseException) -> tuple[str, str]:
     """
     lines = str(error).splitlines()
     first_line = lines[0].strip() if lines else ""
-    return type(error).__name__, MINTED_KEY_PATTERN.sub("mk_***", first_line)[:200]
+    return type(error).__name__, redact_text(first_line)[:200]

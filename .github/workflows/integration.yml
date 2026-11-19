@@ -116,11 +116,6 @@ jobs:
       UV_PYTHON: "3.12"
       # Throwaway values for the databases that tests/integration/compose.yaml
       # starts on this runner. They are not secrets and are not used elsewhere.
-      MEMORY_FALKORDB_HOST: localhost
-      MEMORY_FALKORDB_PORT: "16379"
-      MEMORY_NEO4J_URI: bolt://localhost:17687
-      MEMORY_NEO4J_USERNAME: neo4j
-      MEMORY_NEO4J_PASSWORD: memorytest123
       MEMORY_PGVECTOR_DSN: postgresql://memory:memorytest123@localhost:15432/memory
       SERVICES: ${{ matrix.suite.services }}
       INTEGRATION_PATHS: ${{ matrix.suite.paths }}

@@ -1,6 +1,6 @@
 """Settings for the FalkorDB graph store."""
 
-from pydantic import Field, SecretStr
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ontogr_mem.graphstore.config import ResilienceSettings
@@ -22,11 +22,6 @@ class FalkorDBSettings(BaseSettings):
         frozen=True,
     )
 
-    host: str = "localhost"
-    port: int = Field(default=6379, ge=1, le=65535)
-    username: str | None = None
-    password: SecretStr | None = None
-    tls: bool = False
     max_connections: int = Field(default=16, ge=1)
     pool_timeout: float = Field(default=30.0, gt=0)
     socket_connect_timeout: float = Field(default=5.0, gt=0)

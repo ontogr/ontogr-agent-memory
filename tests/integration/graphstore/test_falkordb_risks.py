@@ -1,6 +1,7 @@
 """Server risks of FalkorDB that the adapter must survive."""
 
 import asyncio
+from dataclasses import replace
 
 import pytest
 
@@ -13,7 +14,8 @@ from ontogr_mem.graphstore import (
     QueryTimeoutError,
 )
 from ontogr_mem.graphstore.falkordb import FalkorDBGraphStore
-from tests.support.falkordb import falkordb_test_settings
+from ontogr_mem.store_urls import parse_graph_url
+from tests.support.falkordb import falkordb_test_settings, falkordb_test_url
 from tests.support.graph_schema import TEST_PART
 from tests.support.proxy import TcpProxy
 from tests.support.tenants import new_tenant
@@ -102,16 +104,17 @@ class TestFalkorDBRisks:
         self, falkordb_store
     ):
         """Five failures open the breaker; it closes again once the server is back."""
-        direct = falkordb_test_settings()
-        proxy = TcpProxy(direct.host, direct.port)
+        target = parse_graph_url(falkordb_test_url())
+        proxy = TcpProxy(target.host, target.port)
         await proxy.start()
         store = FalkorDBGraphStore(
+            replace(target, host="127.0.0.1", port=proxy.port),
             falkordb_test_settings(
                 port=proxy.port,
                 max_attempts=1,
                 breaker_failure_threshold=5,
                 breaker_recovery_s=0.5,
-            )
+            ),
         )
         tenant = new_tenant()
         handle = await store.open(tenant, [TEST_PART])

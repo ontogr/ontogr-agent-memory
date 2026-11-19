@@ -1,9 +1,11 @@
-"""Adds test markers by directory."""
+"""Adds test markers and isolates per-user data paths."""
 
 from collections.abc import Iterator
 
 import pytest
 from pydantic_ai import models
+
+from ontogr_mem.relational_store.engine import close_shared_sqlite_connections
 
 
 def pytest_collection_modifyitems(
@@ -36,3 +38,11 @@ def prohibit_model_network() -> Iterator[None]:
     """Require tests to opt in explicitly before contacting a model provider."""
     with models.override_allow_model_requests(False):
         yield
+
+
+@pytest.fixture(autouse=True)
+def isolate_data_directory(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Iterator[None]:
+    """Keep each test's default durable files inside its temporary directory."""
+    monkeypatch.setenv("MEMORY_DATA_DIR", str(tmp_path / "data"))
+    yield
+    close_shared_sqlite_connections()

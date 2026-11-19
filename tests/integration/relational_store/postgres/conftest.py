@@ -3,14 +3,13 @@
 import pytest
 
 from ontogr_mem._extras import import_extra
-from ontogr_mem.relational_store.config import StateSettings
 from ontogr_mem.relational_store.engine import pg_connection
 from ontogr_mem.relational_store.schema.runner import (
     ensure_postgres_schema,
 )
 
 
-DSN = StateSettings(dsn="postgresql://memory:memorytest123@127.0.0.1:15433/memory").dsn
+DSN = "postgresql://memory:memorytest123@127.0.0.1:15433/memory"
 DATA_TABLES = ("jobs", "erasures", "audit_rows", "operation_rows")
 
 

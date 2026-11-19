@@ -11,7 +11,7 @@ from ontogr_mem.ontology.declaration import (
     RelationDeclaration,
 )
 from ontogr_mem.service.errors import InvalidArgumentError
-from tests.support.falkordb import falkordb_test_settings
+from tests.support.falkordb import falkordb_test_url
 from tests.support.tenants import new_tenant
 from tests.support.text_writes import (
     ScriptedEntity,
@@ -35,9 +35,7 @@ async def falkordb_environment(
     monkeypatch: pytest.MonkeyPatch, falkordb_store: FalkorDBGraphStore
 ) -> AsyncGenerator[None]:
     """Point Memory settings at the live FalkorDB test service."""
-    settings = falkordb_test_settings()
-    monkeypatch.setenv("MEMORY_FALKORDB_HOST", settings.host)
-    monkeypatch.setenv("MEMORY_FALKORDB_PORT", str(settings.port))
+    monkeypatch.setenv("MEMORY_GRAPH_URL", falkordb_test_url())
     yield
 
 

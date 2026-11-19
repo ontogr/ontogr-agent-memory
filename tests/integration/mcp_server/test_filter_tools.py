@@ -11,7 +11,7 @@ from tests.integration.mcp_server.test_server import (
     _write_and_wait,
     open_client,
 )
-from tests.support.falkordb import falkordb_test_settings
+from tests.support.falkordb import falkordb_test_url
 from tests.support.tenants import new_tenant
 
 
@@ -20,9 +20,7 @@ async def falkordb_environment(
     monkeypatch: pytest.MonkeyPatch, falkordb_store: FalkorDBGraphStore
 ) -> AsyncGenerator[None]:
     """Point the service settings at the compose FalkorDB for each test."""
-    settings = falkordb_test_settings()
-    monkeypatch.setenv("MEMORY_FALKORDB_HOST", settings.host)
-    monkeypatch.setenv("MEMORY_FALKORDB_PORT", str(settings.port))
+    monkeypatch.setenv("MEMORY_GRAPH_URL", falkordb_test_url())
     yield
 
 

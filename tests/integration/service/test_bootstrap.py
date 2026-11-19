@@ -21,7 +21,16 @@ from ontogr_mem.tenant_stores import TenantStores
 from ontogr_mem.vectorstore import Embedder
 from tests.support.clock import FixedClock
 from tests.support.embedder import MockEmbedder
+from tests.support.falkordb import falkordb_test_url
 from tests.support.graph_backend import GraphBackend
+from tests.support.neo4j import neo4j_test_url
+
+
+def _backend_url(backend: GraphBackend) -> str:
+    """Return the test graph URL that matches a live backend's name."""
+    if backend.name == "falkordb":
+        return falkordb_test_url()
+    return neo4j_test_url()
 
 
 class TestBuildService:
@@ -32,7 +41,9 @@ class TestBuildService:
     ):
         """Status and tracing use the explicitly supplied dependencies."""
         tracer = InMemoryTracer()
-        settings = ServiceSettings(backend=graph_backend.name, _env_file=None)
+        settings = ServiceSettings(
+            graph_url=_backend_url(graph_backend), _env_file=None
+        )
         service, operations = await _build_service(
             graph_backend, settings, tracer=tracer
         )
@@ -78,7 +89,7 @@ class TestBuildService:
 
         service, _ = await _build_service(
             graph_backend,
-            ServiceSettings(backend=graph_backend.name, _env_file=None),
+            ServiceSettings(graph_url=_backend_url(graph_backend), _env_file=None),
             stores_factory=stores_factory,
         )
         principal = Principal(

@@ -30,6 +30,7 @@ from ontogr_mem.graphstore.types import (
     NodeSelector,
     WriteResult,
 )
+from ontogr_mem.store_urls import Neo4jTarget
 
 
 class Neo4jGraphStore:
@@ -37,12 +38,16 @@ class Neo4jGraphStore:
 
     def __init__(
         self,
+        target: Neo4jTarget,
         settings: Neo4jSettings | None = None,
         client: Neo4jClient | None = None,
     ) -> None:
         """Create a store; the connection opens on first use."""
         self.settings = settings or Neo4jSettings()
-        self._client = client or Neo4jClient(self.settings)
+        self.target = target
+        if not isinstance(self.target, Neo4jTarget):
+            raise ValueError("Neo4jGraphStore requires a Neo4j URL")
+        self._client = client or Neo4jClient(self.settings, self.target)
         self._runner = self._client.runner
         self._tenants = TenantGraphs(self._runner)
 

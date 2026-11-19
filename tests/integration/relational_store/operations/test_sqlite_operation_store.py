@@ -81,6 +81,30 @@ class TestSqliteOperationStore(OperationStoreContract):
         finally:
             reopened_connection.close()
 
+    async def test_failed_operation_error_hides_url_credentials(
+        self, operation_store: OperationStore
+    ) -> None:
+        """Stored operation errors do not retain credentials from URLs."""
+        operation_id = await operation_store.start(
+            kind=OperationKind.WRITE,
+            principal_id="owner",
+            tenant="acme",
+        )
+
+        await operation_store.finish(
+            operation_id,
+            outcome=OperationOutcome.FAILED,
+            error=RuntimeError(
+                "could not connect to postgresql://user:secret-pass@db/app"
+            ),
+        )
+
+        operation = await operation_store.get(operation_id)
+        assert operation is not None
+        assert operation.error is not None
+        assert "secret-pass" not in operation.error
+        assert "***@db" in operation.error
+
     async def test_closed_connection_raises_store_error_with_sqlite_cause(
         self, tmp_path, clock: Clock
     ) -> None:

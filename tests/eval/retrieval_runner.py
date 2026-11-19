@@ -22,10 +22,11 @@ from ontogr_mem.retrieval import (
     Retriever,
 )
 from ontogr_mem.retrieval.text import terms
+from ontogr_mem.store_urls import parse_graph_url
 from ontogr_mem.vectorstore import VectorKind
 from tests.eval.retrieval_labelled import LABELLED, LabelledQuery
 from tests.eval.retrieval_ports import SilentKeywords, SilentVectors
-from tests.support.falkordb import falkordb_test_settings
+from tests.support.falkordb import falkordb_test_settings, falkordb_test_url
 from tests.support.graph_backend import GraphBackend
 from tests.support.retrieval_backends import graph_retrieval_backend
 from tests.support.retrieval_world import RetrievalWorld, build_world
@@ -243,7 +244,9 @@ async def run_ablation(
 
 async def main() -> None:
     """Print the report as JSON and a compact non-overview fact table."""
-    store = FalkorDBGraphStore(falkordb_test_settings())
+    store = FalkorDBGraphStore(
+        parse_graph_url(falkordb_test_url()), falkordb_test_settings()
+    )
     backend = GraphBackend(store, "falkordb")
     try:
         world = await build_world(await graph_retrieval_backend(backend))
