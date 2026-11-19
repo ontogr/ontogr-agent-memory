@@ -20,7 +20,7 @@ from ontogr_mem.vectorstore import (
 )
 from ontogr_mem.vectorstore.fact_vectors import FactVectorObserver
 from ontogr_mem.vectorstore.memory import InMemoryBackend
-from tests.support.embedder import MockEmbedder, RecordingEmbedder, gateway
+from tests.support.embedder import MockEmbedder, RecordingEmbedder, embedder_source
 from tests.support.vectors import ORTHOGONAL, A
 
 
@@ -93,7 +93,7 @@ def fact(
 
 async def ready_store(embedder: MockEmbedder) -> VectorStore:
     """Return a store that is ready to write."""
-    store = VectorStore(InMemoryBackend(), gateway(embedder))
+    store = VectorStore(InMemoryBackend(), embedder_source(embedder))
     await store.ensure_ready()
     return store
 

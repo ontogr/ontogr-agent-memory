@@ -46,7 +46,7 @@ from ontogr_mem.vectorstore.graph.neo4j import Neo4jVectorBackend
 from ontogr_mem.vectorstore.memory import InMemoryBackend
 from ontogr_mem.vectorstore.text import edge_text
 from tests.support.clock import FixedClock
-from tests.support.embedder import MockEmbedder, gateway
+from tests.support.embedder import MockEmbedder, embedder_source
 from tests.support.episodes import T0
 from tests.support.extraction import entity_models
 from tests.support.facts import fact, fact_models, reply
@@ -137,9 +137,9 @@ async def _stack(backend: GraphBackend) -> WriterStack:
     )
 
     vector_embedder = SelectiveFailureEmbedder()
-    vectors = VectorStore(vector_backend, gateway(vector_embedder))
+    vectors = VectorStore(vector_backend, embedder_source(vector_embedder))
     await vectors.ensure_ready()
-    resolver_vectors = VectorStore(InMemoryBackend(), gateway(MockEmbedder()))
+    resolver_vectors = VectorStore(InMemoryBackend(), embedder_source(MockEmbedder()))
     await resolver_vectors.ensure_ready()
     resolver = EntityResolver(
         resolver_store,
@@ -309,14 +309,14 @@ class WriterRun:
     handed_off: list[Episode]
 
 
-def _pipeline(
+async def _pipeline(
     stack: WriterStack,
 ) -> WriterRun:
     """Build the writer hooks and the ingestion hand-off."""
     writer = VectorWriter(stack.vectors)
     observer = FactVectorObserver(writer)
     handed_off: list[Episode] = []
-    embedder = stack.vectors.gateway.embedder
+    embedder = (await stack.vectors.embedding_gateway()).embedder
     assert isinstance(embedder, SelectiveFailureEmbedder)
 
     async def handoff(episodes: Sequence[Episode]) -> None:
@@ -417,7 +417,7 @@ class TestVectorWriters:
         self, stack: WriterStack
     ):
         """Search history after versioning and repair a post-commit embed failure."""
-        run = _pipeline(stack)
+        run = await _pipeline(stack)
         first_pair = await _ingest_and_commit(
             stack,
             run.pipeline,

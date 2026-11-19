@@ -24,10 +24,10 @@ from ontogr_mem.ontology.stamp import stamp_types
 from ontogr_mem.resolution import EntityResolver, ResolutionPolicy
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.temporal import TemporalEngine, from_type_view
-from ontogr_mem.vectorstore import EmbeddingGateway, VectorStore
+from ontogr_mem.vectorstore import VectorStore
 from ontogr_mem.vectorstore.memory import InMemoryBackend
 from tests.support.clock import FixedClock
-from tests.support.embedder import MockEmbedder
+from tests.support.embedder import MockEmbedder, embedder_source
 from tests.support.episodes import graph_harness
 from tests.support.facts import fact, fact_models, reply
 from tests.support.ontology import base, cs, load_catalog
@@ -175,7 +175,7 @@ class TemporalStack:
 async def temporal_stack(store, handle, keyed: bool) -> TemporalStack:
     """Wire the components on one opened tenant."""
     runner = store.runner(handle)
-    vectors = VectorStore(InMemoryBackend(), EmbeddingGateway(MockEmbedder()))
+    vectors = VectorStore(InMemoryBackend(), embedder_source(MockEmbedder()))
     await vectors.ensure_ready()
     resolver = EntityResolver(
         GraphResolverStore(runner, tenant_keyed=keyed),

@@ -43,9 +43,9 @@ class _Gateway:
 class _Vectors:
     """Empty vector searches with a ready embedding gateway."""
 
-    def __init__(self) -> None:
-        """Bind the fixed gateway."""
-        self.gateway = _Gateway()
+    async def embedding_gateway(self):
+        """Return the fixed gateway."""
+        return _Gateway()
 
     async def search(self, kind, embedding, *, k, filters=None, min_score=None):
         """Return no hits."""

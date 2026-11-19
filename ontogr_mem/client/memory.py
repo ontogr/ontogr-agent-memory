@@ -1,18 +1,23 @@
 """The async Memory client for one Tenant."""
 
+import logging
 from collections.abc import AsyncGenerator, Sequence
 from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontextmanager
 from datetime import datetime
-from typing import Any, Literal
+from pathlib import Path
+from typing import Any, Literal, Protocol
 
 from ontogr_mem.data_models import Role
 from ontogr_mem.data_models.facts import Modality
 from ontogr_mem.data_models.tenant import validate_tenant_id
+from ontogr_mem.errors import StoreInUseError
 from ontogr_mem.llm.config import LLMConfig
 from ontogr_mem.llm.models import RoleModels, build_models
+from ontogr_mem.llm.roles import ModelRole
 from ontogr_mem.ontology.loader import OntologySource, load_ontology
 from ontogr_mem.relational_store.config import StateSettings
-from ontogr_mem.requirements import check_requirements
+from ontogr_mem.requirements import TEXT_WRITE_ROLES, check_requirements
+from ontogr_mem.server.lock import ServerLock
 from ontogr_mem.service.bootstrap import ServiceSettings, open_service
 from ontogr_mem.service.contracts import (
     AddMemory,
@@ -36,9 +41,8 @@ from ontogr_mem.service.contracts import (
     WriteReceipt,
     validate_request,
 )
-from ontogr_mem.service.memory_service import MemoryService
 from ontogr_mem.service.principal import Grant, Principal
-from ontogr_mem.store_urls import parse_graph_url, parse_state_url
+from ontogr_mem.store_urls import SqliteTarget, parse_graph_url, parse_state_url
 from ontogr_mem.temporal.settings import ClosureSettings
 from ontogr_mem.vectorstore.builtin import (
     EndpointEmbedder,
@@ -47,6 +51,55 @@ from ontogr_mem.vectorstore.builtin import (
 )
 from ontogr_mem.vectorstore.builtin.settings import EmbeddingSettings
 from ontogr_mem.vectorstore.embedder import Embedder
+from ontogr_mem.vectorstore.source import EmbedderSource
+
+
+class VerbService(Protocol):
+    """Async service operations used by the public Memory client."""
+
+    async def add_memory(
+        self, principal: Principal, request: AddMemory
+    ) -> WriteReceipt:
+        """Add memory and return its write receipt."""
+
+    async def search_memory(
+        self, principal: Principal, request: SearchMemory
+    ) -> MemoryContext:
+        """Search memory for relevant context."""
+
+    async def get_entity(self, principal: Principal, request: GetEntity) -> EntityView:
+        """Return one entity view."""
+
+    async def list_entities(
+        self, principal: Principal, request: ListEntities
+    ) -> EntityPage:
+        """List active entities for one tenant."""
+
+    async def get_ontology(
+        self, principal: Principal, request: GetOntology
+    ) -> OntologyView:
+        """Return the ontology vocabulary for one tenant."""
+
+    async def stale_episodes(
+        self, principal: Principal, request: ListStaleEpisodes
+    ) -> StaleEpisodePage:
+        """List episodes that need extraction under the current ontology."""
+
+    async def get_job(self, principal: Principal, job_id: str) -> JobView:
+        """Return the status of one write job."""
+
+    async def invalidate(
+        self, principal: Principal, request: InvalidateMemory
+    ) -> WriteReceipt:
+        """Invalidate memory and return its write receipt."""
+
+    async def forget_memory(
+        self, principal: Principal, request: ForgetMemory
+    ) -> ForgetResult:
+        """Forget memory and return the outcome."""
+
+    async def drain(self) -> None:
+        """Wait for pending writes to finish."""
 
 
 class Memory:
@@ -62,7 +115,7 @@ class Memory:
     """
 
     def __init__(
-        self, service: MemoryService, *, tenant: str, models: RoleModels
+        self, service: VerbService, *, tenant: str, models: RoleModels
     ) -> None:
         """Bind an already started service without taking ownership.
 
@@ -140,28 +193,45 @@ class Memory:
                     resources.push_async_callback(selected_models.aclose)
                 selected_service_settings = service_settings or ServiceSettings()
                 selected_state_settings = state_settings or StateSettings()
+                state_target = parse_state_url(
+                    selected_state_settings.url.get_secret_value()
+                )
+                if isinstance(state_target, SqliteTarget):
+                    store_lock = ServerLock(Path(f"{state_target.path}.lock"))
+                    try:
+                        store_lock.acquire()
+                    except OSError as error:
+                        raise StoreInUseError(
+                            "SQLite store is already in use; use Memory.connect"
+                        ) from error
+                    resources.callback(store_lock.release)
                 embedding_settings = EmbeddingSettings() if embedder is None else None
                 check_requirements(
                     models=selected_models,
                     graph=parse_graph_url(
                         selected_service_settings.graph_url.get_secret_value()
                     ),
-                    state=parse_state_url(
-                        selected_state_settings.url.get_secret_value()
-                    ),
-                    embedding=embedding_settings,
+                    state=state_target,
+                    embedding=None,
                 ).raise_for_missing()
-                selected_embedder = embedder
-                if selected_embedder is None:
-                    selected_embedder = await select_embedder(embedding_settings)
-                    if isinstance(selected_embedder, (EndpointEmbedder, LocalEmbedder)):
-                        resources.push_async_callback(selected_embedder.aclose)
+
+                async def load_embedder() -> Embedder:
+                    selected_embedder = embedder
+                    if selected_embedder is None:
+                        selected_embedder = await select_embedder(embedding_settings)
+                        if isinstance(
+                            selected_embedder, (EndpointEmbedder, LocalEmbedder)
+                        ):
+                            resources.push_async_callback(selected_embedder.aclose)
+                    return selected_embedder
+
+                embedder_source = EmbedderSource(load_embedder)
                 runtime = await resources.enter_async_context(
                     open_service(
                         selected_service_settings,
                         state_settings=selected_state_settings,
                         models=selected_models,
-                        embedder=selected_embedder,
+                        embedder=embedder_source,
                         closure_settings=ClosureSettings(),
                         ontology=declaration,
                         ontology_tenant=selected_tenant,
@@ -170,6 +240,59 @@ class Memory:
                 yield cls(
                     runtime.service, tenant=selected_tenant, models=selected_models
                 )
+
+        return managed()
+
+    @classmethod
+    def connect(
+        cls, *, tenant: str = "default", models: RoleModels | None = None
+    ) -> AbstractAsyncContextManager["Memory"]:
+        """Attach to the shared memory server for one tenant."""
+
+        @asynccontextmanager
+        async def managed() -> AsyncGenerator[Memory]:
+            selected_tenant = validate_tenant_id(tenant)
+            state_settings = StateSettings()
+            service_settings = ServiceSettings()
+            embedding_settings = EmbeddingSettings()
+            llm_config = LLMConfig()
+            async with AsyncExitStack() as resources:
+                selected_models = models
+                if selected_models is None:
+                    selected_models = build_models()
+                    resources.push_async_callback(selected_models.aclose)
+                from ontogr_mem.client.remote import RemoteService  # noqa: PLC0415
+                from ontogr_mem.server.entry import ensure_server  # noqa: PLC0415
+
+                endpoint = await ensure_server(
+                    graph_url=service_settings.graph_url.get_secret_value(),
+                    state_url=state_settings.url.get_secret_value(),
+                )
+                if not all(
+                    endpoint.roles.get(role.value, False) for role in TEXT_WRITE_ROLES
+                ):
+                    logging.getLogger(__name__).warning(
+                        "Memory server lacks a configured extraction role."
+                    )
+                client_roles = {
+                    role.value: selected_models.configured(role)
+                    for role in TEXT_WRITE_ROLES
+                }
+                if (
+                    endpoint.roles != client_roles
+                    or endpoint.embedding_model != embedding_settings.model
+                    or endpoint.llm_model != llm_config.resolve(ModelRole.ANSWER).model
+                ):
+                    logging.getLogger(__name__).warning(
+                        "Memory client settings differ from the connected server."
+                    )
+                remote = await RemoteService.open(
+                    url=endpoint.url,
+                    token=endpoint.token,
+                    tenant=selected_tenant,
+                )
+                resources.push_async_callback(remote.aclose)
+                yield cls(remote, tenant=selected_tenant, models=selected_models)
 
         return managed()
 
@@ -325,6 +448,11 @@ class Memory:
         include_history: bool = False,
         limit: int = 10,
         budget_tokens: int = 2000,
+        overlaps_start: datetime | None = None,
+        overlaps_end: datetime | None = None,
+        session_id: str | None = None,
+        known_at: datetime | None = None,
+        mentions: Sequence[str] | None = None,
         entity_types: Sequence[str] | None = None,
         exclude_entity_types: Sequence[str] | None = None,
         relation_types: Sequence[str] | None = None,
@@ -340,6 +468,11 @@ class Memory:
 
         Args:
             query: Search text, between 1 and 2000 characters.
+            overlaps_start: Start of the validity window to overlap.
+            overlaps_end: End of the validity window to overlap.
+            session_id: Limit facts to one session.
+            known_at: Knowledge-time instant with a timezone.
+            mentions: Restrict facts to these mentioned names.
             as_of: Valid-time instant with a timezone, or now.
             include_history: Include closed fact history.
             limit: Maximum facts, between 1 and 100.
@@ -365,6 +498,11 @@ class Memory:
                 "include_history": include_history,
                 "limit": limit,
                 "budget_tokens": budget_tokens,
+                "overlaps_start": overlaps_start,
+                "overlaps_end": overlaps_end,
+                "session_id": session_id,
+                "known_at": known_at,
+                "mentions": list(mentions or ()),
                 "format": "both",
                 "entity_types": list(entity_types or ()),
                 "exclude_entity_types": list(exclude_entity_types or ()),

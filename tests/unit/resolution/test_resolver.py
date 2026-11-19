@@ -23,10 +23,10 @@ from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.keys import stripped_key
 from ontogr_mem.resolution.policy import ResolutionPolicy
 from ontogr_mem.resolution.resolver import EntityResolver
-from ontogr_mem.vectorstore import EmbeddingGateway, VectorStore
+from ontogr_mem.vectorstore import VectorStore
 from ontogr_mem.vectorstore.memory import InMemoryBackend
 from tests.support.clock import FixedClock
-from tests.support.embedder import MockEmbedder
+from tests.support.embedder import MockEmbedder, embedder_source
 from tests.support.scripted_model import scripted_model, scripted_role_models
 from tests.support.type_world import WORLD
 from tests.unit.resolution.helpers import entity, oracle_models, type_id_for
@@ -140,7 +140,7 @@ def _extracted(local_id: str, name: str, episode_id: str = "ep1") -> ExtractedEn
 
 async def _resolver(store: _MemoryResolverStore, models: RoleModels) -> EntityResolver:
     """Build a resolver with inline verification on, which is off by default."""
-    vectors = VectorStore(InMemoryBackend(), EmbeddingGateway(MockEmbedder()))
+    vectors = VectorStore(InMemoryBackend(), embedder_source(MockEmbedder()))
     await vectors.ensure_ready()
     return EntityResolver(
         store,

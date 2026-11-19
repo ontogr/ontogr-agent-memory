@@ -19,7 +19,7 @@ from ontogr_mem.graphstore.tenant_stacks import graph_stores
 from ontogr_mem.observability import Tracer
 from ontogr_mem.tenant_stores import TenantStores
 from ontogr_mem.vectorstore import Embedder
-from tests.support.embedder import MockEmbedder
+from tests.support.embedder import MockEmbedder, embedder_source
 from tests.support.tenants import new_tenant
 
 
@@ -76,7 +76,7 @@ class GraphBackend:
         return await graph_stores(
             self.store,
             tenant,
-            embedder or MockEmbedder(),
+            embedder_source(embedder or MockEmbedder()),
             tenant_keyed=self.tenant_keyed,
             tracer=tracer,
         )

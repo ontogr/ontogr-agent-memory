@@ -60,7 +60,6 @@ class TestMain:
         [
             pytest.param(["--help"], "chat", id="top-level"),
             pytest.param(["chat", "--help"], "--tenant", id="chat"),
-            pytest.param(["chat", "--help"], "--ontology", id="chat-ontology"),
             pytest.param(["--help"], "mcp", id="top-level-names-mcp"),
         ],
     )
@@ -74,16 +73,15 @@ class TestMain:
         assert excinfo.value.code == 0
         assert expected_text in capsys.readouterr().out
 
-    @pytest.mark.parametrize(
-        "flag", ["--transport", "--host", "--port", "--tenant", "--ontology"]
-    )
-    def test_mcp_help_names_each_flag(self, capsys, flag):
-        """The mcp subcommand help lists its flags and exits with status zero."""
+    def test_mcp_help_has_no_server_configuration_flags(self, capsys):
+        """The stdio front uses environment settings instead of CLI flags."""
         with pytest.raises(SystemExit) as excinfo:
             main(["mcp", "--help"])
 
         assert excinfo.value.code == 0
-        assert flag in capsys.readouterr().out
+        output = capsys.readouterr().out
+        assert "--transport" not in output
+        assert "--tenant" not in output
 
     def test_missing_subcommand_exits_with_status_two(self):
         """A command line without the chat subcommand is a usage error."""

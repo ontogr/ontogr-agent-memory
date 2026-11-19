@@ -3,14 +3,14 @@
 from ontogr_mem.vectorstore import VectorKind, VectorStore, VectorWriter
 from ontogr_mem.vectorstore.episode_vectors import write_episode_vectors
 from ontogr_mem.vectorstore.memory import InMemoryBackend
-from tests.support.embedder import MockEmbedder, RecordingEmbedder, gateway
+from tests.support.embedder import MockEmbedder, RecordingEmbedder, embedder_source
 from tests.support.episodes import make_episode
 from tests.support.vectors import A
 
 
 async def ready_store(embedder: MockEmbedder) -> VectorStore:
     """Return a store that is ready to write."""
-    store = VectorStore(InMemoryBackend(), gateway(embedder))
+    store = VectorStore(InMemoryBackend(), embedder_source(embedder))
     await store.ensure_ready()
     return store
 

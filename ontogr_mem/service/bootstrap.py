@@ -57,7 +57,7 @@ from ontogr_mem.store_urls import (
 )
 from ontogr_mem.temporal.settings import ClosureSettings
 from ontogr_mem.tenant_stores import TenantStores
-from ontogr_mem.vectorstore import Embedder
+from ontogr_mem.vectorstore.source import EmbedderSource
 
 
 @dataclass(slots=True)
@@ -101,7 +101,7 @@ async def build_service(
     operations: OperationStore,
     clock: Clock,
     models: RoleModels,
-    embedder: Embedder,
+    embedder: EmbedderSource,
     policy: ResolutionPolicy,
     resolver_settings: ResolverSettings,
     retrieval_settings: RetrievalSettings,
@@ -164,7 +164,6 @@ async def build_service(
         return build_tenant_runtime(
             stores,
             models=models,
-            embedder=embedder,
             clock=clock,
             policy=policy,
             resolver_settings=resolver_settings,
@@ -215,7 +214,7 @@ async def open_service(
     drop_graph: Callable[[str], Awaitable[None]] | None = None,
     clock: Clock | None = None,
     models: RoleModels | None = None,
-    embedder: Embedder,
+    embedder: EmbedderSource,
     policy: ResolutionPolicy | None = None,
     resolver_settings: ResolverSettings | None = None,
     retrieval_settings: RetrievalSettings | None = None,
@@ -341,7 +340,7 @@ def _graph_stores_factory(
 
     async def create_stores(
         tenant_id: str,
-        embedder: Embedder,
+        embedder: EmbedderSource,
         *,
         tracer: Tracer | None = None,
     ) -> TenantStores:

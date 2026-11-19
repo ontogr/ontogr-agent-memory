@@ -16,7 +16,6 @@ from ontogr_mem.vectorstore import (
     SearchFilters,
     SpaceMismatchError,
     SpaceSpec,
-    StoreNotReadyError,
     TemporalFilter,
     Validity,
     ValidityUpdate,
@@ -362,14 +361,15 @@ class VectorStoreContract:
         with pytest.raises(InvalidVectorError):
             await h.store.search(VectorKind.NODE, [0.0, 0.0, 0.0], k=5)
 
-    async def test_store_refuses_io_until_ready(self, make_harness):
-        """Reads and writes before `ensure_ready` raise."""
+    async def test_first_upsert_initializes_store_and_persists_data(self, make_harness):
+        """The first upsert initializes the store and makes its vector searchable."""
         h = await make_harness(fixed_embedder())
+        await h.seed(VectorKind.NODE, ["n1"])
 
-        with pytest.raises(StoreNotReadyError):
-            await h.store.search(VectorKind.NODE, A, k=5)
-        with pytest.raises(StoreNotReadyError):
-            await h.store.upsert(VectorKind.NODE, [node_item("n1", "a")])
+        await h.store.upsert(VectorKind.NODE, [node_item("n1", "a")])
+
+        hits = await h.store.search(VectorKind.NODE, A, k=5)
+        assert [hit.id for hit in hits] == ["n1"]
 
     @pytest.mark.parametrize(
         ("stored_model", "configured_model"),

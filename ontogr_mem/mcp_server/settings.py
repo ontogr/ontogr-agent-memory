@@ -1,7 +1,7 @@
 """Settings for one MCP server process."""
 
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -14,6 +14,7 @@ ALL_TOOLS = (
     "get_entity",
     "list_entities",
     "get_ontology",
+    "stale_episodes",
     "get_job",
     "add_memory",
     "write_facts",
@@ -26,11 +27,10 @@ class McpSettings(BaseSettings):
     """Configure one MCP process from MEMORY_MCP_ variables.
 
     Attributes:
-        transport: Transport the server serves, either stdio or http. Env:
-            MEMORY_MCP_TRANSPORT.
         host: Interface the http transport binds to. Env: MEMORY_MCP_HOST.
-        port: Port the http transport binds to, from 1 to 65535. Env:
+        port: Port the http transport binds to. None selects a free port. Env:
             MEMORY_MCP_PORT.
+        server_url: URL of a running memory server. Env: MEMORY_MCP_SERVER_URL.
         tenant: Tenant id the server reads and writes. Env: MEMORY_MCP_TENANT.
         api_key: Bearer token http clients must send. None disables the check.
             A blank value counts as None. Env: MEMORY_MCP_API_KEY.
@@ -46,10 +46,10 @@ class McpSettings(BaseSettings):
         env_prefix="MEMORY_MCP_", env_file=".env", extra="ignore", frozen=True
     )
 
-    transport: Literal["stdio", "http"] = "stdio"
     host: str = "127.0.0.1"
-    port: int = Field(default=8000, ge=1, le=65535)
-    tenant: str = "default"
+    port: int | None = Field(default=None, ge=1, le=65535)
+    server_url: str | None = None
+    tenant: str | None = None
     api_key: SecretStr | None = None
     tools: Annotated[tuple[str, ...], NoDecode] = ALL_TOOLS
     skills_extension: bool = True
@@ -57,9 +57,9 @@ class McpSettings(BaseSettings):
 
     @field_validator("tenant")
     @classmethod
-    def _tenant(cls, value: str) -> str:
+    def _tenant(cls, value: str | None) -> str | None:
         """Apply the tenant id rules."""
-        return validate_tenant_id(value)
+        return validate_tenant_id(value) if value is not None else None
 
     @field_validator("api_key", mode="before")
     @classmethod
@@ -79,6 +79,14 @@ class McpSettings(BaseSettings):
     @classmethod
     def _empty_ontology(cls, value: object) -> object:
         """Map a blank ontology path to None."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("server_url", mode="before")
+    @classmethod
+    def _empty_server_url(cls, value: object) -> object:
+        """Map a blank server URL to None."""
         if isinstance(value, str) and not value.strip():
             return None
         return value

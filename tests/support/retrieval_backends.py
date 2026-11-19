@@ -7,9 +7,10 @@ from ontogr_mem.graphstore.keyword_search import GraphKeywordSearch
 from ontogr_mem.graphstore.ontology_store import GraphOntologyStore
 from ontogr_mem.graphstore.resolver_store import GraphResolverStore
 from ontogr_mem.graphstore.temporal.store import GraphTemporalStore
-from ontogr_mem.vectorstore import EmbeddingGateway, VectorKind, VectorStore
+from ontogr_mem.vectorstore import VectorKind, VectorStore
 from ontogr_mem.vectorstore.graph.falkordb import FalkorDBVectorBackend
 from ontogr_mem.vectorstore.graph.neo4j import Neo4jVectorBackend
+from tests.support.embedder import embedder_source
 from tests.support.graph_backend import GraphBackend
 from tests.support.retrieval_world import RetrievalBackend, new_retrieval_embedder
 
@@ -29,7 +30,7 @@ async def graph_retrieval_backend(backend: GraphBackend) -> RetrievalBackend:
         if tenant_keyed
         else FalkorDBVectorBackend(store, handle)
     )
-    vectors = VectorStore(vector_backend, EmbeddingGateway(embedder))
+    vectors = VectorStore(vector_backend, embedder_source(embedder))
     await vectors.ensure_ready()
 
     async def prune_orphan_vectors(ids: Sequence[str]) -> None:

@@ -61,7 +61,9 @@ async def open_client(tenant: str, models: RoleModels) -> AsyncGenerator[Client]
     """Open an in-process MCP client over a real memory service."""
     async with open_memory(tenant, models) as memory:
         settings = McpSettings(_env_file=None, api_key=None, skills_extension=False)
-        async with Client(build_server(memory, settings=settings)) as client:
+        async with Client(
+            build_server(lambda request_tenant: memory, settings=settings)
+        ) as client:
             yield client
 
 
