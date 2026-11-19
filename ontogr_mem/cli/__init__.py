@@ -160,9 +160,15 @@ def _run_server_command(args: argparse.Namespace) -> int:
         if args.ontology is not None:
             settings_kwargs["ontology"] = args.ontology
         settings = McpSettings(**settings_kwargs)
-        return asyncio.run(
+        result = asyncio.run(
             serve(mcp_settings=settings, server_settings=ServerSettings())
         )
+        if result == 75:
+            print(
+                "server is already running (another instance holds the lock)",
+                file=sys.stderr,
+            )
+        return result
     if args.server_command == "status":
         return _server_status()
     return _server_stop()
@@ -202,10 +208,24 @@ def _server_status() -> int:
     if not info:
         print("not running")
         return 1
+    token = read_server_token(data_directory() / "server.token")
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{info['port']}/health",
+        headers={"Authorization": f"Bearer {token}"} if token else {},
+    )
     try:
-        health_url = f"http://127.0.0.1:{info['port']}/health"
-        with urllib.request.urlopen(health_url, timeout=2) as response:
+        with urllib.request.urlopen(request, timeout=2) as response:
             health = json.load(response)
+    except urllib.error.HTTPError as error:
+        if error.code == 401:
+            print(
+                "server authentication failed; stored token does not match "
+                "MEMORY_MCP_API_KEY",
+                file=sys.stderr,
+            )
+            return 1
+        print("not running")
+        return 1
     except (OSError, urllib.error.URLError):
         print("not running")
         return 1
@@ -234,6 +254,17 @@ def _server_stop() -> int:
     try:
         with urllib.request.urlopen(request, timeout=2) as response:
             return 0 if response.status == 202 else 1
+    except urllib.error.HTTPError as error:
+        if error.code == 401:
+            print(
+                "server authentication failed; the stored token does not match "
+                "MEMORY_MCP_API_KEY. Remove the stale server.token or set "
+                "MEMORY_MCP_API_KEY to the value used to start the server.",
+                file=sys.stderr,
+            )
+            return 1
+        print("server is unreachable; no process was stopped", file=sys.stderr)
+        return 1
     except (OSError, urllib.error.URLError):
         print("server is unreachable; no process was stopped", file=sys.stderr)
         return 1

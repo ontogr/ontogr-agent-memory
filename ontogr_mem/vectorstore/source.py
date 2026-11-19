@@ -26,6 +26,11 @@ class EmbedderSource:
         self._lock = asyncio.Lock()
         self.state = EmbedderState.NOT_LOADED
 
+    @property
+    def embedder(self) -> Embedder | None:
+        """Return the loaded embedder, if any."""
+        return self._embedder
+
     async def __call__(self) -> Embedder:
         """Return the loaded embedder, retrying after a failed load."""
         if self._embedder is not None:

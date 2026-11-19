@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 from pydantic import SecretStr
 
@@ -37,6 +37,7 @@ from ontogr_mem.server.lock import ServerLock
 from ontogr_mem.server.settings import ServerSettings
 from ontogr_mem.service.access.settings import StdioSettings
 from ontogr_mem.service.bootstrap import ServiceSettings, open_service
+from ontogr_mem.service.errors import InvalidArgumentError
 from ontogr_mem.store_urls import SqliteTarget, parse_state_url
 from ontogr_mem.vectorstore.builtin import (
     EndpointEmbedder,
@@ -65,9 +66,10 @@ class _ActivityMiddleware:
         await self._app(scope, receive, send)
 
 
-def _health_ready(host: str, port: int) -> None:
+def _health_ready(host: str, port: int, token: str | None = None) -> None:
     """Return when the server's HTTP listener serves its health route."""
-    with urlopen(f"http://{host}:{port}/health", timeout=0.5):
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    with urlopen(Request(f"http://{host}:{port}/health", headers=headers), timeout=0.5):
         return
 
 
@@ -154,10 +156,6 @@ async def serve(  # noqa: C901, PLR0912, PLR0915
             def memory_for_request(requested: str | None) -> Memory:
                 tenant = validate_tenant_id(requested or fixed_tenant)
                 if not loopback and tenant != fixed_tenant:
-                    from ontogr_mem.service.errors import (  # noqa: PLC0415
-                        InvalidArgumentError,
-                    )
-
                     raise InvalidArgumentError(
                         f"This server is fixed to tenant {fixed_tenant}",
                         hint=f"Use MEMORY_MCP_TENANT={fixed_tenant}",
@@ -194,9 +192,13 @@ async def serve(  # noqa: C901, PLR0912, PLR0915
                     probe.bind((mcp_settings.host, 0))
                     port = probe.getsockname()[1]
 
-            async def health(_: Request) -> Response:
+            async def health(request: Request) -> Response:
+                if token and not hmac.compare_digest(
+                    request.headers.get("authorization", ""), f"Bearer {token}"
+                ):
+                    return Response(status_code=401)
                 embedder = embedder_source.state.value
-                loaded = getattr(embedder_source, "_embedder", None)
+                loaded = embedder_source.embedder
                 return JSONResponse(
                     {
                         "version": __import__("ontogr_mem").__version__,
@@ -209,7 +211,7 @@ async def serve(  # noqa: C901, PLR0912, PLR0915
                         "embedding_model": embedding_settings.model,
                         "llm_model": llm_config.resolve(ModelRole.ANSWER).model,
                         "dimension": loaded.dim
-                        if embedder == "ready" and loaded
+                        if embedder == "ready" and loaded is not None
                         else None,
                         "ontology": (
                             mcp_settings.ontology.name
@@ -254,7 +256,9 @@ async def serve(  # noqa: C901, PLR0912, PLR0915
                         await task
                         return 76
                     try:
-                        await asyncio.to_thread(_health_ready, mcp_settings.host, port)
+                        await asyncio.to_thread(
+                            _health_ready, mcp_settings.host, port, token
+                        )
                     except (OSError, URLError):
                         await asyncio.sleep(0.1)
                         continue

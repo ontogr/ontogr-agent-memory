@@ -59,7 +59,11 @@ def server_process(
             if server_info.exists():
                 info = json.loads(server_info.read_text())
                 try:
-                    with urlopen(f"http://127.0.0.1:{info['port']}/health", timeout=1):
+                    request = Request(
+                        f"http://127.0.0.1:{info['port']}/health",
+                        headers={"Authorization": "Bearer lifecycle-test-key"},
+                    )
+                    with urlopen(request, timeout=1):
                         break
                 except (OSError, URLError):
                     pass
@@ -91,7 +95,11 @@ class TestServerLifecycle:
         info = json.loads((data_directory / "server.json").read_text())
         base_url = f"http://127.0.0.1:{info['port']}"
 
-        with urlopen(f"{base_url}/health", timeout=2) as response:
+        request = Request(
+            f"{base_url}/health",
+            headers={"Authorization": "Bearer lifecycle-test-key"},
+        )
+        with urlopen(request, timeout=2) as response:
             health = json.load(response)
         assert health["version"]
         assert health["store"]

@@ -46,9 +46,10 @@ def _store_identity(graph_url: str, state_url: str) -> str:
     return parse_state_url(state_url).identity()
 
 
-def _health(url: str) -> dict[str, object] | None:
+def _health(url: str, token: str | None = None) -> dict[str, object] | None:
     try:
-        with urlopen(Request(f"{url}/health"), timeout=2) as response:
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        with urlopen(Request(f"{url}/health", headers=headers), timeout=2) as response:
             payload = json.loads(response.read())
         return payload if isinstance(payload, dict) else None
     except (OSError, ValueError, URLError, TimeoutError):
@@ -133,7 +134,7 @@ async def ensure_server(  # noqa: PLR0912, PLR0915
         settings.api_key.get_secret_value() if settings.api_key is not None else None
     ) or read_server_token(directory / "server.token")
     if explicit_url:
-        health = await asyncio.to_thread(_health, explicit_url.rstrip("/"))
+        health = await asyncio.to_thread(_health, explicit_url.rstrip("/"), token)
         if health is None:
             raise ServerUnavailableError(
                 f"Memory server at {explicit_url} is unavailable"
@@ -147,7 +148,9 @@ async def ensure_server(  # noqa: PLR0912, PLR0915
         if info and isinstance(info.get("port"), int)
         else ""
     )
-    health = await asyncio.to_thread(_health, current_url) if current_url else None
+    health = (
+        await asyncio.to_thread(_health, current_url, token) if current_url else None
+    )
     if health is not None:
         if health.get("store") != expected_store:
             raise ServerUnavailableError(
@@ -172,7 +175,7 @@ async def ensure_server(  # noqa: PLR0912, PLR0915
             pass
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
-            if await asyncio.to_thread(_health, current_url) is None:
+            if await asyncio.to_thread(_health, current_url, token) is None:
                 break
             await asyncio.sleep(0.2)
 
@@ -226,7 +229,7 @@ async def ensure_server(  # noqa: PLR0912, PLR0915
         info = read_server_info(directory / "server.json")
         if info and isinstance(info.get("port"), int):
             current_url = f"http://127.0.0.1:{info['port']}"
-            health = await asyncio.to_thread(_health, current_url)
+            health = await asyncio.to_thread(_health, current_url, token)
             if (
                 health
                 and health.get("version") == version
