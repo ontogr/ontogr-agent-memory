@@ -250,7 +250,8 @@ class JobStoreContract:
         """A job read returns the last progress value written to its record."""
         job = make_job()
         await store.create_job(job)
-        await store.claim_next(job.tenant_id, T0, lambda _: True)
+        claimed = await store.claim_next(job.tenant_id, T0, lambda _: True)
+        assert claimed == replace(job, status=JobState.RUNNING)
         progress = JobProgress(stage="index", done=25, total=100)
 
         await store.set_job_progress(job.job_id, progress)
