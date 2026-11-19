@@ -3,11 +3,16 @@
 import sys
 
 from ontogr_mem.data_models.tenant import validate_tenant_id
-from ontogr_mem.service.bootstrap import clear_session, open_graph_store
+from ontogr_mem.service.bootstrap import (
+    ServiceSettings,
+    clear_session,
+    open_graph_store,
+)
 from ontogr_mem.service.contracts import ClearTenant
 from ontogr_mem.service.errors import ConfirmationRequiredError, ConflictError
 from ontogr_mem.service.forget.results import ClearTenantPreview
 from ontogr_mem.service.principal import Grant, Principal
+from ontogr_mem.store_urls import FalkorTarget, parse_graph_url
 
 
 async def list_tenants_text() -> str:
@@ -20,7 +25,10 @@ async def list_tenants_text() -> str:
 def _print_preview(tenant: str, preview: ClearTenantPreview) -> None:
     """Print the data counts and retained records before confirmation."""
     print(f"Tenant: {tenant}")
-    print(f"Graph: m_{tenant}")
+    settings = ServiceSettings()
+    target = parse_graph_url(settings.graph_url.get_secret_value())
+    if isinstance(target, FalkorTarget):
+        print(f"Graph: m_{tenant}")
     print(f"Episodes: {len(preview.episode_ids)}")
     print(f"Facts: {len(preview.fact_ids)}")
     print(f"Entities: {len(preview.entity_ids)}")

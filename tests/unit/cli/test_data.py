@@ -155,7 +155,7 @@ class _Service:
             entity_ids=("entity-1",),
             job_count=1,
             confirm_token="token",
-            expires_at=datetime.now(UTC),
+            expires_at=datetime(2025, 1, 1, tzinfo=UTC),
         )
 
     async def clear_tenant(self, _principal, _request):

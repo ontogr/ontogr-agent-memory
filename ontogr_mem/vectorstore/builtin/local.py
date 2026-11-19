@@ -54,8 +54,8 @@ def model_cached(settings: EmbeddingSettings | None = None) -> bool | None:
     repository = description["hf"]
     cache_dir = options.get("cache_dir")
     cache = Path(cache_dir) if isinstance(cache_dir, str) else model_cache_directory()
-    organization, repo = repository.split("/", 1)
-    return (cache / f"models--{organization}--{repo}").is_dir()
+    organization, repository_name = repository.split("/", 1)
+    return (cache / f"models--{organization}--{repository_name}").is_dir()
 _SUPPORTED_PROVIDERS = frozenset({"CPUExecutionProvider", "CUDAExecutionProvider"})
 _NON_SEMANTIC_OPTIONS = frozenset(
     {
