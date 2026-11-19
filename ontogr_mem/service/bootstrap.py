@@ -74,7 +74,8 @@ class ServiceSettings(BaseSettings):
         env_file=".env",
         extra="ignore",
         frozen=True,
-        populate_by_name=True,
+        validate_by_name=True,
+        validate_by_alias=True,
     )
 
     graph_url: SecretStr = Field(
