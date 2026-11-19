@@ -47,7 +47,7 @@ class MemoryJobStore:
         """Return a detached job or None when no record exists."""
         return deepcopy(self._jobs.get(job_id))
 
-    async def save_job(self, job: Job) -> None:
+    async def save_job(self, job: Job) -> bool:
         """Replace an existing record, discarding response-only replay state."""
         previous = self._jobs[job.job_id]
         if job.idempotency_key is not None:

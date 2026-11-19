@@ -114,7 +114,7 @@ class SqliteJobStore:
 
         return await asyncio.to_thread(lambda: self._locked(get))
 
-    async def save_job(self, job: Job) -> None:
+    async def save_job(self, job: Job) -> bool:
         """Replace an existing record without storing its replay response flag."""
         values = _values(job)
 

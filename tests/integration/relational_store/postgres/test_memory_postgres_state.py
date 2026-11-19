@@ -9,8 +9,8 @@ from ontogr_mem.data_models.jobs import JobState
 from ontogr_mem.graphstore.falkordb import FalkorDBGraphStore
 from ontogr_mem.relational_store import engine
 from ontogr_mem.service.bootstrap import ServiceSettings
-from ontogr_mem.support.tenants import new_tenant
 from tests.support.embedder import MockEmbedder
+from tests.support.tenants import new_tenant
 from tests.support.falkordb import falkordb_test_url
 from tests.support.scripted_model import scripted_role_models
 
@@ -40,7 +40,9 @@ class TestMemoryOnPostgresState:
             models=scripted_role_models(),
             embedder=MockEmbedder(),
         ) as memory:
-            receipt = await memory.write_fact("The sky is blue.", wait_seconds=10)
+            receipt = await memory.write_fact(
+                "sky", "is", "blue", wait_seconds=10
+            )
             job = await memory.get_job(receipt.job_id)
 
         assert receipt.status == JobState.DONE

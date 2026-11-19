@@ -88,7 +88,7 @@ class PostgresJobStore:
             row = await connection.fetchrow(f"{_SELECT_JOB} WHERE job_id = $1", job_id)
             return None if row is None else job_from_row(row)
 
-    async def save_job(self, job: Job) -> None:
+    async def save_job(self, job: Job) -> bool:
         """Replace an existing record without storing its replay flag."""
         async with pg_connection(self._pool) as connection:
             status = await connection.execute(

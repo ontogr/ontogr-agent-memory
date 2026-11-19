@@ -382,11 +382,11 @@ class TestJobRunner:
                     raise sqlite3.OperationalError("storage outage")
                 return job
 
-            async def save_job(self, job: Job) -> None:
+            async def save_job(self, job: Job) -> bool:
                 """Save a job unless its tenant has a simulated outage."""
                 if self.broken and method == "save_job" and job.tenant_id == "a":
                     raise sqlite3.OperationalError("storage outage")
-                await job_store.save_job(job)
+                return await job_store.save_job(job)
 
             async def requeue_running(self) -> list[Job]:
                 """Recover jobs through the real adapter."""
