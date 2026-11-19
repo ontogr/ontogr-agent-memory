@@ -1,6 +1,6 @@
 """In-memory job persistence with no durable storage."""
 
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager
 from copy import deepcopy
 from dataclasses import replace
@@ -123,7 +123,7 @@ class MemoryJobStore:
         return None
 
     @asynccontextmanager
-    async def tenant_lock(self, tenant_id: str) -> AsyncIterator[None]:
+    async def tenant_lock(self, tenant_id: str) -> AsyncGenerator[None, None]:
         """Yield without locking the single-process store."""
         yield
 

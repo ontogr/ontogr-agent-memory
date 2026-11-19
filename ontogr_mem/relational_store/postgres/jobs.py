@@ -1,6 +1,6 @@
 """PostgreSQL job persistence over a shared connection pool."""
 
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -88,7 +88,7 @@ class PostgresJobStore:
             row = await connection.fetchrow(f"{_SELECT_JOB} WHERE job_id = $1", job_id)
             return None if row is None else job_from_row(row)
 
-    async def save_job(self, job: Job) -> bool:
+    async def save_job(self, job: Job) -> None:
         """Replace an existing record without storing its replay flag."""
         async with pg_connection(self._pool) as connection:
             status = await connection.execute(
@@ -231,7 +231,7 @@ class PostgresJobStore:
             )
 
     @asynccontextmanager
-    async def tenant_lock(self, tenant_id: str) -> AsyncIterator[None]:
+    async def tenant_lock(self, tenant_id: str) -> AsyncGenerator[None, None]:
         """Hold the session advisory lock for one tenant."""
         async with pg_connection(self._pool) as connection:
             await connection.fetchval(

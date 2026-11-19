@@ -3,7 +3,7 @@
 import asyncio
 import sqlite3
 import threading
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import TypeVar
@@ -213,7 +213,7 @@ class SqliteJobStore:
         return None
 
     @asynccontextmanager
-    async def tenant_lock(self, tenant_id: str) -> AsyncIterator[None]:
+    async def tenant_lock(self, tenant_id: str) -> AsyncGenerator[None, None]:
         """Yield without locking the single-process store."""
         yield
 
