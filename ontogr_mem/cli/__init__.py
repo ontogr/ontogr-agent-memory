@@ -138,7 +138,6 @@ def _report_error(error: Exception) -> int:
             InvalidArgumentError,
             ExplicitTenantError,
             StoreInUseError,
-            ValueError,
         ),
     ):
         message = str(error)

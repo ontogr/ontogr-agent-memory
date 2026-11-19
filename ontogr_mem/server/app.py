@@ -16,6 +16,8 @@ from typing import Any
 from urllib.error import URLError
 from urllib.request import urlopen
 
+from pydantic import SecretStr
+
 from ontogr_mem.client import Memory
 from ontogr_mem.data_models.tenant import validate_tenant_id
 from ontogr_mem.llm import build_models
@@ -104,6 +106,7 @@ async def serve(  # noqa: C901, PLR0912, PLR0915
     except OSError:
         return 75
     store_lock: ServerLock | None = None
+    store_lock_acquired = False
     info_path = directory / "server.json"
     process_id = os.getpid()
     try:
@@ -117,6 +120,7 @@ async def serve(  # noqa: C901, PLR0912, PLR0915
                 store_lock.acquire()
             except OSError:
                 return 75
+            store_lock_acquired = True
         models = build_models(llm_config)
         ontology = (
             load_ontology(mcp_settings.ontology) if mcp_settings.ontology else None
@@ -179,8 +183,6 @@ async def serve(  # noqa: C901, PLR0912, PLR0915
             settings = mcp_settings
             # A generated token must also protect the HTTP routes and MCP endpoint.
             if token and settings.api_key is None:
-                from pydantic import SecretStr  # noqa: PLC0415
-
                 settings = settings.model_copy(update={"api_key": SecretStr(token)})
             server = build_server(memory_for_request, settings=settings)
             stop_event = asyncio.Event()
@@ -296,6 +298,6 @@ async def serve(  # noqa: C901, PLR0912, PLR0915
                     info_path.unlink(missing_ok=True)
         return 0
     finally:
-        if store_lock:
+        if store_lock is not None and store_lock_acquired:
             store_lock.release()
         server_lock.release()
