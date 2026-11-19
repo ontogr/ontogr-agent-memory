@@ -179,7 +179,7 @@ class JobStoreContract:
         """Recovery includes queued jobs and preserves creation order for ties."""
         jobs = [
             replace(
-                make_job(f"j{i}"),
+                make_job(f"j{i}", f"tenant_{i}"),
                 idempotency_key=None,
                 created_at=T0 + timedelta(seconds=seconds),
             )
@@ -190,7 +190,7 @@ class JobStoreContract:
         for job in sorted(jobs, key=lambda job: job.created_at)[:2]:
             claimed = await store.claim_next(job.tenant_id, T0, lambda _: True)
             assert claimed == replace(job, status=JobState.RUNNING)
-            await store.save_job(replace(claimed, attempts=1))
+            assert await store.save_job(replace(claimed, attempts=1))
 
         await store.requeue_expired(T0)
         recovered = await store.queued_jobs()

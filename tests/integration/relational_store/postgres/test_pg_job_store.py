@@ -15,7 +15,7 @@ from ontogr_mem.relational_store.schema.runner import (
     revision_checksum,
 )
 from tests.contracts.erase_journal import EraseJournalContract
-from tests.contracts.job_store import JobStoreContract
+from tests.contracts.job_store import JobStoreContract, T0
 from tests.support.clock import FixedClock
 
 
@@ -31,7 +31,7 @@ class TestPostgresJobStore(JobStoreContract, EraseJournalContract):
 
         async def factory() -> StateStore:
             return PostgresJobStore(
-                pool, FixedClock(), owner_id="test-owner", lease_seconds=60
+                pool, FixedClock(T0), owner_id="test-owner", lease_seconds=60
             )
 
         return factory

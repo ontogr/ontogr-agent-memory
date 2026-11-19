@@ -17,6 +17,22 @@ from tests.support.clock import FixedClock
 class TestPostgresJobLeases:
     """Verify a live lease blocks another owner until recovery expires it."""
 
+    async def test_recovery_leaves_job_running_before_lease_expires(
+        self, pool, clean_tables
+    ):
+        """Recovery keeps a running job queued until its lease expires."""
+        now = datetime(2026, 10, 23, 12, tzinfo=UTC)
+        clock = FixedClock(now)
+        store = PostgresJobStore(pool, clock, owner_id="owner", lease_seconds=60)
+        job, _ = await store.create_job(make_job())
+        claimed = await store.claim_next(job.tenant_id, now, lambda _: True)
+
+        assert claimed is not None
+        await store.requeue_expired(now + timedelta(seconds=30))
+
+        assert await store.get_job(job.job_id) == claimed
+        assert await store.queued_jobs() == []
+
     async def test_erasure_lease_starts_at_store_clock(self, pool, clean_tables):
         """Set lease timestamps from the store clock and retain record creation time."""
         now = datetime(2026, 10, 24, 12, tzinfo=UTC)
