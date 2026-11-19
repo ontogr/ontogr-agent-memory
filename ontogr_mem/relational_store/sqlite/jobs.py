@@ -3,7 +3,7 @@
 import asyncio
 import sqlite3
 import threading
-from collections.abc import AsyncGenerator, AsyncIterator, Callable, Sequence
+from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import TypeVar

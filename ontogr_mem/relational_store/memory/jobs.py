@@ -1,6 +1,6 @@
 """In-memory job persistence with no durable storage."""
 
-from collections.abc import AsyncGenerator, AsyncIterator, Callable, Sequence
+from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import asynccontextmanager
 from copy import deepcopy
 from dataclasses import replace
