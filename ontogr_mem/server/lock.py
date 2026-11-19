@@ -1,7 +1,7 @@
 """Operating-system locks for memory store ownership."""
 
-from pathlib import Path
 import os
+from pathlib import Path
 
 
 class ServerLock:

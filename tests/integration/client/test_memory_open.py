@@ -6,7 +6,6 @@ import pytest
 
 from ontogr_mem.client import Memory
 from ontogr_mem.errors import StoreInUseError
-from ontogr_mem.llm import RoleModels
 from ontogr_mem.relational_store.config import StateSettings
 from ontogr_mem.service.bootstrap import ServiceSettings
 from tests.support.falkordb import falkordb_test_url

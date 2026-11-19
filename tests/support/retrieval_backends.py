@@ -10,8 +10,8 @@ from ontogr_mem.graphstore.temporal.store import GraphTemporalStore
 from ontogr_mem.vectorstore import VectorKind, VectorStore
 from ontogr_mem.vectorstore.graph.falkordb import FalkorDBVectorBackend
 from ontogr_mem.vectorstore.graph.neo4j import Neo4jVectorBackend
-from tests.support.graph_backend import GraphBackend
 from tests.support.embedder import embedder_source
+from tests.support.graph_backend import GraphBackend
 from tests.support.retrieval_world import RetrievalBackend, new_retrieval_embedder
 
 
