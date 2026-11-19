@@ -91,7 +91,7 @@ class MemoryJobStore:
         return deepcopy(
             sorted(
                 (job for job in self._jobs.values() if job.status == JobState.QUEUED),
-                key=lambda job: (job.created_at, job.job_id),
+                key=lambda job: job.created_at,
             )
         )
 
