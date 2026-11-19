@@ -61,8 +61,9 @@ class Preflight:
                 subcommand=subcommand,
             )
         if self.missing_roles:
+            msg = f"no model configured for {self.missing_roles[0].value}"
             raise ModelNotConfiguredError(
-                f"no model configured for {self.missing_roles[0].value}"
+                msg
             )
 
 
