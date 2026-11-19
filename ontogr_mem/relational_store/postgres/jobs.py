@@ -151,7 +151,8 @@ class PostgresJobStore:
                 or row["lease_expires_at"] is None
                 or row["lease_expires_at"] <= to_micros(self._clock.now())
             ):
-                raise LeaseLostError(job_id)
+                message = f"job {job_id} lease is no longer held"
+                raise LeaseLostError(message)
             previous_done = row["progress_done"]
             if previous_done is not None and progress.done < previous_done:
                 raise ValueError("job progress cannot move backwards")
@@ -479,7 +480,8 @@ class PostgresJobStore:
                         "WITH candidates AS (SELECT seq FROM erasures "
                         "WHERE tenant = $4 AND status = 'running' AND "
                         "(lease_expires_at IS NULL OR lease_expires_at <= $1) AND "
-                        "(owner_id IS NULL OR lease_expires_at <= $1) "
+                        "(owner_id IS NULL OR lease_expires_at IS NULL OR "
+                        "lease_expires_at <= $1) "
                         "ORDER BY created_at, seq FOR UPDATE SKIP LOCKED) "
                         "UPDATE erasures SET owner_id = $2, lease_expires_at = $3, "
                         "heartbeat_at = $1 WHERE seq IN "
@@ -498,7 +500,8 @@ class PostgresJobStore:
                 "WITH candidates AS (SELECT seq FROM erasures "
                 "WHERE status = 'running' AND "
                 "(lease_expires_at IS NULL OR lease_expires_at <= $1) AND "
-                "(owner_id IS NULL OR lease_expires_at <= $1) AND "
+                "(owner_id IS NULL OR lease_expires_at IS NULL OR "
+                "lease_expires_at <= $1) AND "
                 "($4::text IS NULL OR tenant = $4) "
                 "ORDER BY created_at, seq FOR UPDATE SKIP LOCKED) "
                 "UPDATE erasures SET owner_id = $2, lease_expires_at = $3, "
@@ -571,4 +574,5 @@ class PostgresJobStore:
             raise KeyError(erasure_id)
         if current_status != ErasureStatus.RUNNING.value:
             raise ValueError("erase journal row is already finished")
-        raise LeaseLostError(erasure_id)
+        message = f"erasure {erasure_id} lease is no longer held"
+        raise LeaseLostError(message)
