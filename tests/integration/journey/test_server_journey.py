@@ -1,12 +1,13 @@
 """Exercise the installed package's shared-server journey."""
 
 import asyncio
+import contextlib
 import json
 import os
 import secrets
 import subprocess
-import sys
 import time
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -56,17 +57,38 @@ def journey_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, st
 
 
 @pytest.fixture(autouse=True)
-def stop_server(installed_cli: Path, journey_env: dict[str, str]) -> None:
+def stop_server(
+    installed_cli: Path, journey_env: dict[str, str]
+) -> Generator[None, None, None]:
     """Stop any server started by a test, including after assertion failures."""
     yield
-    subprocess.run(
-        [str(installed_cli), "server", "stop"],
-        env=journey_env,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=15,
-    )
+    info_path = Path(journey_env["MEMORY_DATA_DIR"]) / "server.json"
+    try:
+        subprocess.run(
+            [str(installed_cli), "server", "stop"],
+            env=journey_env,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=15,
+        )
+    except subprocess.TimeoutExpired:
+        if not info_path.exists():
+            return
+        try:
+            process_id = json.loads(info_path.read_text())["pid"]
+            os.kill(process_id, 15)
+        except (OSError, KeyError, ValueError, json.JSONDecodeError):
+            return
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                os.kill(process_id, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.1)
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(process_id, 9)
 
 
 class TestServerJourney:
@@ -87,7 +109,7 @@ async def main():
 asyncio.run(main())
 """
         result = subprocess.run(
-            [sys.executable, "-c", script],
+            [str(installed_cli.parent / "python"), "-c", script],
             env=journey_env,
             capture_output=True,
             text=True,
@@ -166,7 +188,7 @@ asyncio.run(main())
         directory = Path(journey_env["MEMORY_DATA_DIR"])
         first = subprocess.run(
             [
-                sys.executable,
+                str(installed_cli.parent / "python"),
                 "-c",
                 "import asyncio; from ontogr_mem import Memory; "
                 "asyncio.run(Memory.connect().__aenter__())",
@@ -185,7 +207,7 @@ asyncio.run(main())
             time.sleep(0.1)
         recovered = subprocess.run(
             [
-                sys.executable,
+                str(installed_cli.parent / "python"),
                 "-c",
                 "import asyncio; from ontogr_mem import Memory; "
                 "asyncio.run(Memory.connect().__aenter__())",
@@ -206,7 +228,7 @@ asyncio.run(main())
         """Memory.open rejects SQLite state owned by the managed server."""
         connect = subprocess.run(
             [
-                sys.executable,
+                str(installed_cli.parent / "python"),
                 "-c",
                 "import asyncio; from ontogr_mem import Memory; "
                 "asyncio.run(Memory.connect().__aenter__())",
@@ -220,10 +242,10 @@ asyncio.run(main())
         assert connect.returncode == 0, connect.stdout + connect.stderr
         opened = subprocess.run(
             [
-                sys.executable,
+                str(installed_cli.parent / "python"),
                 "-c",
                 "import asyncio, os; from ontogr_mem import Memory; "
-                "asyncio.run(Memory.open(os.environ['MEMORY_STATE_URL']).__aenter__())",
+                "asyncio.run(Memory.open().__aenter__())",
             ],
             env=journey_env,
             capture_output=True,
