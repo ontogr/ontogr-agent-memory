@@ -11,7 +11,15 @@ class SilentVectors(VectorStore):
 
     def __init__(self, inner: VectorStore, *, kinds: frozenset[VectorKind]) -> None:
         """Keep the original gateway and select suppressed search kinds."""
-        super().__init__(inner.backend, inner.source, inner.tracer, inner.settings, inner.kinds, graph=inner.graph, rechecker=inner.rechecker)
+        super().__init__(
+            inner.backend,
+            inner.source,
+            inner.tracer,
+            inner.settings,
+            inner.kinds,
+            graph=inner.graph,
+            rechecker=inner.rechecker,
+        )
         self.inner = inner
         self.kinds = kinds
 

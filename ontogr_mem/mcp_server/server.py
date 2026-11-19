@@ -29,8 +29,9 @@ def build_server(
         if server_settings.api_key is not None
         else None
     )
-    server = FastMCP("ontogr-memory", instructions=INSTRUCTIONS,
-                     mask_error_details=True, auth=auth)
+    server = FastMCP(
+        "ontogr-memory", instructions=INSTRUCTIONS, mask_error_details=True, auth=auth
+    )
     enabled = set(server_settings.tools)
 
     def register(name: str, method: str, tags: set[str]) -> None:

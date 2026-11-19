@@ -65,22 +65,46 @@ def _version_tuple(value: str) -> tuple[int, ...]:
 
 def _child_environment(graph_url: str, state_url: str) -> dict[str, str]:
     exact = {
-        "PATH", "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "SYSTEMROOT",
-        "TMPDIR", "TEMP", "TMP", "LANG", "HTTP_PROXY", "HTTPS_PROXY",
-        "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy",
-        "no_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE",
-        "CURL_CA_BUNDLE", "FASTEMBED_CACHE_PATH", "HF_HOME", "HF_HUB_CACHE",
-        "HF_HUB_OFFLINE", "HF_ENDPOINT",
+        "PATH",
+        "HOME",
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "SYSTEMROOT",
+        "TMPDIR",
+        "TEMP",
+        "TMP",
+        "LANG",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "NO_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+        "no_proxy",
+        "SSL_CERT_FILE",
+        "SSL_CERT_DIR",
+        "REQUESTS_CA_BUNDLE",
+        "CURL_CA_BUNDLE",
+        "FASTEMBED_CACHE_PATH",
+        "HF_HOME",
+        "HF_HUB_CACHE",
+        "HF_HUB_OFFLINE",
+        "HF_ENDPOINT",
     }
     environment = {
-        key: value for key, value in os.environ.items()
+        key: value
+        for key, value in os.environ.items()
         if key in exact or key.startswith(("XDG_", "LC_"))
     }
-    environment.update({
-        "MEMORY_GRAPH_URL": graph_url,
-        "MEMORY_STATE_URL": state_url,
-        "MEMORY_DATA_DIR": str(data_directory().resolve()),
-    })
+    environment.update(
+        {
+            "MEMORY_GRAPH_URL": graph_url,
+            "MEMORY_STATE_URL": state_url,
+            "MEMORY_DATA_DIR": str(data_directory().resolve()),
+        }
+    )
     return environment
 
 
@@ -154,7 +178,8 @@ async def ensure_server(  # noqa: PLR0912, PLR0915
             return _endpoint(current_url, health, token)
         try:
             request = Request(
-                f"{current_url}/shutdown", method="POST",
+                f"{current_url}/shutdown",
+                method="POST",
                 headers={"Authorization": f"Bearer {token}"} if token else {},
             )
             await asyncio.to_thread(urlopen, request, timeout=2)

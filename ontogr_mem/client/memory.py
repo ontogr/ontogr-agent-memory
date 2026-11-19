@@ -67,9 +67,7 @@ class VerbService(Protocol):
     ) -> MemoryContext:
         """Search memory for relevant context."""
 
-    async def get_entity(
-        self, principal: Principal, request: GetEntity
-    ) -> EntityView:
+    async def get_entity(self, principal: Principal, request: GetEntity) -> EntityView:
         """Return one entity view."""
 
     async def list_entities(

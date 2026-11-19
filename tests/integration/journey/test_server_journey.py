@@ -22,15 +22,19 @@ def installed_cli(tmp_path_factory: pytest.TempPathFactory) -> Path:
     directory = tmp_path_factory.mktemp("server-wheel")
     wheelhouse = directory / "wheelhouse"
     wheelhouse.mkdir()
-    subprocess.run(
-        ["uv", "build", "--wheel", "--out-dir", str(wheelhouse)], check=True
-    )
+    subprocess.run(["uv", "build", "--wheel", "--out-dir", str(wheelhouse)], check=True)
     wheel = next(wheelhouse.glob("ontogr_mem-*.whl"))
     environment = directory / "venv"
     subprocess.run(["uv", "venv", str(environment)], check=True)
     subprocess.run(
-        ["uv", "pip", "install", "--python", str(environment / "bin/python"),
-         f"{wheel}[local]"],
+        [
+            "uv",
+            "pip",
+            "install",
+            "--python",
+            str(environment / "bin/python"),
+            f"{wheel}[local]",
+        ],
         check=True,
     )
     return environment / "bin/ontogr-mem"
@@ -56,8 +60,12 @@ def stop_server(installed_cli: Path, journey_env: dict[str, str]) -> None:
     """Stop any server started by a test, including after assertion failures."""
     yield
     subprocess.run(
-        [str(installed_cli), "server", "stop"], env=journey_env,
-        capture_output=True, text=True, check=False, timeout=15,
+        [str(installed_cli), "server", "stop"],
+        env=journey_env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
     )
 
 
@@ -79,8 +87,12 @@ async def main():
 asyncio.run(main())
 """
         result = subprocess.run(
-            [sys.executable, "-c", script], env=journey_env,
-            capture_output=True, text=True, timeout=60, check=False,
+            [sys.executable, "-c", script],
+            env=journey_env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
         )
         assert result.returncode == 0, result.stdout + result.stderr
         info_path = Path(journey_env["MEMORY_DATA_DIR"]) / "server.json"
@@ -99,17 +111,27 @@ asyncio.run(main())
         async with Client(transport) as client:
             tools = await client.list_tools()
             assert {tool.name for tool in tools} == {
-                "search_memory", "get_entity", "get_job", "write_facts",
-                "forget_memory", "get_skill",
+                "search_memory",
+                "get_entity",
+                "get_job",
+                "write_facts",
+                "forget_memory",
+                "get_skill",
             }
             source = "Rina leads the Atlas research team."
             write = await client.call_tool(
                 "write_facts",
-                {"source_text": source, "facts": [{
-                    "subject": "Rina", "relation": "leads",
-                    "object": "Atlas research team",
-                    "quote": "Rina leads the Atlas research team.",
-                }]},
+                {
+                    "source_text": source,
+                    "facts": [
+                        {
+                            "subject": "Rina",
+                            "relation": "leads",
+                            "object": "Atlas research team",
+                            "quote": "Rina leads the Atlas research team.",
+                        }
+                    ],
+                },
             )
             receipt = write.structured_content
             job_id = receipt["job_id"]
@@ -143,9 +165,17 @@ asyncio.run(main())
         """A subsequent client restarts a server killed without cleanup."""
         directory = Path(journey_env["MEMORY_DATA_DIR"])
         first = subprocess.run(
-            [sys.executable, "-c", "import asyncio; from ontogr_mem import Memory; "
-             "asyncio.run(Memory.connect().__aenter__())"],
-            env=journey_env, capture_output=True, text=True, timeout=60, check=False,
+            [
+                sys.executable,
+                "-c",
+                "import asyncio; from ontogr_mem import Memory; "
+                "asyncio.run(Memory.connect().__aenter__())",
+            ],
+            env=journey_env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
         )
         assert first.returncode == 0, first.stdout + first.stderr
         before = json.loads((directory / "server.json").read_text())["pid"]
@@ -154,9 +184,17 @@ asyncio.run(main())
         while time.monotonic() < deadline and (directory / "server.json").exists():
             time.sleep(0.1)
         recovered = subprocess.run(
-            [sys.executable, "-c", "import asyncio; from ontogr_mem import Memory; "
-             "asyncio.run(Memory.connect().__aenter__())"],
-            env=journey_env, capture_output=True, text=True, timeout=60, check=False,
+            [
+                sys.executable,
+                "-c",
+                "import asyncio; from ontogr_mem import Memory; "
+                "asyncio.run(Memory.connect().__aenter__())",
+            ],
+            env=journey_env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
         )
         assert recovered.returncode == 0, recovered.stdout + recovered.stderr
         after = json.loads((directory / "server.json").read_text())["pid"]
@@ -167,15 +205,31 @@ asyncio.run(main())
     ) -> None:
         """Memory.open rejects SQLite state owned by the managed server."""
         connect = subprocess.run(
-            [sys.executable, "-c", "import asyncio; from ontogr_mem import Memory; "
-             "asyncio.run(Memory.connect().__aenter__())"],
-            env=journey_env, capture_output=True, text=True, timeout=60, check=False,
+            [
+                sys.executable,
+                "-c",
+                "import asyncio; from ontogr_mem import Memory; "
+                "asyncio.run(Memory.connect().__aenter__())",
+            ],
+            env=journey_env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
         )
         assert connect.returncode == 0, connect.stdout + connect.stderr
         opened = subprocess.run(
-            [sys.executable, "-c", "import asyncio, os; from ontogr_mem import Memory; "
-             "asyncio.run(Memory.open(os.environ['MEMORY_STATE_URL']).__aenter__())"],
-            env=journey_env, capture_output=True, text=True, timeout=60, check=False,
+            [
+                sys.executable,
+                "-c",
+                "import asyncio, os; from ontogr_mem import Memory; "
+                "asyncio.run(Memory.open(os.environ['MEMORY_STATE_URL']).__aenter__())",
+            ],
+            env=journey_env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
         )
         assert opened.returncode != 0
         assert "Memory.connect" in opened.stderr

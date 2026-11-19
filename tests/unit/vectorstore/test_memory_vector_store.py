@@ -123,7 +123,8 @@ class TestMemoryVectorStore(VectorStoreContract):
     ) -> None:
         """A valid document probe cannot hide an invalid query probe."""
         store = VectorStore(
-            InMemoryBackend(), embedder_source(InvalidQueryProbeEmbedder(invalid_vector))
+            InMemoryBackend(),
+            embedder_source(InvalidQueryProbeEmbedder(invalid_vector)),
         )
 
         with pytest.raises(SpaceMismatchError, match="query"):

@@ -57,9 +57,7 @@ class RemoteService:
         self._job_ids: set[str] = set()
 
     @classmethod
-    async def open(
-        cls, *, url: str, token: str | None, tenant: str
-    ) -> "RemoteService":
+    async def open(cls, *, url: str, token: str | None, tenant: str) -> "RemoteService":
         """Open one authenticated MCP connection for a tenant."""
         import_extra("fastmcp", "mcp")
         from fastmcp import Client  # noqa: PLC0415

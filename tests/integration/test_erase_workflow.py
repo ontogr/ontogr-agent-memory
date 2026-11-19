@@ -134,9 +134,7 @@ class TestEraseWorkflow:
         self, graph_backend: GraphBackend, monkeypatch
     ):
         """Retained episode vectors fail residue checks after graph cleanup."""
-        vector_store = VectorStore(
-            InMemoryBackend(), embedder_source(MockEmbedder())
-        )
+        vector_store = VectorStore(InMemoryBackend(), embedder_source(MockEmbedder()))
         world = await make_erase_world(graph_backend, vector_store=vector_store)
         vectors = world.runtime.stores.vectors
         delete_vectors = vectors.delete
