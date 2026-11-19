@@ -179,6 +179,7 @@ class TestPostgresJobLeases:
             pool,
             FixedClock(datetime(2026, 10, 23, 12, tzinfo=UTC)),
             owner_id="owner",
+            lease_seconds=60,
         )
 
         with pytest.raises(KeyError, match="missing"):
@@ -192,6 +193,7 @@ class TestPostgresJobLeases:
             pool,
             FixedClock(datetime(2026, 10, 23, 12, tzinfo=UTC)),
             owner_id="owner",
+            lease_seconds=60,
         )
 
         with pytest.raises(KeyError, match="missing"):
