@@ -23,9 +23,12 @@ class TestPostgresJobLeases:
 
         assert claimed is not None
         assert claimed.status is JobState.RUNNING
-        assert await second.claim_next(
-            "tenant_a", now + timedelta(seconds=1), lambda job: True
-        ) is None
+        assert (
+            await second.claim_next(
+                "tenant_a", now + timedelta(seconds=1), lambda job: True
+            )
+            is None
+        )
         assert await second.tenant_has_live_lease("tenant_a", now)
 
         await second.requeue_expired(now + timedelta(seconds=61))
