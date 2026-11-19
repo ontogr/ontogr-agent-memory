@@ -251,8 +251,7 @@ class JobRunner:
 
     async def _sweep(self) -> None:
         await self._store.requeue_expired(self._clock.now())
-        queued = await self._store.queued_jobs()
-        for tenant_id in dict.fromkeys(job.tenant_id for job in queued):
+        for tenant_id in await self._store.tenant_ids():
             if tenant_id not in self._blocked:
                 self._start_lane(tenant_id)
 
