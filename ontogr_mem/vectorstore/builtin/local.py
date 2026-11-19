@@ -9,6 +9,7 @@ from copy import deepcopy
 from typing import TYPE_CHECKING
 
 from ontogr_mem._extras import import_extra
+from ontogr_mem.errors import MissingExtraError
 from ontogr_mem.paths import model_cache_directory
 from ontogr_mem.vectorstore.builtin.formatting import ENCODING_POLICIES, format_text
 from ontogr_mem.vectorstore.builtin.settings import EmbeddingSettings
@@ -155,6 +156,14 @@ def _ensure_cuda_available() -> None:
     try:
         onnxruntime = import_extra("onnxruntime", "fastembed")
         available_providers = onnxruntime.get_available_providers()
+    except MissingExtraError as exc:
+        raise EmbedderUnavailableError(
+            "CUDA provider availability could not be checked",
+            hint=(
+                "Install the fastembed-gpu extra and verify "
+                "CUDAExecutionProvider availability."
+            ),
+        ) from exc
     except Exception as exc:
         raise EmbedderUnavailableError(
             "CUDA provider availability could not be checked",
@@ -401,14 +410,14 @@ class LocalEmbedder:
                 max_input_tokens,
             ) = await asyncio.to_thread(load)
         except Exception as exc:
-            if isinstance(exc, EmbedderUnavailableError):
+            if isinstance(exc, (MissingExtraError, EmbedderUnavailableError)):
                 raise
             raise EmbedderUnavailableError(
                 "local embedding model could not load",
                 hint=(
-                    'Install "ontogr-mem[fastembed]" on a supported platform, '
-                    "or set MEMORY_EMBEDDING_MODEL and MEMORY_EMBEDDING_BASE_URL. "
-                    "Check model cache access and download connectivity."
+                    "Set MEMORY_EMBEDDING_MODEL and MEMORY_EMBEDDING_BASE_URL "
+                    "to use an endpoint. Check model cache access and "
+                    "download connectivity."
                 ),
             ) from exc
         return cls(

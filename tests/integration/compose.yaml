@@ -20,18 +20,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
-  pgvector:
-    image: pgvector/pgvector:0.8.1-pg17
-    ports: ["127.0.0.1:15432:5432"]
-    environment:
-      POSTGRES_USER: memory
-      POSTGRES_PASSWORD: ${MEMORY_PGVECTOR_PASSWORD:-memorytest123}
-      POSTGRES_DB: memory
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U memory -d memory"]
-      interval: 3s
-      timeout: 3s
-      retries: 30
   relational:
     image: postgres:17-alpine
     ports: ["127.0.0.1:15433:5432"]

@@ -4,6 +4,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastmcp import FastMCP
@@ -62,10 +63,11 @@ class Harness:
         self.tenants: list[str] = []
         self.ontologies: list[Path | None] = []
 
-    def open_memory(self, *, tenant: str, ontology=None):
+    def open_memory(self, *, tenant: str, ontology=None, models):
         """Stand in for Memory.open with a memory over a recording service."""
         self.tenants.append(tenant)
         self.ontologies.append(ontology)
+        self.models = models
 
         @asynccontextmanager
         async def opened():
@@ -158,6 +160,19 @@ class TestRunMcp:
 
         assert harness.tenants == ["acme"]
 
+    async def test_passes_shared_models_to_memory_open(self, harness, monkeypatch):
+        """The model set built for startup is shared with the opened memory."""
+
+        async def close_models():
+            return None
+
+        models = SimpleNamespace(aclose=close_models, configured=lambda _role: False)
+        monkeypatch.setattr("ontogr_mem.cli.mcp.build_models", lambda: models)
+
+        await run_mcp(_settings())
+
+        assert harness.models is models
+
     async def test_the_ontology_setting_reaches_memory_open(self, harness):
         """The configured ontology path is passed to Memory.open."""
         await run_mcp(_settings(ontology=Path("o.yaml")))
@@ -216,19 +231,6 @@ class TestRunMcp:
             await run_mcp(_settings(transport="stdio", host="0.0.0.0"))
 
         assert caplog.records == []
-
-    async def test_missing_extra_raises_before_memory_opens(self, harness, monkeypatch):
-        """Without FastMCP the runner raises the install hint and opens nothing."""
-
-        def missing(module, extra):
-            raise MissingExtraError("mcp")
-
-        monkeypatch.setattr("ontogr_mem.cli.mcp.import_extra", missing)
-
-        with pytest.raises(MissingExtraError):
-            await run_mcp(_settings())
-
-        assert harness.events == []
 
 
 class TestMcpCommand:
@@ -363,10 +365,10 @@ class TestMcpCommand:
     ):
         """A missing FastMCP prints the install command and returns one."""
         monkeypatch.setattr(
-            "ontogr_mem.cli.asyncio.run", _fake_asyncio_run(MissingExtraError("mcp"))
+            "ontogr_mem.cli.asyncio.run", _fake_asyncio_run(MissingExtraError(("mcp",)))
         )
 
         status = main(["mcp"])
 
         assert status == 1
-        assert 'pip install "ontogr-mem[mcp]"' in capsys.readouterr().err
+        assert 'uv add "ontogr-mem[mcp]"' in capsys.readouterr().err

@@ -28,19 +28,37 @@ class AmbiguousNameError(AgentMemoryError):
 
 
 class MissingExtraError(AgentMemoryError):
-    """An optional dependency is not installed.
+    """One or more optional extras are not installed.
 
     Attributes:
-        extra: Name of the extra that provides the missing dependency.
+        extras: Names of the extras that are not installed.
     """
 
-    def __init__(self, extra: str) -> None:
-        """Build the error with the install command for the extra.
+    def __init__(
+        self,
+        extras: Sequence[str],
+        *,
+        features: Sequence[str] = (),
+        needed: Sequence[str] = (),
+        subcommand: str = "",
+    ) -> None:
+        """Build the error with the commands that provide the missing extras.
 
         Args:
-            extra: Name of the extra to install.
+            extras: Extras that are not installed.
+            features: Features that need the missing extras.
+            needed: Every extra the command needs. Defaults to ``extras``.
+            subcommand: Command placed after the uvx invocation, such as mcp.
         """
-        super().__init__(
-            f'this feature needs the "{extra}" extra: pip install "ontogr-mem[{extra}]"'
-        )
-        self.extra = extra
+        self.extras = tuple(extras)
+        selected = tuple(needed) if needed else self.extras
+        lines = [f"missing extras: {', '.join(self.extras)}"]
+        if features:
+            lines.append(f"needed for: {', '.join(features)}")
+        lines.append(f'install with: uv add "ontogr-mem[{",".join(self.extras)}]"')
+        if subcommand:
+            lines.append(
+                f'or run with: uvx --from "ontogr-mem[{",".join(selected)}]" '
+                f"ontogr-mem {subcommand}"
+            )
+        super().__init__("\n".join(lines))

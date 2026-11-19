@@ -38,7 +38,7 @@ jobs:
         # Each entry is one module and runs as its own job on its own runner
         # with its own ephemeral services, so the entries run in parallel and
         # no two share a database. services lists the compose services the
-        # module uses: falkordb, neo4j, pgvector and relational. A test that
+        # module uses: falkordb, neo4j and relational. A test that
         # needs a service that is not running fails, so keep the list exact.
         # The small access and observability modules share one job
         # because a runner costs more to start than they take to run.
@@ -50,7 +50,7 @@ jobs:
             timeout: 15
           - name: vectorstore
             paths: tests/integration/vectorstore
-            services: falkordb neo4j pgvector
+            services: falkordb neo4j
             workers: "0"
             timeout: 15
           - name: temporal
@@ -116,7 +116,6 @@ jobs:
       UV_PYTHON: "3.12"
       # Throwaway values for the databases that tests/integration/compose.yaml
       # starts on this runner. They are not secrets and are not used elsewhere.
-      MEMORY_PGVECTOR_DSN: postgresql://memory:memorytest123@localhost:15432/memory
       SERVICES: ${{ matrix.suite.services }}
       INTEGRATION_PATHS: ${{ matrix.suite.paths }}
       # pytest-xdist workers. The default is one per core, and 0 runs in one

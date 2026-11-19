@@ -37,14 +37,31 @@ class TestMissingExtraError:
 
     def test_is_an_ontogr_mem_error(self):
         """Callers can catch it through the package root error."""
-        assert isinstance(MissingExtraError("falkordb"), AgentMemoryError)
+        assert isinstance(MissingExtraError(("falkordb",)), AgentMemoryError)
 
     def test_message_names_the_install_command(self):
         """The message tells the user how to install the extra."""
-        error = MissingExtraError("falkordb")
+        error = MissingExtraError(("falkordb",))
 
-        assert 'pip install "ontogr-mem[falkordb]"' in str(error)
-        assert error.extra == "falkordb"
+        assert 'uv add "ontogr-mem[falkordb]"' in str(error)
+        assert error.extras == ("falkordb",)
+        assert "pip" not in str(error)
+
+    def test_message_explains_features_and_uvx_command(self):
+        """The error connects missing extras to features and a runnable command."""
+        error = MissingExtraError(
+            ("mcp",),
+            features=("MCP server",),
+            needed=("falkordb", "mcp"),
+            subcommand="mcp",
+        )
+
+        assert str(error).splitlines() == [
+            "missing extras: mcp",
+            "needed for: MCP server",
+            'install with: uv add "ontogr-mem[mcp]"',
+            'or run with: uvx --from "ontogr-mem[falkordb,mcp]" ontogr-mem mcp',
+        ]
 
 
 class TestStoreError:
