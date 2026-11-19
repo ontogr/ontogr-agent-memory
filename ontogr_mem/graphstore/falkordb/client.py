@@ -81,6 +81,7 @@ class FalkorClientPool:
 
     async def list_graphs(self) -> list[str]:
         """Return graph names on the server."""
+
         async def call() -> list[str]:
             return list(await (await self._ensure_db()).list_graphs())
 

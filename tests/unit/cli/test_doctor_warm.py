@@ -3,6 +3,8 @@
 from contextlib import asynccontextmanager
 
 from ontogr_mem.cli import doctor, warm
+from ontogr_mem.relational_store import probe
+from ontogr_mem.store_urls import parse_graph_url, parse_state_url
 
 
 class TestDoctor:
@@ -34,6 +36,59 @@ class TestDoctor:
         assert result == 1
         assert "[fail] graph reachable" in capsys.readouterr().out
 
+    async def test_checks_sqlite_state_and_lists_tenants(self, monkeypatch, tmp_path):
+        """A reachable graph reports discovered tenants and first use state."""
+
+        @asynccontextmanager
+        async def graph_store():
+            class Store:
+                async def health(self):
+                    return None
+
+                async def list_tenants(self):
+                    return ["alpha", "beta"]
+
+            yield Store()
+
+        graph = parse_graph_url("redis://127.0.0.1:6379")
+        state = parse_state_url(f"sqlite:///{tmp_path}/new.db")
+        monkeypatch.setattr(doctor, "open_graph_store", graph_store)
+        results = []
+        await doctor._check_state(results, state)
+        tenants = await doctor._check_graph(results, graph)
+        assert tenants == ["alpha", "beta"]
+        assert results == [
+            ("pass", "state", f"{tmp_path}/new.db created on first use", None),
+            ("pass", "graph reachable", graph.identity(), None),
+        ]
+
+    async def test_postgres_probe_failure_is_reported(self, monkeypatch):
+        """Probe exceptions become actionable state failures."""
+
+        async def unavailable(_state):
+            raise OSError("down")
+
+        monkeypatch.setattr(probe, "probe_state", unavailable)
+        results = []
+        await doctor._check_state(results, parse_state_url("postgresql://localhost/db"))
+        assert results == [
+            (
+                "fail",
+                "state",
+                "PostgreSQL probe failed (OSError)",
+                "check MEMORY_STATE_URL",
+            )
+        ]
+
+    def test_cache_probe_handles_cache_miss(self, monkeypatch):
+        """A missing local model suggests the warm command."""
+        monkeypatch.setattr(doctor, "_has_extra", lambda _name: True)
+        monkeypatch.setattr(doctor, "model_cached", lambda _settings: False)
+        results = []
+        doctor._check_embedding(results)
+        assert results[0][:3] == ("warn", "embedder", "model not cached")
+        assert results[0][3] == "ontogr-mem warm"
+
 
 class TestWarm:
     """Warm handles endpoint embeddings without local downloads."""
@@ -42,6 +97,7 @@ class TestWarm:
         self, monkeypatch, capsys
     ):
         """Endpoint settings avoid opening a local embedder."""
+
         async def unexpected_open(_settings):
             raise AssertionError("endpoint embeddings do not need a local model")
 

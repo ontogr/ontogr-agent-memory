@@ -11,9 +11,7 @@ async def warm_model(settings: EmbeddingSettings | None = None) -> int:
     if selected.provider == "endpoint" or selected.base_url:
         print("Embedding endpoint is configured; there is no local model to download.")
         return 0
-    name = selected.fastembed_kwargs.get(
-        "model_name", _DEFAULT_MODEL_NAME
-    )
+    name = selected.fastembed_kwargs.get("model_name", _DEFAULT_MODEL_NAME)
     print(f"Embedding model: {name}")
     print(f"Cache: {model_cache_directory()}")
     embedder = await LocalEmbedder.open(selected)

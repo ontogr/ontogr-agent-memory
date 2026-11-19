@@ -14,6 +14,8 @@ class TestTenantCommands:
     """The commands only touch the selected tenants and require safe consent."""
 
     async def test_lists_tenants_in_sorted_order(self, monkeypatch):
+        """List tenant names in stable order."""
+
         class Store:
             async def list_tenants(self):
                 return ["zeta", "alpha"]
@@ -26,7 +28,11 @@ class TestTenantCommands:
 
         assert await data.list_tenants_text() == "alpha\nzeta"
 
-    async def test_missing_tenant_does_not_open_clear_session(self, monkeypatch, capsys):
+    async def test_missing_tenant_does_not_open_clear_session(
+        self, monkeypatch, capsys
+    ):
+        """Reject an unknown tenant before opening a clear session."""
+
         class Store:
             async def list_tenants(self):
                 return ["beta"]
@@ -52,6 +58,7 @@ class TestTenantCommands:
     async def test_non_interactive_clear_refuses_before_deletion(
         self, monkeypatch, capsys, stdin_tty, stdout_tty
     ):
+        """Require interactive consent before clearing tenant data."""
         service = _Service()
         _install_clear_dependencies(monkeypatch, service)
         monkeypatch.setattr(data.sys, "stdin", _Terminal(stdin_tty))
@@ -68,6 +75,7 @@ class TestTenantCommands:
     async def test_wrong_confirmation_refuses_without_clearing(
         self, monkeypatch, capsys
     ):
+        """Reject a confirmation string that does not match."""
         service = _Service()
         _install_clear_dependencies(monkeypatch, service)
         monkeypatch.setattr(data.sys, "stdin", _Terminal(True))
@@ -80,9 +88,8 @@ class TestTenantCommands:
         assert "did not match" in capsys.readouterr().out
         assert service.clear_calls == 0
 
-    async def test_exact_confirmation_clears_selected_tenant(
-        self, monkeypatch, capsys
-    ):
+    async def test_exact_confirmation_clears_selected_tenant(self, monkeypatch, capsys):
+        """Clear only the tenant named by the exact confirmation."""
         service = _Service()
         _install_clear_dependencies(monkeypatch, service)
         monkeypatch.setattr(data.sys, "stdin", _Terminal(True))
@@ -96,9 +103,8 @@ class TestTenantCommands:
         assert service.clear_calls == 1
         assert "Kept: audit rows, operation rows and erasure rows" in output
 
-    async def test_job_conflict_is_reported_without_success(
-        self, monkeypatch, capsys
-    ):
+    async def test_job_conflict_is_reported_without_success(self, monkeypatch, capsys):
+        """Report an active job conflict without claiming success."""
         service = _Service(conflict=True)
         _install_clear_dependencies(monkeypatch, service)
         monkeypatch.setattr(data.sys, "stdin", _Terminal(True))
