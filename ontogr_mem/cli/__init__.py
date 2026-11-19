@@ -168,6 +168,12 @@ def _run_server_command(args: argparse.Namespace) -> int:
                 "server is already running (another instance holds the lock)",
                 file=sys.stderr,
             )
+        if result == 79:
+            print(
+                "server stopped before all jobs drained; "
+                "pending jobs remain and will be recovered on next start",
+                file=sys.stderr,
+            )
         return result
     if args.server_command == "status":
         return _server_status()

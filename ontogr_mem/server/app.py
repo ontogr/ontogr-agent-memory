@@ -7,6 +7,7 @@ import logging
 import os
 import secrets
 import socket
+import sys
 import time
 from collections.abc import Callable
 from contextlib import AsyncExitStack
@@ -293,7 +294,20 @@ async def serve(  # noqa: C901, PLR0912, PLR0915
                         )
                         if status.queued_jobs == 0:
                             break
-                await asyncio.wait_for(runtime.service.drain(), timeout=30)
+                drain_task = asyncio.create_task(runtime.service.drain())
+                _done, pending = await asyncio.wait({drain_task}, timeout=30)
+                if pending:
+                    logger.warning(
+                        "server drain timed out after 30 seconds; "
+                        "pending jobs remain and will be recovered on next start"
+                    )
+                    print(
+                        "server stopped before all jobs drained; "
+                        "pending jobs remain and will be recovered on next start",
+                        file=sys.stderr,
+                    )
+                    return 79
+                drain_task.result()
             finally:
                 task.cancel()
                 preload.cancel()
