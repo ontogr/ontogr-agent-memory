@@ -487,7 +487,10 @@ class PostgresJobStore:
                         "tenant, mode, principal_id, selector_kind, target, "
                         "episode_ids, fact_ids, observation_ids, entity_ids, "
                         "created_at, status, last_step, finished_at, residue, counts",
-                        to_micros(now), self._owner_id, lease_expiry, tenant_id,
+                        to_micros(now),
+                        self._owner_id,
+                        lease_expiry,
+                        tenant_id,
                     )
                     records.extend(erasure_from_row(item) for item in claimed)
                 return records
