@@ -62,9 +62,7 @@ class Preflight:
             )
         if self.missing_roles:
             msg = f"no model configured for {self.missing_roles[0].value}"
-            raise ModelNotConfiguredError(
-                msg
-            )
+            raise ModelNotConfiguredError(msg)
 
 
 def check_requirements(
