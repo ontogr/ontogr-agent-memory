@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+import asyncio
 
 import pytest
 
@@ -63,6 +64,24 @@ class TestPostgresJobLeases:
         assert await second.tenant_has_live_lease(
             "tenant_a", now + timedelta(seconds=61)
         )
+
+    async def test_submission_waits_for_tenant_lock_and_is_admitted_after_release(
+        self, pool, clean_tables
+    ):
+        """Serialize admission with clear while allowing the later submission."""
+        clock = FixedClock(datetime(2026, 10, 23, 12, tzinfo=UTC))
+        store = PostgresJobStore(pool, clock, owner_id="owner", lease_seconds=60)
+        job = make_job()
+
+        async with store.tenant_lock(job.tenant_id):
+            submission = asyncio.create_task(store.create_job(job))
+            await asyncio.sleep(0)
+            assert not submission.done()
+
+        created, replayed = await submission
+
+        assert created.job_id == job.job_id
+        assert not replayed
 
     async def test_renewed_lease_blocks_claim_past_original_expiry(
         self, pool, clean_tables

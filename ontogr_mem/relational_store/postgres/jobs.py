@@ -66,6 +66,10 @@ class PostgresJobStore:
     async def create_job(self, job: Job) -> tuple[Job, bool]:
         """Atomically insert a job or replay a matching Tenant request key."""
         async with pg_connection(self._pool) as connection, connection.transaction():
+            await connection.fetchval(
+                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                job.tenant_id,
+            )
             row = await connection.fetchrow(_INSERT_JOB, *job_values(job))
             if row is not None:
                 return job_from_row(row), False
