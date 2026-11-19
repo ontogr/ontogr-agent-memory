@@ -51,8 +51,12 @@ class JobStoreContract:
         """All record fields survive creation, saving, and reading."""
         job = make_job()
         created, replay = await store.create_job(job)
+        assert (created, replay) == (job, False)
+        assert await store.get_job(job.job_id) == job
+
         claimed = await store.claim_next(job.tenant_id, T0, lambda _: True)
-        assert claimed == job
+        assert claimed == replace(job, status=JobState.RUNNING)
+        assert await store.get_job(job.job_id) == claimed
         saved = replace(
             claimed,
             status=JobState.FAILED,
@@ -64,7 +68,6 @@ class JobStoreContract:
 
         assert await store.save_job(saved)
 
-        assert (created, replay) == (job, False)
         assert await store.get_job(job.job_id) == saved
 
     async def test_missing_job_reads_as_none(self, store):
@@ -93,7 +96,7 @@ class JobStoreContract:
         job = make_job()
         await store.create_job(job)
         claimed = await store.claim_next(job.tenant_id, T0, lambda _: True)
-        assert claimed == job
+        assert claimed == replace(job, status=JobState.RUNNING)
         done = replace(claimed, status=JobState.DONE, result={"ok": True})
         assert await store.save_job(done)
 
@@ -155,6 +158,7 @@ class JobStoreContract:
             status=JobState.DONE,
             attempts=3,
             result={"count": 2},
+            error=None,
             updated_at=T0 + timedelta(microseconds=1),
         )
 
@@ -183,15 +187,15 @@ class JobStoreContract:
         ]
         for job in jobs:
             await store.create_job(job)
-        for job in jobs[:2]:
+        for job in sorted(jobs, key=lambda job: job.created_at)[:2]:
             claimed = await store.claim_next(job.tenant_id, T0, lambda _: True)
-            assert claimed == job
+            assert claimed == replace(job, status=JobState.RUNNING)
             await store.save_job(replace(claimed, attempts=1))
 
         await store.requeue_expired(T0)
         recovered = await store.queued_jobs()
 
-        expected = [replace(jobs[1], attempts=1), jobs[2], replace(jobs[0], attempts=1)]
+        expected = [replace(jobs[1], attempts=1), replace(jobs[2], attempts=1), jobs[0]]
         assert recovered == expected
         assert [await store.get_job(job.job_id) for job in expected] == expected
 
