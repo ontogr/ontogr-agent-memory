@@ -57,7 +57,6 @@ async def make_erase_world(
     runtime = build_tenant_runtime(
         stores,
         models=build_models(LLMConfig.model_construct()),
-        embedder=embedder,
         clock=clock,
         policy=ResolutionPolicy(),
         resolver_settings=ResolverSettings(),

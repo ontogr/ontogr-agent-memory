@@ -142,7 +142,9 @@ class VectorStore:
     async def embedding_gateway(self) -> EmbeddingGateway:
         """Return the initialized gateway, loading the embedder when needed."""
         await self.ensure_ready()
-        assert self.gateway is not None
+        if self.gateway is None:
+            msg = "embedding gateway is unavailable after initialization"
+            raise StoreNotReadyError(msg)
         return self.gateway
 
     def _spec(self, kind: VectorKind) -> SpaceSpec:

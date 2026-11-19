@@ -150,7 +150,7 @@ def gateway(embedder: MockEmbedder, **settings: float) -> EmbeddingGateway:
 def embedder_source(embedder: Embedder) -> EmbedderSource:
     """Return a lazy source for a deterministic test embedder."""
 
-    async def load() -> MockEmbedder:
+    async def load() -> Embedder:
         return embedder
 
     return EmbedderSource(load)

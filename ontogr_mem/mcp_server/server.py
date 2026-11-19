@@ -1,7 +1,7 @@
 """Build the MCP server that exposes memory tools for request-selected tenants."""
 
 from collections.abc import Callable
-from inspect import signature
+from functools import wraps
 from typing import Any
 
 from fastmcp import FastMCP
@@ -46,9 +46,8 @@ def build_server(
             return await getattr(memory, method)(**kwargs)
 
         memory_method = getattr(memory, method)
-        call.__signature__ = signature(memory_method)
-        call.__annotations__ = memory_method.__annotations__.copy()
-        server.tool(guard_errors(call), name=name, tags=tags)
+        tool_call = wraps(memory_method)(call)
+        server.tool(guard_errors(tool_call), name=name, tags=tags)
 
     if "add_memory" in enabled:
         enabled.discard("add_memory")
