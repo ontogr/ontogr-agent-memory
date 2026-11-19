@@ -148,7 +148,11 @@ class VectorStore:
         """
         async with self._init_lock:
             if self._ready:
+                # A failed recheck must block use so the next operation
+                # reinitializes the spaces before touching the backend again.
+                self._ready = False
                 await self.backend.ensure_ready(list(self.specs.values()))
+                self._ready = True
                 return
             await self._initialize_locked()
 

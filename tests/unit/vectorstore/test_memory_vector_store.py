@@ -9,8 +9,10 @@ from ontogr_mem.vectorstore import (
     EmbeddingPurpose,
     EmbedItem,
     Hit,
+    IndexDriftError,
     SearchFilters,
     SpaceMismatchError,
+    SpaceSpec,
     TemporalFilter,
     Validity,
     VectorKind,
@@ -57,6 +59,36 @@ class GraphView:
     async def still_valid(self, ids, temporal):
         """Return the graph facts believed at the requested time."""
         return set(ids) & {"f1"}
+
+
+class FlakyIndexBackend(InMemoryBackend):
+    """An in-memory twin whose index can drift and refuse searches."""
+
+    def __init__(self) -> None:
+        """Start with an operational index and no pending recheck failure."""
+        super().__init__()
+        self.index_operational = True
+        self.fail_recheck = False
+
+    async def ensure_ready(self, specs: Sequence[SpaceSpec]) -> None:
+        """Fail on demand, otherwise restore the index to an operational state."""
+        if self.fail_recheck:
+            raise IndexDriftError("index is not operational")
+        await super().ensure_ready(specs)
+        self.index_operational = True
+
+    async def search(
+        self,
+        kind: VectorKind,
+        vector: Sequence[float],
+        k: int,
+        filters: SearchFilters,
+        min_score: float | None,
+    ) -> list[tuple[str, float]]:
+        """Refuse searches while the index is not operational."""
+        if not self.index_operational:
+            raise IndexDriftError("index is not operational")
+        return await super().search(kind, vector, k, filters, min_score)
 
 
 class TestMemoryVectorStore(VectorStoreContract):
@@ -147,3 +179,21 @@ class TestMemoryVectorStore(VectorStoreContract):
             "backends may require a separate database or instance. Automatic "
             "re-embedding is not supported."
         )
+
+    async def test_failed_recheck_forces_lazy_reinitialization_before_search(self):
+        """A failed explicit recheck must not leave the store on a bad index."""
+        backend = FlakyIndexBackend()
+        store = VectorStore(backend, embedder_source(fixed_embedder()))
+
+        await store.ensure_ready()
+        await store.upsert(VectorKind.NODE, [EmbedItem("n1", "a")])
+        backend.index_operational = False
+        backend.fail_recheck = True
+        with pytest.raises(IndexDriftError):
+            await store.ensure_ready()
+
+        backend.fail_recheck = False
+        hits = await store.search(VectorKind.NODE, A, k=5)
+
+        assert [hit.id for hit in hits] == ["n1"]
+        assert backend.index_operational is True

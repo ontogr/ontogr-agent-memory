@@ -26,7 +26,6 @@ class TestTenantStacks:
 
         arguments = {
             "stores": stores,
-            "embedder": embedder,
             "clock": SystemClock(),
             "policy": ResolutionPolicy(),
             "resolver_settings": ResolverSettings(),
