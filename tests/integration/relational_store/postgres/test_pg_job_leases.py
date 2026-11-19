@@ -30,7 +30,7 @@ class TestPostgresJobLeases:
         """Forget conflicts while a Postgres job is leased, then removes its fact."""
         clock = FixedClock(datetime(2026, 10, 23, 12, tzinfo=UTC))
         state = PostgresJobStore(pool, clock, owner_id="forget-owner", lease_seconds=60)
-        harness = await memory_service_harness(graph_backend, state=state)
+        harness = await memory_service_harness(graph_backend, state=state, clock=clock)
         admin = harness.principal.model_copy(
             update={"grants": {"t1": frozenset({Grant.ADMIN})}}
         )

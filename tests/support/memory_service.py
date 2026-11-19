@@ -45,6 +45,7 @@ async def memory_service_harness(
     tracer: Tracer | None = None,
     keywords: KeywordSearch | None = None,
     state: StateStore | None = None,
+    clock: Clock | None = None,
 ) -> MemoryServiceHarness:
     """Build an isolated service with a grant on one Tenant.
 
@@ -54,16 +55,18 @@ async def memory_service_harness(
             omitted, the service gets an unconfigured pool with no clients.
         state: Optional job store passed to the service. When omitted, the
             service gets an in-memory job store.
+        clock: Optional clock shared by the service and a caller-supplied job
+            store. When omitted, the harness fixes its own clock.
         tracer: Optional tracer for service and tenant spans.
         keywords: Replaces the tenant's keyword search when given.
     """
-    clock = FixedClock()
+    selected_clock = clock if clock is not None else FixedClock()
     embedder = MockEmbedder()
     selected_state = state if state is not None else MemoryJobStore()
-    operations = MemoryOperationStore(clock)
+    operations = MemoryOperationStore(selected_clock)
     authorizer = Authorizer(
         InMemoryAuditSink(),
-        clock,
+        selected_clock,
         tracer=tracer,
     )
 
@@ -85,7 +88,7 @@ async def memory_service_harness(
         state=selected_state,
         authorizer=authorizer,
         operations=operations,
-        clock=clock,
+        clock=selected_clock,
         models=(
             models if models is not None else build_models(LLMConfig.model_construct())
         ),
@@ -109,4 +112,6 @@ async def memory_service_harness(
         grants={"t1": frozenset({Grant.READ, Grant.WRITE})},
         default_tenant="t1",
     )
-    return MemoryServiceHarness(service, principal, clock, operations, selected_state)
+    return MemoryServiceHarness(
+        service, principal, selected_clock, operations, selected_state
+    )
