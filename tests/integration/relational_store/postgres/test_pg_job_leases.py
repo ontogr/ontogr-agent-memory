@@ -9,13 +9,77 @@ import pytest
 from ontogr_mem.data_models.jobs import JobProgress, JobState
 from ontogr_mem.relational_store.jobs.errors import LeaseLostError
 from ontogr_mem.relational_store.postgres.jobs import PostgresJobStore
+from ontogr_mem.service.contracts import AddMemory, ForgetMode, ListEpisodes, MemoryKind
+from ontogr_mem.service.errors import ConflictError
+from ontogr_mem.service.forget.selector import ForgetSelector
+from ontogr_mem.service.principal import Grant
 from tests.contracts.erase_journal import make_erasure
 from tests.contracts.job_store import make_job
 from tests.support.clock import FixedClock
+from tests.support.graph_backend import GraphBackend
+from tests.support.jobs import wait_for_job
+from tests.support.memory_service import memory_service_harness
 
 
 class TestPostgresJobLeases:
     """Verify a live lease blocks another owner until recovery expires it."""
+
+    async def test_live_tenant_lease_blocks_forget_until_released(
+        self, pool, clean_tables, graph_backend: GraphBackend
+    ):
+        """Forget conflicts while a Postgres job is leased, then removes its fact."""
+        clock = FixedClock(datetime(2026, 10, 23, 12, tzinfo=UTC))
+        state = PostgresJobStore(pool, clock, owner_id="forget-owner", lease_seconds=60)
+        harness = await memory_service_harness(graph_backend, state=state)
+        admin = harness.principal.model_copy(
+            update={"grants": {"t1": frozenset({Grant.ADMIN})}}
+        )
+        receipt = await harness.service.add_memory(
+            admin,
+            AddMemory(
+                tenant="t1",
+                kind=MemoryKind.FACT,
+                subject="Ana",
+                relation="works_at",
+                object="Acme",
+                wait_seconds=5,
+            ),
+        )
+        indexed_job = await wait_for_job(harness.service, admin, receipt.job_id)
+        fact_id = indexed_job.result["fact_ids"][0]
+        selector = ForgetSelector(fact_id=fact_id)
+        preview = await harness.service.preview_forget(
+            admin, tenant="t1", selector=selector, mode=ForgetMode.DELETE
+        )
+        lease_job, _ = await state.create_job(
+            make_job("forget-lease-job", tenant_id="t1")
+        )
+        claimed = await state.claim_next("t1", clock.now(), lambda _: True)
+        assert claimed is not None
+        assert claimed.job_id == lease_job.job_id
+
+        with pytest.raises(ConflictError):
+            await harness.service.forget(
+                admin,
+                tenant="t1",
+                selector=selector,
+                mode=ForgetMode.DELETE,
+                confirm_token=preview.confirm_token,
+            )
+
+        await state.release_job(lease_job.job_id)
+        result = await harness.service.forget(
+            admin,
+            tenant="t1",
+            selector=selector,
+            mode=ForgetMode.DELETE,
+            confirm_token=preview.confirm_token,
+        )
+
+        assert result.status == "completed"
+        assert result.removed.episodes == 1
+        page = await harness.service.list_episodes(admin, ListEpisodes(tenant="t1"))
+        assert page.episodes == []
 
     async def test_recovery_leaves_job_running_before_lease_expires(
         self, pool, clean_tables

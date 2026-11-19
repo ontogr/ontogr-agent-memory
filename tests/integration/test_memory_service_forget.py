@@ -10,7 +10,10 @@ from ontogr_mem.service.contracts import (
     ListEpisodes,
     MemoryKind,
 )
-from ontogr_mem.service.errors import ConfirmationRequiredError, ObjectNotFoundError
+from ontogr_mem.service.errors import (
+    ConfirmationRequiredError,
+    ObjectNotFoundError,
+)
 from ontogr_mem.service.forget.selector import ForgetSelector
 from ontogr_mem.service.principal import Grant
 from tests.support.graph_backend import GraphBackend

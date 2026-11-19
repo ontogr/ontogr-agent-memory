@@ -6,6 +6,7 @@ from ontogr_mem.data_models.clock import Clock
 from ontogr_mem.llm import LLMConfig, RoleModels, build_models
 from ontogr_mem.observability import Tracer
 from ontogr_mem.relational_store import MemoryOperationStore
+from ontogr_mem.relational_store.jobs.ports import StateStore
 from ontogr_mem.relational_store.memory import MemoryJobStore
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionMode, ResolutionPolicy, TypePolicy
@@ -43,6 +44,7 @@ async def memory_service_harness(
     models: RoleModels | None = None,
     tracer: Tracer | None = None,
     keywords: KeywordSearch | None = None,
+    state: StateStore | None = None,
 ) -> MemoryServiceHarness:
     """Build an isolated service with a grant on one Tenant.
 
@@ -50,12 +52,14 @@ async def memory_service_harness(
         backend: The live graph backend that tenant stores are opened on.
         models: Optional caller-owned model pool passed to the service. When
             omitted, the service gets an unconfigured pool with no clients.
+        state: Optional job store passed to the service. When omitted, the
+            service gets an in-memory job store.
         tracer: Optional tracer for service and tenant spans.
         keywords: Replaces the tenant's keyword search when given.
     """
     clock = FixedClock()
     embedder = MockEmbedder()
-    state = MemoryJobStore()
+    selected_state = state if state is not None else MemoryJobStore()
     operations = MemoryOperationStore(clock)
     authorizer = Authorizer(
         InMemoryAuditSink(),
@@ -78,7 +82,7 @@ async def memory_service_harness(
     service = await build_service(
         ServiceSettings(graph_url=graph_url, _env_file=None),
         stores_factory=stores_factory,
-        state=state,
+        state=selected_state,
         authorizer=authorizer,
         operations=operations,
         clock=clock,
@@ -105,4 +109,4 @@ async def memory_service_harness(
         grants={"t1": frozenset({Grant.READ, Grant.WRITE})},
         default_tenant="t1",
     )
-    return MemoryServiceHarness(service, principal, clock, operations, state)
+    return MemoryServiceHarness(service, principal, clock, operations, selected_state)
