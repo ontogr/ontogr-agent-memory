@@ -264,12 +264,15 @@ class TestPostgresJobLeases:
         second = PostgresJobStore(pool, clock, owner_id="second", lease_seconds=60)
         third = PostgresJobStore(pool, clock, owner_id="third", lease_seconds=60)
         record = make_erasure()
+        other_tenant_record = make_erasure("erase-2", tenant="tenant_b")
         await first.create(record)
+        await first.create(other_tenant_record)
 
         async with pool.acquire() as connection:
             await connection.execute(
-                "UPDATE erasures SET lease_expires_at = NULL WHERE erasure_id = $1",
-                record.erasure_id,
+                "UPDATE erasures SET lease_expires_at = NULL "
+                "WHERE erasure_id = ANY($1)",
+                [record.erasure_id, other_tenant_record.erasure_id],
             )
 
         now = clock.now()
@@ -277,5 +280,8 @@ class TestPostgresJobLeases:
 
         assert [item.erasure_id for item in claimed] == [record.erasure_id]
         assert await third.claim_recoverable("tenant_a", now) == []
-        assert await third.claim_recoverable("tenant_b", now) == []
+        second_tenant_claimed = await second.claim_recoverable("tenant_b", now)
+        assert [item.erasure_id for item in second_tenant_claimed] == [
+            other_tenant_record.erasure_id
+        ]
         await second.step(record.erasure_id, "retract")
