@@ -249,7 +249,8 @@ class PostgresJobStore:
         async with pg_connection(self._pool) as connection:
             await connection.execute(
                 "UPDATE jobs SET lease_expires_at = $1, heartbeat_at = $2 "
-                "WHERE status = 'running' AND owner_id = $3",
+                "WHERE status = 'running' AND owner_id = $3 "
+                "AND lease_expires_at > $2",
                 to_micros(now) + self._lease_micros,
                 to_micros(now),
                 self._owner_id,
