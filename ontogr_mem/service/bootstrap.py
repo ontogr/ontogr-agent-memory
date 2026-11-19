@@ -59,6 +59,7 @@ from ontogr_mem.store_urls import (
 )
 from ontogr_mem.temporal.settings import ClosureSettings
 from ontogr_mem.tenant_stores import TenantStores
+from ontogr_mem.vectorstore.errors import EmbedderUnavailableError
 from ontogr_mem.vectorstore.source import EmbedderSource
 
 
@@ -338,8 +339,6 @@ async def open_service(
 @asynccontextmanager
 async def clear_session(tenant: str) -> AsyncGenerator[MemoryService, None]:
     """Open state for a tenant clear while excluding the local server."""
-    from ontogr_mem.vectorstore.builtin import EmbedderUnavailableError
-
     state_settings = StateSettings()
     state_target = parse_state_url(state_settings.url.get_secret_value())
     lock: ServerLock | None = None

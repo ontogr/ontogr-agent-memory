@@ -8,10 +8,12 @@ from importlib.util import find_spec
 from pathlib import Path
 
 from dotenv import dotenv_values
+from pydantic import ValidationError
 
 from ontogr_mem.llm import build_models
 from ontogr_mem.llm.roles import ModelRole
 from ontogr_mem.paths import cache_directory, data_directory, model_cache_directory
+from ontogr_mem.relational_store.config import StateSettings
 from ontogr_mem.requirements import REQUIREMENTS, TEXT_WRITE_ROLES, check_requirements
 from ontogr_mem.server.files import read_server_info, read_server_token
 from ontogr_mem.service.bootstrap import open_graph_store
@@ -32,7 +34,7 @@ async def run_doctor() -> int:
     _check_preflight(results, graph, state)
     await _check_state(results, state)
     tenants = await _check_graph(results, graph)
-    _check_tenant_rules(results, graph)
+    _check_tenant_rules(results, graph, state)
     _check_embedding(results)
     _check_models(results)
     _check_server_env(results)
@@ -62,20 +64,37 @@ def _check_urls(results):
             )
         )
     try:
-        state = parse_state_url(
-            os.environ.get("MEMORY_STATE_URL", "sqlite:///memory.db")
-        )
+        state = parse_state_url(StateSettings().url.get_secret_value())
     except Exception:
         results.append(("fail", "state", "invalid URL", "check MEMORY_STATE_URL"))
     return graph, state
+
+
+def _embedding_settings(results):
+    try:
+        return EmbeddingSettings()
+    except ValidationError as error:
+        fields = sorted(
+            {".".join(str(part) for part in item["loc"]) for item in error.errors()}
+        )
+        results.append(
+            ("fail", "embedding settings", f"invalid fields: {', '.join(fields)}", None)
+        )
+        return None
 
 
 def _check_preflight(results, graph, state):
     if graph is None or state is None:
         results.append(("warn", "preflight", "not checked, invalid store URL", None))
         return
+    embedding = _embedding_settings(results)
+    if embedding is None:
+        results.append(
+            ("warn", "preflight", "not checked, invalid embedding settings", None)
+        )
+        return
     check = check_requirements(
-        models=None, graph=graph, state=state, embedding=EmbeddingSettings()
+        models=None, graph=graph, state=state, embedding=embedding
     )
     if check.missing:
         results.append(
@@ -151,7 +170,7 @@ async def _check_graph(results, graph):
     return tenants
 
 
-def _check_tenant_rules(results, graph):
+def _check_tenant_rules(results, graph, state):
     if graph is not None and not is_loopback_host(graph.host):
         tenant = os.environ.get("MEMORY_MCP_TENANT")
         if not tenant or tenant == "default":
@@ -171,9 +190,7 @@ def _check_tenant_rules(results, graph):
         graph is not None
         and not is_loopback_host(graph.host)
         and getattr(graph, "backend", None)
-        and os.environ.get("MEMORY_STATE_URL", "sqlite:///memory.db").startswith(
-            "sqlite:"
-        )
+        and state.backend == "sqlite"
     ):
         results.append(
             (
@@ -186,7 +203,9 @@ def _check_tenant_rules(results, graph):
 
 
 def _check_embedding(results):
-    settings = EmbeddingSettings()
+    settings = _embedding_settings(results)
+    if settings is None:
+        return
     if settings.provider == "endpoint" or settings.base_url:
         results.append(("pass", "embedder", "endpoint configured", None))
     elif _has_extra("fastembed"):

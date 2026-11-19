@@ -16,6 +16,36 @@ class TestRunDoctor:
         monkeypatch.setattr(doctor, "_check_models", lambda *_args: None)
         monkeypatch.setattr(doctor, "_print_locations", lambda *_args: None)
 
+    def test_invalid_embedding_settings_are_reported_without_values_or_tracebacks(
+        self, monkeypatch
+    ):
+        """Invalid embedding configuration fails safely at both doctor checks."""
+        monkeypatch.setenv("MEMORY_EMBEDDING_DIMENSIONS", "5000")
+        results = []
+
+        doctor._check_preflight(results, object(), object())
+        doctor._check_embedding(results)
+
+        assert (
+            results.count(
+                ("fail", "embedding settings", "invalid fields: dimensions", None)
+            )
+            == 2
+        )
+
+    def test_state_url_uses_configured_settings_default(self, monkeypatch):
+        """Doctor parses the same state URL used by service settings."""
+        monkeypatch.delenv("MEMORY_STATE_URL", raising=False)
+
+        _, state = doctor._check_urls([])
+
+        assert (
+            state.path
+            == doctor.parse_state_url(
+                doctor.StateSettings().url.get_secret_value()
+            ).path
+        )
+
     async def test_reports_missing_extra_and_redacts_credentials(
         self, monkeypatch, capsys
     ):
