@@ -128,9 +128,11 @@ class PostgresJobStore:
         async with pg_connection(self._pool) as connection, connection.transaction():
             row = await connection.fetchrow(
                 "SELECT progress_done FROM jobs WHERE job_id = $1 "
-                "AND owner_id = $2 FOR UPDATE",
+                "AND owner_id = $2 AND status = 'running' "
+                "AND lease_expires_at > $3 FOR UPDATE",
                 job_id,
                 self._owner_id,
+                to_micros(datetime.now(UTC)),
             )
             if row is None:
                 raise LeaseLostError(job_id)
@@ -139,12 +141,14 @@ class PostgresJobStore:
                 raise ValueError("job progress cannot move backwards")
             await connection.execute(
                 "UPDATE jobs SET progress_stage = $1, progress_done = $2, "
-                "progress_total = $3 WHERE job_id = $4 AND owner_id = $5",
+                "progress_total = $3 WHERE job_id = $4 AND owner_id = $5 "
+                "AND status = 'running' AND lease_expires_at > $6",
                 progress.stage,
                 progress.done,
                 progress.total,
                 job_id,
                 self._owner_id,
+                to_micros(datetime.now(UTC)),
             )
 
     async def queued_jobs(self) -> list[Job]:

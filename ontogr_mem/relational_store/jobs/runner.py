@@ -124,6 +124,9 @@ class JobRunner:
             self._started = True
             self._blocked.clear()
             await self._store.requeue_expired(self._clock.now())
+            queued = await self._store.queued_jobs()
+            for job in queued:
+                self._finished.setdefault(job.job_id, asyncio.Event())
             tenant_ids = await self._store.tenant_ids()
             queued_count = await self._store.count_jobs(tenant_ids, (JobState.QUEUED,))
             for tenant_id in tenant_ids:
