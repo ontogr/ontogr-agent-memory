@@ -163,7 +163,7 @@ class TestPostgresJobLeases:
         self, pool, clean_tables
     ):
         """Only the winner receives a tenant-scoped recovery lease."""
-        clock = FixedClock(datetime.now(UTC))
+        clock = FixedClock(datetime(2026, 10, 23, 12, tzinfo=UTC))
         first = PostgresJobStore(pool, clock, owner_id="first", lease_seconds=60)
         second = PostgresJobStore(pool, clock, owner_id="second", lease_seconds=60)
         third = PostgresJobStore(pool, clock, owner_id="third", lease_seconds=60)
@@ -176,7 +176,7 @@ class TestPostgresJobLeases:
                 record.erasure_id,
             )
 
-        now = datetime.now(UTC)
+        now = clock.now()
         claimed = await second.claim_recoverable("tenant_a", now)
 
         assert [item.erasure_id for item in claimed] == [record.erasure_id]
