@@ -97,6 +97,7 @@ class JobRunner:
         self._started = False
         self._stopping = False
         self._heartbeat_task: asyncio.Task[None] | None = None
+        self._recovery_task: asyncio.Task[None] | None = None
 
     def set_recovery_callback(
         self, callback: Callable[[str], Awaitable[object]]
@@ -209,6 +210,10 @@ class JobRunner:
                     self._heartbeat_task.cancel()
                     await asyncio.gather(self._heartbeat_task, return_exceptions=True)
                     self._heartbeat_task = None
+                if self._recovery_task is not None:
+                    self._recovery_task.cancel()
+                    await asyncio.gather(self._recovery_task, return_exceptions=True)
+                    self._recovery_task = None
                 tasks = list(self._tasks.values())
                 for task in tasks:
                     task.cancel()
@@ -242,12 +247,28 @@ class JobRunner:
                 for holder in self._lease_holders:
                     await holder.renew_leases(now)
                 if self._started and not self._stopping:
-                    if self._recover_tenant is not None:
-                        for tenant_id in await self._store.tenant_ids():
-                            await self._recover_tenant(tenant_id)
+                    self._start_recovery()
                     await self._sweep()
             except Exception:
                 log.exception("job heartbeat failed")
+
+    def _start_recovery(self) -> None:
+        if self._recover_tenant is None:
+            return
+        if self._recovery_task is None or self._recovery_task.done():
+            self._recovery_task = asyncio.create_task(
+                self._recover_all_tenants(), name="job-recovery"
+            )
+
+    async def _recover_all_tenants(self) -> None:
+        try:
+            if self._recover_tenant is not None:
+                for tenant_id in await self._store.tenant_ids():
+                    await self._recover_tenant(tenant_id)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("tenant recovery failed")
 
     async def _sweep(self) -> None:
         await self._store.requeue_expired(self._clock.now())
