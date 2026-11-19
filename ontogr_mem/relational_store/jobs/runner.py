@@ -71,10 +71,11 @@ class JobRunner:
             clock: Time source for submission and state changes.
             max_attempts: Positive limit including attempts before a restart.
             heartbeat_seconds: Optional interval for lease renewal and recovery.
-                Without it, lease holders are not renewed or released, and queued
-                work is recovered only when a tenant lane is started.
+                Without it, lease holders are not renewed, and queued work is
+                recovered only when a tenant lane is started; stop releases
+                holder leases regardless of heartbeat.
             lease_holders: Stores whose leases this runner renews and releases
-                when heartbeat_seconds is set.
+                when heartbeat_seconds is set; stop releases them regardless.
             can_run: Filter for jobs this process can execute.
             prepare_tenant: Open a tenant runtime before claiming its jobs.
             recover_tenant: Recover tenant state during heartbeat ticks.
@@ -328,8 +329,8 @@ class JobRunner:
                 "job lane for tenant %s stopped after a store failure", tenant_id
             )
         finally:
-            # No await separates the empty check from removal, so enqueue cannot
-            # append work to a lane that has already decided to exit.
+            # No await separates the claim_next None return from task removal, so
+            # a lane that exited cannot be restarted before its task entry clears.
             self._tasks.pop(tenant_id, None)
 
     async def _run_claimed(self, job: Job) -> None:
