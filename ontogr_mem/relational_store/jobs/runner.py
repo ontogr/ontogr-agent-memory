@@ -60,6 +60,7 @@ class JobRunner:
         lease_holders: Sequence[LeaseHolder] = (),
         can_run: Callable[[Job], bool] | None = None,
         prepare_tenant: Callable[[str], Awaitable[object]] | None = None,
+        recover_tenant: Callable[[str], Awaitable[object]] | None = None,
     ) -> None:
         """Configure persistence, operations, time and the attempt limit.
 
@@ -72,6 +73,7 @@ class JobRunner:
             lease_holders: Stores whose leases this runner renews and releases.
             can_run: Filter for jobs this process can execute.
             prepare_tenant: Open a tenant runtime before claiming its jobs.
+            recover_tenant: Recover tenant state during heartbeat ticks.
 
         Raises:
             ValueError: If max_attempts is not positive.
@@ -86,9 +88,16 @@ class JobRunner:
         self._lease_holders = tuple(lease_holders)
         self._can_run = can_run or (lambda job: True)
         self._prepare_tenant = prepare_tenant
+        self._recover_tenant = recover_tenant
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._finished: dict[str, asyncio.Event] = {}
         self._blocked: set[str] = set()
+
+    def set_recovery_callback(
+        self, callback: Callable[[str], Awaitable[object]]
+    ) -> None:
+        """Set tenant recovery after service collaborators are assembled."""
+        self._recover_tenant = callback
         self._lifecycle = asyncio.Lock()
         self._orphans: set[str] = set()
         self._started = False
@@ -233,6 +242,9 @@ class JobRunner:
                 for holder in self._lease_holders:
                     await holder.renew_leases(now)
                 if self._started and not self._stopping:
+                    if self._recover_tenant is not None:
+                        for tenant_id in await self._store.tenant_ids():
+                            await self._recover_tenant(tenant_id)
                     await self._sweep()
             except Exception:
                 log.exception("job heartbeat failed")

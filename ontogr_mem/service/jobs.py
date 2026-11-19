@@ -127,6 +127,12 @@ class ServiceJobs:
             prepare_tenant=self._prepare_tenant,
         )
 
+    def set_recovery_callback(
+        self, callback: Callable[[str], Awaitable[object]]
+    ) -> None:
+        """Connect tenant recovery after the forget service is constructed."""
+        self._runner.set_recovery_callback(callback)
+
     async def start(self) -> int:
         """Start durable tenant job lanes after recovery has completed."""
         return await self._runner.start()
