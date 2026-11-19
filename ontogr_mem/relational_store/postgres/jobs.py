@@ -151,7 +151,7 @@ class PostgresJobStore:
                 progress.total,
                 job_id,
                 self._owner_id,
-                to_micros(datetime.now(UTC)),
+                to_micros(self._clock.now()),
             )
 
     async def queued_jobs(self) -> list[Job]:

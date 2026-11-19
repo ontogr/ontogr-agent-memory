@@ -3,7 +3,10 @@
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
-from ontogr_mem.data_models.jobs import JobState
+import pytest
+
+from ontogr_mem.data_models.jobs import JobProgress, JobState
+from ontogr_mem.relational_store.jobs.errors import LeaseLostError
 from ontogr_mem.relational_store.postgres.jobs import PostgresJobStore
 from tests.contracts.erase_journal import make_erasure
 from tests.contracts.job_store import make_job
@@ -17,10 +20,10 @@ class TestPostgresJobLeases:
         self, pool, clean_tables
     ):
         """Release the second owner's claim only after the first lease expires."""
-        clock = FixedClock(datetime.now(UTC))
+        clock = FixedClock(datetime(2026, 10, 23, 12, tzinfo=UTC))
         first = PostgresJobStore(pool, clock, owner_id="first", lease_seconds=60)
         second = PostgresJobStore(pool, clock, owner_id="second", lease_seconds=60)
-        now = datetime.now(UTC)
+        now = clock.now()
         first_job, _ = await first.create_job(make_job())
         await first.create_job(
             replace(make_job(job_id="job_b"), idempotency_key="request-two")
@@ -63,7 +66,7 @@ class TestPostgresJobLeases:
 
     async def test_expired_owner_cannot_save_running_job(self, pool, clean_tables):
         """Reject an owner write after its lease timestamp expires."""
-        clock = FixedClock(datetime.now(UTC))
+        clock = FixedClock(datetime(2026, 10, 23, 12, tzinfo=UTC))
         first = PostgresJobStore(pool, clock, owner_id="first", lease_seconds=1)
         now = clock.now()
         await first.create_job(make_job())
@@ -79,14 +82,34 @@ class TestPostgresJobLeases:
 
         assert not await first.save_job(replace(claimed, attempts=2))
 
+    async def test_expired_owner_cannot_change_progress(self, pool, clean_tables):
+        """Reject progress writes after the owner's lease expires."""
+        clock = FixedClock(datetime(2026, 10, 23, 12, tzinfo=UTC))
+        store = PostgresJobStore(pool, clock, owner_id="first", lease_seconds=1)
+        await store.create_job(make_job())
+        claimed = await store.claim_next("tenant_a", clock.now(), lambda _: True)
+        assert claimed is not None
+        await store.set_job_progress(
+            claimed.job_id, JobProgress(stage="index", done=1, total=3)
+        )
+        before = await store.get_job(claimed.job_id)
+
+        clock.advance(seconds=2)
+        with pytest.raises(LeaseLostError):
+            await store.set_job_progress(
+                claimed.job_id, JobProgress(stage="index", done=2, total=3)
+            )
+
+        assert await store.get_job(claimed.job_id) == before
+
     async def test_running_to_queued_save_clears_lease_for_reclaim(
         self, pool, clean_tables
     ):
         """Allow another owner to claim a job saved back to the queue."""
-        clock = FixedClock(datetime.now(UTC))
+        clock = FixedClock(datetime(2026, 10, 23, 12, tzinfo=UTC))
         first = PostgresJobStore(pool, clock, owner_id="first", lease_seconds=60)
         second = PostgresJobStore(pool, clock, owner_id="second", lease_seconds=60)
-        now = datetime.now(UTC)
+        now = clock.now()
         job, _ = await first.create_job(make_job())
         claimed = await first.claim_next("tenant_a", now, lambda _: True)
         assert claimed is not None
