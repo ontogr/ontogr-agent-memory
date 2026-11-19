@@ -11,6 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ontogr_mem.combined_extraction.settings import ExtractionSettings
 from ontogr_mem.data_models.clock import Clock, SystemClock
+from ontogr_mem.errors import StoreInUseError
 from ontogr_mem.graphstore.protocol import GraphStore
 from ontogr_mem.llm import RoleModels, build_models
 from ontogr_mem.observability import NoOpTracer, Tracer
@@ -347,9 +348,8 @@ async def clear_session(tenant: str) -> AsyncGenerator[MemoryService, None]:
         try:
             lock.acquire()
         except OSError as error:
-            raise RuntimeError(
-                "Stop the server first: ontogr-mem server stop."
-            ) from error
+            message = "Stop the server first: ontogr-mem server stop."
+            raise StoreInUseError(message) from error
 
     async def unavailable_embedder():
         raise EmbedderUnavailableError(
