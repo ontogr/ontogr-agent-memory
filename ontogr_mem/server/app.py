@@ -50,6 +50,10 @@ from ontogr_mem.vectorstore.embedder import Embedder
 from ontogr_mem.vectorstore.source import EmbedderSource
 
 
+# Exit statuses returned by serve() and consumed by the CLI.
+SERVER_ALREADY_RUNNING = 75
+SERVER_DRAIN_INCOMPLETE = 79
+
 logger = logging.getLogger(__name__)
 
 
@@ -108,7 +112,7 @@ async def serve(  # noqa: C901, PLR0912, PLR0915
     try:
         server_lock.acquire()
     except OSError:
-        return 75
+        return SERVER_ALREADY_RUNNING
     store_lock: ServerLock | None = None
     store_lock_acquired = False
     info_path = directory / "server.json"
@@ -123,7 +127,7 @@ async def serve(  # noqa: C901, PLR0912, PLR0915
             try:
                 store_lock.acquire()
             except OSError:
-                return 75
+                return SERVER_ALREADY_RUNNING
             store_lock_acquired = True
         models = build_models(llm_config)
         ontology = (
@@ -306,7 +310,7 @@ async def serve(  # noqa: C901, PLR0912, PLR0915
                         "pending jobs remain and will be recovered on next start",
                         file=sys.stderr,
                     )
-                    return 79
+                    return SERVER_DRAIN_INCOMPLETE
                 drain_task.result()
             finally:
                 task.cancel()

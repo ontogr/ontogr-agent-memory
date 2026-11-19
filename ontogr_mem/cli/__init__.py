@@ -151,7 +151,11 @@ def _report_error(error: Exception) -> int:
 
 def _run_server_command(args: argparse.Namespace) -> int:
     if args.server_command == "run":
-        from ontogr_mem.server.app import serve  # noqa: PLC0415
+        from ontogr_mem.server.app import (  # noqa: PLC0415
+            SERVER_ALREADY_RUNNING,
+            SERVER_DRAIN_INCOMPLETE,
+            serve,
+        )
 
         _apply_server_env()
         settings_kwargs: dict[str, Any] = {}
@@ -163,12 +167,12 @@ def _run_server_command(args: argparse.Namespace) -> int:
         result = asyncio.run(
             serve(mcp_settings=settings, server_settings=ServerSettings())
         )
-        if result == 75:
+        if result == SERVER_ALREADY_RUNNING:
             print(
                 "server is already running (another instance holds the lock)",
                 file=sys.stderr,
             )
-        if result == 79:
+        if result == SERVER_DRAIN_INCOMPLETE:
             print(
                 "server stopped before all jobs drained; "
                 "pending jobs remain and will be recovered on next start",
@@ -228,11 +232,18 @@ def _server_status() -> int:
             health = json.load(response)
     except urllib.error.HTTPError as error:
         if error.code == 401:
-            print(
-                "server authentication failed; stored token does not match "
-                "MEMORY_MCP_API_KEY",
-                file=sys.stderr,
-            )
+            if token:
+                print(
+                    "server authentication failed; stored token does not match "
+                    "MEMORY_MCP_API_KEY",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    "server requires authentication but no token was sent; "
+                    "set MEMORY_MCP_API_KEY or provide server.token",
+                    file=sys.stderr,
+                )
             return 1
         print("not running")
         return 1
@@ -270,12 +281,19 @@ def _server_stop() -> int:
             return 0 if response.status == 202 else 1
     except urllib.error.HTTPError as error:
         if error.code == 401:
-            print(
-                "server authentication failed; the stored token does not match "
-                "MEMORY_MCP_API_KEY. Remove the stale server.token or set "
-                "MEMORY_MCP_API_KEY to the value used to start the server.",
-                file=sys.stderr,
-            )
+            if token:
+                print(
+                    "server authentication failed; the stored token does not match "
+                    "MEMORY_MCP_API_KEY. Remove the stale server.token or set "
+                    "MEMORY_MCP_API_KEY to the value used to start the server.",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    "server requires authentication but no token was sent; "
+                    "set MEMORY_MCP_API_KEY or provide server.token",
+                    file=sys.stderr,
+                )
             return 1
         print("server is unreachable; no process was stopped", file=sys.stderr)
         return 1

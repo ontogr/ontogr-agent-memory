@@ -19,9 +19,13 @@ class TestMcpCommand:
             async def run_async(self, **kwargs):
                 calls["run"] = kwargs
 
-        class Client:
+        class Transport:
             def __init__(self, url, *, headers):
-                calls["client"] = (url, headers)
+                calls["transport"] = (url, headers)
+
+        class Client:
+            def __init__(self, transport):
+                calls["client"] = transport
 
         # Imports happen inside run_mcp, so replace its dependency boundaries there.
         async def ensure_server(**kwargs):
@@ -33,12 +37,15 @@ class TestMcpCommand:
             return Proxy()
 
         monkeypatch.setattr("ontogr_mem.server.entry.ensure_server", ensure_server)
+        monkeypatch.setattr(
+            "fastmcp.client.transports.StreamableHttpTransport", Transport
+        )
         monkeypatch.setattr("fastmcp.Client", Client)
         monkeypatch.setattr("fastmcp.server.server.create_proxy", create_proxy)
         monkeypatch.setenv("MEMORY_MCP_TENANT", "acme")
 
         assert main(["mcp"]) == 0
-        assert calls["client"] == (
+        assert calls["transport"] == (
             "http://127.0.0.1:8000/mcp",
             {"Authorization": "Bearer secret", "X-Memory-Tenant": "acme"},
         )
