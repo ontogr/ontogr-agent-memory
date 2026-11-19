@@ -119,8 +119,15 @@ class EraseWorkflow:
             "clear",
         }:
             raise ValueError(f"unsupported workflow mode: {mode}")
-        mode_value = mode.value if isinstance(mode, ForgetMode) else mode
+        record = await self.begin(principal_id, tenant, plan, mode)
         self._after_step("before_tombstone")
+        return await self.execute(record, plan, text_scanned_needles)
+
+    async def begin(
+        self, principal_id: str, tenant: str, plan: ForgetPlan, mode: WorkflowMode
+    ) -> ErasureRecord:
+        """Persist a recoverable erasure lease before cleanup starts."""
+        mode_value = mode.value if isinstance(mode, ForgetMode) else mode
         record = ErasureRecord(
             erasure_id=uuid4().hex,
             tenant=tenant,
@@ -135,12 +142,13 @@ class EraseWorkflow:
             created_at=self._clock.now(),
         )
         await self._journal.create(record)
-        return await self._execute(
-            record,
-            plan,
-            tuple(text_scanned_needles),
-            recovered=False,
-        )
+        return record
+
+    async def execute(
+        self, record: ErasureRecord, plan: ForgetPlan, needles: Sequence[str] = ()
+    ) -> ForgetResult:
+        """Run cleanup for a journal row already leased for erasure."""
+        return await self._execute(record, plan, tuple(needles), recovered=False)
 
     async def recover(self, records: Sequence[ErasureRecord]) -> list[ForgetResult]:
         """Resume the claimed journal rows in order."""

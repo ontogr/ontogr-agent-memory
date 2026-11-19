@@ -242,7 +242,13 @@ class ForgetService:
             workflow = self._deps.workflow
             try:
                 async with self._deps.state.tenant_lock(tenant):
-                    result = await workflow.run(principal.id, tenant, plan, mode)
+                    now = self._deps.clock.now()
+                    if await self._deps.state.tenant_has_live_lease(tenant, now):
+                        raise ConflictError(
+                            "wait for tenant jobs to finish before forgetting"
+                        )
+                    record = await workflow.begin(principal.id, tenant, plan, mode)
+                result = await workflow.execute(record, plan)
             except Exception as exc:
                 await self._audit_forget(
                     principal.id,
