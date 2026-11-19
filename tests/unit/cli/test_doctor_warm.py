@@ -89,6 +89,20 @@ class TestDoctor:
         assert results[0][:3] == ("warn", "embedder", "model not cached")
         assert results[0][3] == "ontogr-mem warm"
 
+    def test_cache_probe_reports_unexpected_error_class_only(self, monkeypatch):
+        """Probe failures are visible without exposing exception details."""
+        monkeypatch.setattr(doctor, "_has_extra", lambda _name: True)
+
+        def failed_probe(_settings):
+            raise OSError("private path /home/user/secret")
+
+        monkeypatch.setattr(doctor, "model_cached", failed_probe)
+        results = []
+        doctor._check_embedding(results)
+        assert results == [
+            ("warn", "embedder", "cache probe failed (OSError)", None)
+        ]
+
 
 class TestWarm:
     """Warm handles endpoint embeddings without local downloads."""

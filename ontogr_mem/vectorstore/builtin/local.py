@@ -49,8 +49,6 @@ def model_cached(settings: EmbeddingSettings | None = None) -> bool | None:
         )
     except MissingExtraError:
         raise
-    except Exception:
-        return None
     if description is None or not isinstance(description.get("hf"), str):
         # The hf repository is the canonical cache identity supplied by FastEmbed.
         return None

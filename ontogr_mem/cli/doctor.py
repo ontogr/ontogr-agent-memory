@@ -192,8 +192,16 @@ def _check_embedding(results):
     elif _has_extra("fastembed"):
         try:
             cached = model_cached(settings)
-        except Exception:
-            cached = None
+        except Exception as error:
+            results.append(
+                (
+                    "warn",
+                    "embedder",
+                    f"cache probe failed ({type(error).__name__})",
+                    None,
+                )
+            )
+            return
         if cached is True:
             results.append(
                 ("pass", "embedder", f"model cached at {model_cache_directory()}", None)
