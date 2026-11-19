@@ -9,7 +9,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from dotenv import dotenv_values
 from pydantic import ValidationError
@@ -158,12 +158,12 @@ def _run_server_command(args: argparse.Namespace) -> int:
         )
 
         _apply_server_env()
-        settings_kwargs: dict[str, Any] = {}
+        settings_kwargs: dict[str, str | Path] = {}
         if args.tenant is not None:
             settings_kwargs["tenant"] = args.tenant
         if args.ontology is not None:
             settings_kwargs["ontology"] = args.ontology
-        settings = McpSettings(**settings_kwargs)
+        settings = McpSettings(**cast(dict[str, Any], settings_kwargs))
         result = asyncio.run(
             serve(mcp_settings=settings, server_settings=ServerSettings())
         )
@@ -207,7 +207,8 @@ def _apply_server_env() -> None:
     present = forbidden.intersection(key for key, value in values.items() if value)
     if present:
         name = sorted(present)[0]
-        raise ValueError(f"server.env cannot set {name}")
+        msg = f"server.env cannot set {name}; remove it from server.env"
+        raise InvalidArgumentError(msg)
     for key, value in values.items():
         if value is not None:
             os.environ.setdefault(key, value)
