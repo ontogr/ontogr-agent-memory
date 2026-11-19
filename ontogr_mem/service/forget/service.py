@@ -241,7 +241,8 @@ class ForgetService:
             )
             workflow = self._deps.workflow
             try:
-                result = await workflow.run(principal.id, tenant, plan, mode)
+                async with self._deps.state.tenant_lock(tenant):
+                    result = await workflow.run(principal.id, tenant, plan, mode)
             except Exception as exc:
                 await self._audit_forget(
                     principal.id,
@@ -380,7 +381,7 @@ class ForgetService:
         tenant = await self._deps.tenants.require(
             principal, tenant, Grant.ADMIN, "clear_tenant", target="tenant"
         )
-        async with self._write_lock:
+        async with self._write_lock, self._deps.state.tenant_lock(tenant):
             pending = await self._deps.state.count_jobs(
                 [tenant], [JobState.QUEUED, JobState.RUNNING]
             )
@@ -414,7 +415,10 @@ class ForgetService:
                             tenant=tenant,
                             target="tenant",
                             trace_id=context.trace_id,
-                            detail={"mode": "clear", "error_class": type(exc).__name__},
+                            detail={
+                                "mode": "clear",
+                                "error_class": type(exc).__name__,
+                            },
                         )
                     )
                     raise
