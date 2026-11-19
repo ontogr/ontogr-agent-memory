@@ -165,6 +165,17 @@ class TestPostgresJobLeases:
                 "missing", JobProgress(stage="index", done=1, total=3)
             )
 
+    async def test_missing_erasure_step_raises_key_error(self, pool, clean_tables):
+        """Report a missing erase row separately from a lost lease."""
+        store = PostgresJobStore(
+            pool,
+            FixedClock(datetime(2026, 10, 23, 12, tzinfo=UTC)),
+            owner_id="owner",
+        )
+
+        with pytest.raises(KeyError, match="missing"):
+            await store.step("missing", "retract")
+
     async def test_running_to_queued_save_clears_lease_for_reclaim(
         self, pool, clean_tables
     ):

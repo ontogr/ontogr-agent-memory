@@ -513,6 +513,8 @@ class PostgresJobStore:
         current_status = await connection.fetchval(
             "SELECT status FROM erasures WHERE erasure_id = $1", erasure_id
         )
-        if current_status is not None and current_status != ErasureStatus.RUNNING.value:
+        if current_status is None:
+            raise KeyError(erasure_id)
+        if current_status != ErasureStatus.RUNNING.value:
             raise ValueError("erase journal row is already finished")
         raise LeaseLostError(erasure_id)
