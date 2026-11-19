@@ -2,12 +2,9 @@
 
 from unittest.mock import AsyncMock, Mock
 
-import pytest
-
 from ontogr_mem.service import bootstrap
 
 
-@pytest.mark.asyncio
 async def test_open_graph_store_closes_store_after_context(monkeypatch):
     """Close the process-owned graph adapter after leaving the context."""
     store = Mock(close=AsyncMock())

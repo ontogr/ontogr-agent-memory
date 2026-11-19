@@ -11,7 +11,6 @@ from ontogr_mem.errors import StoreInUseError
 from ontogr_mem.service import bootstrap
 
 
-@pytest.mark.asyncio
 async def test_clear_session_opens_service_and_releases_sqlite_lock(
     monkeypatch, tmp_path
 ):
@@ -52,7 +51,6 @@ async def test_clear_session_opens_service_and_releases_sqlite_lock(
     assert lock_events[0][1] == Path(f"{database}.lock")
 
 
-@pytest.mark.asyncio
 async def test_clear_session_refuses_when_sqlite_lock_is_held(monkeypatch, tmp_path):
     """A held local server lock prevents opening clear state."""
     database = tmp_path / "state.db"

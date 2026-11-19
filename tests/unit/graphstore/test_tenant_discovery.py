@@ -3,13 +3,10 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
-import pytest
-
 from ontogr_mem.graphstore.falkordb.tenancy import TenantGraphs as FalkorTenantGraphs
 from ontogr_mem.graphstore.neo4j.tenancy import TenantGraphs as Neo4jTenantGraphs
 
 
-@pytest.mark.asyncio
 async def test_falkordb_lists_only_valid_tenant_graphs(monkeypatch):
     """Ignore non-tenant and malformed Falkor graph names."""
     pool = Mock(
@@ -23,7 +20,6 @@ async def test_falkordb_lists_only_valid_tenant_graphs(monkeypatch):
     pool.list_graphs.assert_awaited_once_with()
 
 
-@pytest.mark.asyncio
 async def test_neo4j_skips_invalid_labels_and_tenant_values():
     """Ignore unsafe labels and malformed tenant values from Neo4j."""
     runner = Mock()
