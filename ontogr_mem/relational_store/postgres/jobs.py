@@ -91,14 +91,19 @@ class PostgresJobStore:
     async def save_job(self, job: Job) -> bool:
         """Replace an existing record without storing its replay flag."""
         async with pg_connection(self._pool) as connection:
-            owner_filter = "owner_id = $14 AND status = 'running'"
+            owner_filter = (
+                "(owner_id = $14 AND status = 'running' AND lease_expires_at > $15)"
+            )
             if job.status is JobState.QUEUED:
                 owner_filter += " OR (owner_id IS NULL AND status = 'queued')"
             status = await connection.execute(
                 "UPDATE jobs SET tenant_id = $1, op = $2, payload = $3, "
                 "request_hash = $4, idempotency_key = $5, status = $6, "
                 "attempts = $7, result = $8, error = $9, created_at = $10, "
-                f"updated_at = $11, trace_id = $12 WHERE job_id = $13 "
+                "updated_at = $11, trace_id = $12, "
+                "owner_id = CASE WHEN $6 = 'queued' THEN NULL ELSE owner_id END, "
+                "lease_expires_at = CASE WHEN $6 = 'queued' THEN NULL "
+                "ELSE lease_expires_at END WHERE job_id = $13 "
                 f"AND ({owner_filter})",
                 job.tenant_id,
                 job.op,
@@ -114,6 +119,7 @@ class PostgresJobStore:
                 job.trace_id,
                 job.job_id,
                 self._owner_id,
+                to_micros(datetime.now(UTC)),
             )
             return status != "UPDATE 0"
 
@@ -461,7 +467,8 @@ class PostgresJobStore:
             status = await connection.execute(
                 "UPDATE erasures SET last_step = $1 "
                 "WHERE erasure_id = $2 AND status = 'running' "
-                "AND owner_id = $3",
+                "AND owner_id = $3 AND lease_expires_at > "
+                "(extract(epoch FROM clock_timestamp()) * 1000000)::bigint",
                 values[0],
                 erasure_id,
                 self._owner_id,
@@ -470,7 +477,8 @@ class PostgresJobStore:
             status = await connection.execute(
                 "UPDATE erasures SET status = $1, residue = $2, counts = $3, "
                 "finished_at = $4 WHERE erasure_id = $5 AND status = 'running' "
-                "AND owner_id = $6",
+                "AND owner_id = $6 AND lease_expires_at > "
+                "(extract(epoch FROM clock_timestamp()) * 1000000)::bigint",
                 values[0],
                 values[1],
                 values[2],
@@ -480,4 +488,9 @@ class PostgresJobStore:
             )
         if status != "UPDATE 0":
             return
+        current_status = await connection.fetchval(
+            "SELECT status FROM erasures WHERE erasure_id = $1", erasure_id
+        )
+        if current_status is not None and current_status != ErasureStatus.RUNNING.value:
+            raise ValueError("erase journal row is already finished")
         raise LeaseLostError(erasure_id)

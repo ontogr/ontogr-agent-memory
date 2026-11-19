@@ -57,3 +57,35 @@ class TestPostgresJobLeases:
         assert await second.tenant_has_live_lease(
             "tenant_a", now + timedelta(seconds=61)
         )
+
+    async def test_expired_owner_cannot_save_running_job(self, pool, clean_tables):
+        """Reject an owner write after its lease timestamp expires."""
+        first = PostgresJobStore(pool, owner_id="first", lease_seconds=1)
+        now = datetime.now(UTC)
+        await first.create_job(make_job())
+        claimed = await first.claim_next("tenant_a", now, lambda _: True)
+        assert claimed is not None
+
+        async with pool.acquire() as connection:
+            await connection.execute(
+                "UPDATE jobs SET lease_expires_at = $1 WHERE job_id = $2",
+                int((now - timedelta(seconds=1)).timestamp() * 1_000_000),
+                claimed.job_id,
+            )
+
+        assert not await first.save_job(replace(claimed, attempts=2))
+
+    async def test_running_to_queued_save_clears_lease_for_reclaim(
+        self, pool, clean_tables
+    ):
+        """Allow another owner to claim a job saved back to the queue."""
+        first = PostgresJobStore(pool, owner_id="first", lease_seconds=60)
+        second = PostgresJobStore(pool, owner_id="second", lease_seconds=60)
+        now = datetime.now(UTC)
+        job, _ = await first.create_job(make_job())
+        claimed = await first.claim_next("tenant_a", now, lambda _: True)
+        assert claimed is not None
+
+        queued = replace(claimed, status=JobState.QUEUED)
+        assert await first.save_job(queued)
+        assert await second.claim_next("tenant_a", now, lambda _: True) is not None
