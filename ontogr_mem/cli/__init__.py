@@ -26,7 +26,6 @@ from ontogr_mem.ontology.errors import InvalidChange
 from ontogr_mem.paths import data_directory
 from ontogr_mem.relational_store.config import StateSettings
 from ontogr_mem.requirements import check_requirements
-from ontogr_mem.server.app import serve
 from ontogr_mem.server.entry import ServerUnavailableError
 from ontogr_mem.server.files import read_server_info, read_server_token
 from ontogr_mem.server.settings import ServerSettings
@@ -128,6 +127,7 @@ def _report_error(error: Exception) -> int:
             ExplicitTenantError,
             StoreInUseError,
             ServerUnavailableError,
+            ValueError,
         ),
     ):
         message = str(error)
@@ -141,6 +141,8 @@ def _report_error(error: Exception) -> int:
 
 def _run_server_command(args: argparse.Namespace) -> int:
     if args.server_command == "run":
+        from ontogr_mem.server.app import serve  # noqa: PLC0415
+
         _apply_server_env()
         settings = McpSettings(tenant=args.tenant, ontology=args.ontology)
         return asyncio.run(

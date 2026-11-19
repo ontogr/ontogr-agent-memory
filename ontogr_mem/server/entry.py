@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import logging
 import os
 import re
 import subprocess
@@ -17,9 +16,6 @@ from ontogr_mem.errors import AgentMemoryError
 from ontogr_mem.paths import data_directory, ensure_directory
 from ontogr_mem.server.files import read_server_info, read_server_token
 from ontogr_mem.store_urls import parse_graph_url, parse_state_url
-
-
-logger = logging.getLogger(__name__)
 
 
 class ServerUnavailableError(AgentMemoryError):
@@ -124,20 +120,6 @@ def _endpoint(url: str, health: dict[str, object], token: str | None) -> ServerE
     )
 
 
-def _warn_settings_mismatch(
-    endpoint: ServerEndpoint,
-    roles: dict[str, bool],
-    embedding_model: str | None,
-    llm_model: str | None,
-) -> None:
-    if (
-        endpoint.roles != roles
-        or endpoint.embedding_model != embedding_model
-        or endpoint.llm_model != llm_model
-    ):
-        logger.warning("Memory server settings differ from the client settings.")
-
-
 async def ensure_server(  # noqa: PLR0912, PLR0915
     *, graph_url: str, state_url: str, version: str = __version__
 ) -> ServerEndpoint:
@@ -207,31 +189,34 @@ async def ensure_server(  # noqa: PLR0912, PLR0915
                 )
             arguments = [sys.executable, "-m", "ontogr_mem", "server", "run"]
             output = log_path.open("ab")
-            if os.name == "nt":
-                process = subprocess.Popen(
-                    arguments,
-                    cwd=directory,
-                    env=_child_environment(graph_url, state_url),
-                    stdin=subprocess.DEVNULL,
-                    stdout=output,
-                    stderr=subprocess.STDOUT,
-                    text=False,
-                    creationflags=(
-                        subprocess.DETACHED_PROCESS
-                        | subprocess.CREATE_NEW_PROCESS_GROUP
-                    ),
-                )
-            else:
-                process = subprocess.Popen(
-                    arguments,
-                    cwd=directory,
-                    env=_child_environment(graph_url, state_url),
-                    stdin=subprocess.DEVNULL,
-                    stdout=output,
-                    stderr=subprocess.STDOUT,
-                    text=False,
-                    start_new_session=True,
-                )
+            try:
+                if os.name == "nt":
+                    process = subprocess.Popen(
+                        arguments,
+                        cwd=directory,
+                        env=_child_environment(graph_url, state_url),
+                        stdin=subprocess.DEVNULL,
+                        stdout=output,
+                        stderr=subprocess.STDOUT,
+                        text=False,
+                        creationflags=(
+                            subprocess.DETACHED_PROCESS
+                            | subprocess.CREATE_NEW_PROCESS_GROUP
+                        ),
+                    )
+                else:
+                    process = subprocess.Popen(
+                        arguments,
+                        cwd=directory,
+                        env=_child_environment(graph_url, state_url),
+                        stdin=subprocess.DEVNULL,
+                        stdout=output,
+                        stderr=subprocess.STDOUT,
+                        text=False,
+                        start_new_session=True,
+                    )
+            finally:
+                output.close()
         info = read_server_info(directory / "server.json")
         if info and isinstance(info.get("port"), int):
             current_url = f"http://127.0.0.1:{info['port']}"

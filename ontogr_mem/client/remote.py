@@ -93,7 +93,6 @@ class RemoteService:
         self, principal: Principal, request: AddMemory
     ) -> WriteReceipt:
         """Add memory through the remote server."""
-        """Add memory through the remote server."""
         del principal
         arguments = request.model_dump(
             mode="json", exclude={"tenant", "kind", "facts"}, exclude_none=True
@@ -121,7 +120,6 @@ class RemoteService:
         self, principal: Principal, request: SearchMemory
     ) -> MemoryContext:
         """Search remote memory for relevant context."""
-        """Search remote memory for relevant context."""
         del principal
         return MemoryContext.model_validate(
             await self._call(
@@ -137,7 +135,6 @@ class RemoteService:
         )
 
     async def get_entity(self, principal: Principal, request: GetEntity) -> EntityView:
-        """Return one entity view from the remote server."""
         """Return one entity view from the remote server."""
         del principal
         return EntityView.model_validate(
@@ -190,14 +187,12 @@ class RemoteService:
 
     async def get_job(self, principal: Principal, job_id: str) -> JobView:
         """Return the status of one remote write job."""
-        """Return the status of one remote write job."""
         del principal
         return JobView.model_validate(await self._call("get_job", {"job_id": job_id}))
 
     async def invalidate(
         self, principal: Principal, request: InvalidateMemory
     ) -> WriteReceipt:
-        """Invalidate remote memory and return its write receipt."""
         """Invalidate remote memory and return its write receipt."""
         del principal
         receipt = WriteReceipt.model_validate(
@@ -214,14 +209,12 @@ class RemoteService:
 
     async def forget_memory(self, principal: Principal, request: Any) -> Any:
         """Reject unsupported direct forget requests."""
-        """Reject unsupported direct forget requests."""
         del principal, request
         raise InvalidArgumentError(
             "Connected Memory does not support forget.", "Use invalidate."
         )
 
     async def drain(self) -> None:
-        """Wait for remote writes tracked by this connection to finish."""
         """Wait for remote writes tracked by this connection to finish."""
         pending = set(self._job_ids)
         deadline = asyncio.get_running_loop().time() + 30
