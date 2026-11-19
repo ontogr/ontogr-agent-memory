@@ -10,9 +10,9 @@ from ontogr_mem.graphstore.falkordb import FalkorDBGraphStore
 from ontogr_mem.relational_store import engine
 from ontogr_mem.service.bootstrap import ServiceSettings
 from tests.support.embedder import MockEmbedder
-from tests.support.tenants import new_tenant
 from tests.support.falkordb import falkordb_test_url
 from tests.support.scripted_model import scripted_role_models
+from tests.support.tenants import new_tenant
 
 
 @pytest.fixture(autouse=True)
