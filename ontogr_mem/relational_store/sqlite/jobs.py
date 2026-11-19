@@ -130,6 +130,7 @@ class SqliteJobStore:
                 raise KeyError(job.job_id)
 
         await asyncio.to_thread(lambda: self._locked(save))
+        return True
 
     async def set_job_progress(self, job_id: str, progress: JobProgress) -> None:
         """Persist monotonic progress inside a serialized SQLite transaction."""

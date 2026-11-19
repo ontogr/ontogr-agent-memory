@@ -69,6 +69,7 @@ class MemoryJobStore:
         self._jobs[job.job_id] = stored
         if job.idempotency_key is not None:
             self._keys[(job.tenant_id, job.idempotency_key)] = job.job_id
+        return True
 
     async def set_job_progress(self, job_id: str, progress: JobProgress) -> None:
         """Persist monotonic progress for a known job."""

@@ -118,10 +118,11 @@ class JobRunner:
             self._started = True
             self._blocked.clear()
             await self._store.requeue_expired(self._clock.now())
-            queued = await self._store.queued_jobs()
-            for tenant_id in dict.fromkeys(job.tenant_id for job in queued):
+            tenant_ids = await self._store.tenant_ids()
+            queued_count = await self._store.count_jobs(tenant_ids, (JobState.QUEUED,))
+            for tenant_id in tenant_ids:
                 self._start_lane(tenant_id)
-            return len(queued)
+            return queued_count
 
     async def submit(
         self,
