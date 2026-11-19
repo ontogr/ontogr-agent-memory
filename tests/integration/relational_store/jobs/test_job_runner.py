@@ -23,6 +23,91 @@ from tests.support.clock import FixedClock
 class TestJobRunner:
     """Run handlers through the public runner API and inspect stored outcomes."""
 
+    async def test_failed_orphan_release_does_not_skip_renewal_or_sweep(
+        self, job_store: StateStore, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A release outage does not stop leases or queued jobs progressing."""
+        renewed = asyncio.Event()
+        swept = asyncio.Event()
+
+        class Lease:
+            async def renew_leases(self, now: object) -> None:
+                renewed.set()
+
+            async def release_leases(self) -> None:
+                pass
+
+        async def index(job: Job) -> dict[str, Any]:
+            return {}
+
+        original_save = job_store.save_job
+
+        async def fail_completion_save(job: Job) -> bool:
+            if job.status == JobState.DONE:
+                raise sqlite3.OperationalError("save unavailable")
+            return await original_save(job)
+
+        monkeypatch.setattr(job_store, "save_job", fail_completion_save)
+
+        class ReleaseFailingStore:
+            def __getattr__(self, name: str) -> Any:
+                return getattr(job_store, name)
+
+            async def release_job(self, job_id: str) -> None:
+                raise sqlite3.OperationalError("release unavailable")
+
+            async def requeue_expired(self, now: object) -> None:
+                swept.set()
+                await job_store.requeue_expired(now)
+
+        runner = JobRunner(
+            ReleaseFailingStore(),
+            {"index": index},
+            FixedClock(),
+            heartbeat_seconds=0.01,
+            lease_holders=[Lease()],
+        )
+        try:
+            await runner.submit("t", "index", {})
+            await runner.drain()
+            monkeypatch.setattr(job_store, "save_job", original_save)
+            await runner.start_heartbeat()
+            await asyncio.wait_for(renewed.wait(), 1)
+            await asyncio.wait_for(swept.wait(), 1)
+        finally:
+            await runner.stop()
+
+    async def test_failed_tenant_recovery_does_not_skip_later_tenants(
+        self, job_store: StateStore
+    ) -> None:
+        """One tenant recovery error does not prevent later tenants recovering."""
+        recovered = asyncio.Event()
+
+        async def recover(tenant_id: str) -> None:
+            if tenant_id == "a":
+                raise RuntimeError("recovery unavailable")
+            if tenant_id == "b":
+                recovered.set()
+
+        async def index(job: Job) -> dict[str, Any]:
+            return {}
+
+        runner = JobRunner(
+            job_store,
+            {"index": index},
+            FixedClock(),
+            heartbeat_seconds=0.01,
+            recover_tenant=recover,
+        )
+        for tenant_id in ("a", "b"):
+            await runner.submit(tenant_id, "index", {})
+        await runner.drain()
+        try:
+            await runner.start()
+            await asyncio.wait_for(recovered.wait(), 1)
+        finally:
+            await runner.stop()
+
     async def test_stored_job_error_hides_url_credentials(
         self, job_store: StateStore
     ) -> None:
