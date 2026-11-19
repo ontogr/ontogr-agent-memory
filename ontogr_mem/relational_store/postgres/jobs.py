@@ -164,6 +164,16 @@ class PostgresJobStore:
             await connection.fetchval(
                 "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", tenant_id
             )
+            has_live_lease = await connection.fetchval(
+                "SELECT EXISTS (SELECT 1 FROM jobs WHERE tenant_id = $1 "
+                "AND status = 'running' AND lease_expires_at > $2) OR "
+                "EXISTS (SELECT 1 FROM erasures WHERE tenant = $1 "
+                "AND status = 'running' AND lease_expires_at > $2)",
+                tenant_id,
+                to_micros(now),
+            )
+            if has_live_lease:
+                return None
             row = await connection.fetchrow(
                 "SELECT seq FROM jobs WHERE tenant_id = $1 AND status = 'queued' "
                 "ORDER BY created_at, seq LIMIT 1 FOR UPDATE",

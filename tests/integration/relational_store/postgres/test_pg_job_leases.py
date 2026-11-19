@@ -1,5 +1,6 @@
 """Postgres lease behavior shared by independent job-store owners."""
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 from ontogr_mem.data_models.jobs import JobState
@@ -17,12 +18,16 @@ class TestPostgresJobLeases:
         first = PostgresJobStore(pool, owner_id="first", lease_seconds=60)
         second = PostgresJobStore(pool, owner_id="second", lease_seconds=60)
         now = datetime.now(UTC)
-        await first.create_job(make_job())
+        first_job, _ = await first.create_job(make_job())
+        await first.create_job(
+            replace(make_job(job_id="job_b"), idempotency_key="request-two")
+        )
 
         claimed = await first.claim_next("tenant_a", now, lambda job: True)
 
         assert claimed is not None
         assert claimed.status is JobState.RUNNING
+        assert claimed.job_id == first_job.job_id
         assert (
             await second.claim_next(
                 "tenant_a", now + timedelta(seconds=1), lambda job: True
