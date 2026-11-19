@@ -472,15 +472,16 @@ class ForgetService:
         self, tenant_id: str
     ) -> tuple[int, list[ErasureRecord], list[ForgetResult]] | None:
         """Recover temporal episodes and erase rows when no worker owns a lease."""
+        now = self._deps.clock.now()
+        records = await self._deps.state.claim_recoverable(tenant_id, now)
         async with self._deps.state.tenant_lock(tenant_id):
             now = self._deps.clock.now()
-            if await self._deps.state.tenant_has_live_lease(tenant_id, now):
+            if await self._deps.state.live_lease_expires_at(tenant_id, now):
                 return None
 
             runtime = await self._deps.tenants.get(tenant_id, create=True)
             ontology = await runtime.ontology.catalog()
             report = await runtime.engine(ontology, runtime.resolver.store).recover()
-            records = await self._deps.state.claim_recoverable(tenant_id, now)
             results = await self._deps.workflow.recover(records)
             for record, result in zip(records, results, strict=True):
                 async with self._recorder.track(
