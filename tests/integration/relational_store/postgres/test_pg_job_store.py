@@ -16,6 +16,7 @@ from ontogr_mem.relational_store.schema.runner import (
 )
 from tests.contracts.erase_journal import EraseJournalContract
 from tests.contracts.job_store import JobStoreContract
+from tests.support.clock import FixedClock
 
 
 T0 = datetime(2026, 10, 23, 12, 0, 0, tzinfo=UTC)
@@ -29,7 +30,9 @@ class TestPostgresJobStore(JobStoreContract, EraseJournalContract):
         """Return a factory for one open store on the shared database."""
 
         async def factory() -> StateStore:
-            return PostgresJobStore(pool, owner_id="test-owner", lease_seconds=60)
+            return PostgresJobStore(
+                pool, FixedClock(), owner_id="test-owner", lease_seconds=60
+            )
 
         return factory
 

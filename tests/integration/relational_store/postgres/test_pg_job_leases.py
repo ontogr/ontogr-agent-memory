@@ -7,6 +7,7 @@ from ontogr_mem.data_models.jobs import JobState
 from ontogr_mem.relational_store.postgres.jobs import PostgresJobStore
 from tests.contracts.erase_journal import make_erasure
 from tests.contracts.job_store import make_job
+from tests.support.clock import FixedClock
 
 
 class TestPostgresJobLeases:
@@ -16,8 +17,9 @@ class TestPostgresJobLeases:
         self, pool, clean_tables
     ):
         """Release the second owner's claim only after the first lease expires."""
-        first = PostgresJobStore(pool, owner_id="first", lease_seconds=60)
-        second = PostgresJobStore(pool, owner_id="second", lease_seconds=60)
+        clock = FixedClock(datetime.now(UTC))
+        first = PostgresJobStore(pool, clock, owner_id="first", lease_seconds=60)
+        second = PostgresJobStore(pool, clock, owner_id="second", lease_seconds=60)
         now = datetime.now(UTC)
         first_job, _ = await first.create_job(make_job())
         await first.create_job(
@@ -61,8 +63,9 @@ class TestPostgresJobLeases:
 
     async def test_expired_owner_cannot_save_running_job(self, pool, clean_tables):
         """Reject an owner write after its lease timestamp expires."""
-        first = PostgresJobStore(pool, owner_id="first", lease_seconds=1)
-        now = datetime.now(UTC)
+        clock = FixedClock(datetime.now(UTC))
+        first = PostgresJobStore(pool, clock, owner_id="first", lease_seconds=1)
+        now = clock.now()
         await first.create_job(make_job())
         claimed = await first.claim_next("tenant_a", now, lambda _: True)
         assert claimed is not None
@@ -80,8 +83,9 @@ class TestPostgresJobLeases:
         self, pool, clean_tables
     ):
         """Allow another owner to claim a job saved back to the queue."""
-        first = PostgresJobStore(pool, owner_id="first", lease_seconds=60)
-        second = PostgresJobStore(pool, owner_id="second", lease_seconds=60)
+        clock = FixedClock(datetime.now(UTC))
+        first = PostgresJobStore(pool, clock, owner_id="first", lease_seconds=60)
+        second = PostgresJobStore(pool, clock, owner_id="second", lease_seconds=60)
         now = datetime.now(UTC)
         job, _ = await first.create_job(make_job())
         claimed = await first.claim_next("tenant_a", now, lambda _: True)
@@ -95,9 +99,10 @@ class TestPostgresJobLeases:
         self, pool, clean_tables
     ):
         """Only the winner receives a tenant-scoped recovery lease."""
-        first = PostgresJobStore(pool, owner_id="first", lease_seconds=60)
-        second = PostgresJobStore(pool, owner_id="second", lease_seconds=60)
-        third = PostgresJobStore(pool, owner_id="third", lease_seconds=60)
+        clock = FixedClock(datetime.now(UTC))
+        first = PostgresJobStore(pool, clock, owner_id="first", lease_seconds=60)
+        second = PostgresJobStore(pool, clock, owner_id="second", lease_seconds=60)
+        third = PostgresJobStore(pool, clock, owner_id="third", lease_seconds=60)
         record = make_erasure()
         await first.create(record)
 

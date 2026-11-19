@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from ontogr_mem.data_models.clock import Clock
 from ontogr_mem.data_models.jobs import Job, JobProgress, JobState
 from ontogr_mem.data_models.tenant import validate_tenant_id
 from ontogr_mem.data_models.timestamps import to_micros
@@ -50,13 +51,15 @@ class PostgresJobStore:
             ``ensure_postgres_schema`` before constructing the store.
         owner_id: Identity recorded on rows leased by this process.
         lease_seconds: Duration of each lease.
+        clock: Service clock used for lease checks.
     """
 
     def __init__(
-        self, pool: "asyncpg.Pool", *, owner_id: str, lease_seconds: float
+        self, pool: "asyncpg.Pool", clock: Clock, *, owner_id: str, lease_seconds: float
     ) -> None:
         """Bind the store to its pool without taking a connection."""
         self._pool = pool
+        self._clock = clock
         self._owner_id = owner_id
         self._lease_micros = int(lease_seconds * 1_000_000)
 
@@ -119,7 +122,7 @@ class PostgresJobStore:
                 job.trace_id,
                 job.job_id,
                 self._owner_id,
-                to_micros(datetime.now(UTC)),
+                to_micros(self._clock.now()),
             )
             return status != "UPDATE 0"
 
@@ -132,7 +135,7 @@ class PostgresJobStore:
                 "AND lease_expires_at > $3 FOR UPDATE",
                 job_id,
                 self._owner_id,
-                to_micros(datetime.now(UTC)),
+                to_micros(self._clock.now()),
             )
             if row is None:
                 raise LeaseLostError(job_id)
@@ -377,7 +380,9 @@ class PostgresJobStore:
         if not step:
             raise ValueError("erase step must not be empty")
         async with pg_connection(self._pool) as connection:
-            await self._update_running(connection, erasure_id, "step", step)
+            await self._update_running(
+                connection, erasure_id, "step", step, to_micros(self._clock.now())
+            )
 
     async def finish(
         self,
@@ -401,6 +406,7 @@ class PostgresJobStore:
                 dumps(residue),
                 dumps(counts),
                 to_micros(at),
+                to_micros(self._clock.now()),
             )
 
     async def running(self, tenant: str | None = None) -> list[ErasureRecord]:
@@ -474,23 +480,25 @@ class PostgresJobStore:
                 "UPDATE erasures SET last_step = $1 "
                 "WHERE erasure_id = $2 AND status = 'running' "
                 "AND owner_id = $3 AND lease_expires_at > "
-                "(extract(epoch FROM clock_timestamp()) * 1000000)::bigint",
+                "$4",
                 values[0],
                 erasure_id,
                 self._owner_id,
+                values[1],
             )
         else:
             status = await connection.execute(
                 "UPDATE erasures SET status = $1, residue = $2, counts = $3, "
                 "finished_at = $4 WHERE erasure_id = $5 AND status = 'running' "
                 "AND owner_id = $6 AND lease_expires_at > "
-                "(extract(epoch FROM clock_timestamp()) * 1000000)::bigint",
+                "$7",
                 values[0],
                 values[1],
                 values[2],
                 values[3],
                 erasure_id,
                 self._owner_id,
+                values[4],
             )
         if status != "UPDATE 0":
             return

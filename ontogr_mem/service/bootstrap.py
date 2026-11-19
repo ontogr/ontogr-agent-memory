@@ -270,7 +270,9 @@ async def open_service(
         if models is None:
             resources.push_async_callback(selected_models.aclose)
 
-        state = await open_state_store(selected_state, owner_id=owner_id)
+        state = await open_state_store(
+            selected_state, owner_id=owner_id, clock=selected_clock
+        )
         resources.push_async_callback(state.close)
 
         selected_stores_factory = stores_factory
