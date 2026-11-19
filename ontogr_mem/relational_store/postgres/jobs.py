@@ -251,11 +251,7 @@ class PostgresJobStore:
                 tenant_id,
                 to_micros(now),
             )
-            return (
-                None
-                if value is None
-                else from_micros(value)
-            )
+            return None if value is None else from_micros(value)
 
     @asynccontextmanager
     async def tenant_lock(self, tenant_id: str) -> AsyncGenerator[None, None]:
