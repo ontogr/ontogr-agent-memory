@@ -11,6 +11,10 @@ class StoreError(AgentMemoryError):
     """Base class for every error a store raises."""
 
 
+class StoreInUseError(AgentMemoryError):
+    """The local store is already owned by another process."""
+
+
 class AmbiguousNameError(AgentMemoryError):
     """A name resolves to more than one entity.
 

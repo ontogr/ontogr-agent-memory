@@ -26,7 +26,7 @@ from ontogr_mem.temporal.engine import TemporalEngine
 from ontogr_mem.temporal.reader import FactReader
 from ontogr_mem.temporal.settings import ClosureSettings
 from ontogr_mem.tenant_stores import TenantStores
-from ontogr_mem.vectorstore import Embedder, FactVectorObserver, VectorWriter
+from ontogr_mem.vectorstore import FactVectorObserver, VectorWriter
 
 
 @dataclass(slots=True)
@@ -35,7 +35,6 @@ class TenantRuntime:
 
     stores: TenantStores
     reader: FactReader
-    embedder: Embedder
     resolver: EntityResolver
     writer: VectorWriter
     retriever: Retriever
@@ -105,7 +104,6 @@ def build_tenant_runtime(
     stores: TenantStores,
     *,
     models: RoleModels,
-    embedder: Embedder,
     clock: Clock,
     policy: ResolutionPolicy,
     resolver_settings: ResolverSettings,
@@ -144,7 +142,6 @@ def build_tenant_runtime(
     return TenantRuntime(
         stores,
         reader,
-        embedder,
         resolver,
         writer,
         retriever,

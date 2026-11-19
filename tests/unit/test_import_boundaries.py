@@ -27,6 +27,7 @@ OPTIONAL_SUBPACKAGES = (
     "ontogr_mem.vectorstore.builtin",
     "ontogr_mem.vectorstore.graph",
     "ontogr_mem.mcp_server",
+    "ontogr_mem.server",
     "ontogr_mem.ontology.formats.turtle",
 )
 

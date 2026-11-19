@@ -13,10 +13,10 @@ from ontogr_mem.service.forget.scan import scan_residue
 from ontogr_mem.service.forget.selector import ForgetSelector
 from ontogr_mem.service.forget.workflow import EraseWorkflow
 from ontogr_mem.service.runtime import TenantRuntime
-from ontogr_mem.vectorstore import EmbeddingGateway, VectorStore
+from ontogr_mem.vectorstore import VectorStore
 from ontogr_mem.vectorstore.memory import InMemoryBackend
 from ontogr_mem.vectorstore.models import VectorKind
-from tests.support.embedder import MockEmbedder
+from tests.support.embedder import MockEmbedder, embedder_source
 from tests.support.erase_workflow import EraseWorld, make_erase_world
 from tests.support.graph_backend import GraphBackend
 
@@ -134,7 +134,9 @@ class TestEraseWorkflow:
         self, graph_backend: GraphBackend, monkeypatch
     ):
         """Retained episode vectors fail residue checks after graph cleanup."""
-        vector_store = VectorStore(InMemoryBackend(), EmbeddingGateway(MockEmbedder()))
+        vector_store = VectorStore(
+            InMemoryBackend(), embedder_source(MockEmbedder())
+        )
         world = await make_erase_world(graph_backend, vector_store=vector_store)
         vectors = world.runtime.stores.vectors
         delete_vectors = vectors.delete

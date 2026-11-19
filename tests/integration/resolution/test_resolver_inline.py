@@ -25,7 +25,6 @@ from ontogr_mem.resolution.policy import ResolutionMode, ResolutionPolicy, TypeP
 from ontogr_mem.resolution.resolver import EntityResolver
 from ontogr_mem.resolution.resolver_store import ResolverStore
 from ontogr_mem.vectorstore import (
-    EmbeddingGateway,
     EmbedItem,
     VectorKind,
     VectorStore,
@@ -34,7 +33,7 @@ from ontogr_mem.vectorstore import (
 from ontogr_mem.vectorstore.memory import InMemoryBackend
 from tests.integration.resolution.resolver_helpers import count_active, ex
 from tests.support.clock import FixedClock
-from tests.support.embedder import MockEmbedder
+from tests.support.embedder import MockEmbedder, embedder_source
 from tests.support.graph_backend import GraphBackend
 from tests.support.type_world import WORLD
 from tests.unit.resolution.helpers import oracle_models
@@ -74,7 +73,7 @@ async def make(
     """Build a resolver with a deterministic embedder."""
     chosen = store or (await graph_backend.open_stores()).resolver_store
     if vectors is None:
-        vectors = VectorStore(InMemoryBackend(), EmbeddingGateway(MockEmbedder()))
+        vectors = VectorStore(InMemoryBackend(), embedder_source(MockEmbedder()))
         await vectors.ensure_ready()
     return EntityResolver(
         chosen,
@@ -119,8 +118,9 @@ async def _ranked_store(
             0.0,
         ]
     await store.write_entity_batch(entities, [])
-    gateway = EmbeddingGateway(MockEmbedder(vectors=vectors))
-    vector_store = VectorStore(InMemoryBackend(), gateway)
+    vector_store = VectorStore(
+        InMemoryBackend(), embedder_source(MockEmbedder(vectors=vectors))
+    )
     await vector_store.ensure_ready()
     await vector_store.upsert(
         VectorKind.NODE,

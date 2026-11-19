@@ -18,7 +18,7 @@ from ontogr_mem.vectorstore import (
 )
 from ontogr_mem.vectorstore.memory import InMemoryBackend
 from tests.contracts.vector_store import VectorStoreContract
-from tests.support.embedder import MockEmbedder, gateway
+from tests.support.embedder import MockEmbedder, embedder_source
 from tests.support.vectors import A, Factory, VectorHarness, fixed_embedder
 
 
@@ -71,7 +71,7 @@ class TestMemoryVectorStore(VectorStoreContract):
             backend = InMemoryBackend()
 
             def store_for(other: MockEmbedder) -> VectorStore:
-                return VectorStore(backend, gateway(other))
+                return VectorStore(backend, embedder_source(other))
 
             async def seed(kind, ids, **props: object) -> None:
                 return None
@@ -84,7 +84,7 @@ class TestMemoryVectorStore(VectorStoreContract):
         """One graph view drives past-belief filtering and hydration."""
         graph = GraphView()
         backend = InMemoryBackend()
-        store = VectorStore(backend, gateway(fixed_embedder()), graph=graph)
+        store = VectorStore(backend, embedder_source(fixed_embedder()), graph=graph)
         await store.ensure_ready()
         await store.upsert(
             VectorKind.EDGE,
@@ -123,7 +123,7 @@ class TestMemoryVectorStore(VectorStoreContract):
     ) -> None:
         """A valid document probe cannot hide an invalid query probe."""
         store = VectorStore(
-            InMemoryBackend(), gateway(InvalidQueryProbeEmbedder(invalid_vector))
+            InMemoryBackend(), embedder_source(InvalidQueryProbeEmbedder(invalid_vector))
         )
 
         with pytest.raises(SpaceMismatchError, match="query"):
@@ -132,9 +132,9 @@ class TestMemoryVectorStore(VectorStoreContract):
     async def test_dimension_mismatch_requires_compatible_vector_indexes(self) -> None:
         """Dimension changes require re-ingestion and compatible indexes."""
         backend = InMemoryBackend()
-        stored = VectorStore(backend, gateway(MockEmbedder(dim=3)))
+        stored = VectorStore(backend, embedder_source(MockEmbedder(dim=3)))
         await stored.ensure_ready()
-        configured = VectorStore(backend, gateway(MockEmbedder(dim=4)))
+        configured = VectorStore(backend, embedder_source(MockEmbedder(dim=4)))
 
         with pytest.raises(SpaceMismatchError) as error:
             await configured.ensure_ready()

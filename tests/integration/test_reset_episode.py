@@ -49,10 +49,10 @@ from ontogr_mem.temporal.engine import TemporalEngine
 from ontogr_mem.temporal.ledger import TENANT_CHAIN, slot_chain, verify
 from ontogr_mem.temporal.query import TemporalQuery
 from ontogr_mem.temporal.temporal_store import EpisodeState, TemporalStore
-from ontogr_mem.vectorstore import EmbeddingGateway, VectorStore
+from ontogr_mem.vectorstore import VectorStore
 from ontogr_mem.vectorstore.memory import InMemoryBackend
 from tests.support.clock import FixedClock
-from tests.support.embedder import MockEmbedder
+from tests.support.embedder import MockEmbedder, embedder_source
 from tests.support.episodes import make_episode
 from tests.support.temporal import TemporalHarness, graph_temporal_harness
 from tests.support.tenants import new_tenant
@@ -266,7 +266,7 @@ async def build_resolver(resolver_store: ResolverStore) -> EntityResolver:
 
     Vectors are kept in memory on every backend, so only the store differs.
     """
-    vectors = VectorStore(InMemoryBackend(), EmbeddingGateway(MockEmbedder()))
+    vectors = VectorStore(InMemoryBackend(), embedder_source(MockEmbedder()))
     await vectors.ensure_ready()
     return EntityResolver(
         resolver_store,

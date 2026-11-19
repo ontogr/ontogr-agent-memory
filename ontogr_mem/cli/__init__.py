@@ -2,26 +2,34 @@
 
 import argparse
 import asyncio
+import json
 import os
 import sys
+import urllib.error
+import urllib.request
 from collections.abc import Sequence
 from pathlib import Path
 
+from dotenv import dotenv_values
 from pydantic import ValidationError
 
 from ontogr_mem.agent import build_default_agent
 from ontogr_mem.cli.chat import run_chat
-from ontogr_mem.cli.mcp import run_mcp
 from ontogr_mem.client import Memory
 from ontogr_mem.data_models.tenant import InvalidTenantError, validate_tenant_id
-from ontogr_mem.errors import AgentMemoryError, MissingExtraError
+from ontogr_mem.errors import AgentMemoryError, MissingExtraError, StoreInUseError
 from ontogr_mem.llm import build_models
 from ontogr_mem.llm.failures import ModelNotConfiguredError
 from ontogr_mem.llm.roles import ModelRole
 from ontogr_mem.mcp_server.settings import McpSettings
 from ontogr_mem.ontology.errors import InvalidChange
+from ontogr_mem.paths import data_directory
 from ontogr_mem.relational_store.config import StateSettings
 from ontogr_mem.requirements import check_requirements
+from ontogr_mem.server.app import serve
+from ontogr_mem.server.entry import ServerUnavailableError
+from ontogr_mem.server.files import read_server_info, read_server_token
+from ontogr_mem.server.settings import ServerSettings
 from ontogr_mem.service.bootstrap import ServiceSettings
 from ontogr_mem.service.errors import InvalidArgumentError
 from ontogr_mem.store_urls import (
@@ -42,7 +50,7 @@ def _tenant_id_argument(value: str) -> str:
         raise argparse.ArgumentTypeError(str(error)) from error
 
 
-async def _chat(tenant: str | None, ontology: Path | None) -> None:
+async def _chat(tenant: str | None) -> None:
     """Keep the client open until chat and its drain have finished."""
     require_explicit_tenant(
         ServiceSettings().graph_url,
@@ -58,17 +66,9 @@ async def _chat(tenant: str | None, ontology: Path | None) -> None:
             graph=parse_graph_url(service.graph_url.get_secret_value()),
             state=parse_state_url(state.url.get_secret_value()),
             embedding=EmbeddingSettings(),
-            required_roles=frozenset(
-                {
-                    ModelRole.ANSWER,
-                    ModelRole.ENTITY_EXTRACTION,
-                    ModelRole.FACT_EXTRACTION,
-                }
-            ),
+            required_roles=frozenset({ModelRole.ANSWER}),
         ).raise_for_missing(subcommand="chat")
-        async with Memory.open(
-            tenant=tenant or "default", models=models, ontology=ontology
-        ) as memory:
+        async with Memory.connect(tenant=tenant or "default", models=models) as memory:
             await run_chat(memory, build_default_agent(memory))
     finally:
         await models.aclose()
@@ -87,61 +87,68 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = _command_parser()
     args = parser.parse_args(argv)
     os.environ["PYDANTIC_AI_NO_BANNER"] = "1"
-    status = 0
     try:
-        if args.command == "mcp":
-            # Flags default to None so an omitted flag keeps the environment value.
-            overrides = {
-                name: value
-                for name in ("transport", "host", "port", "tenant", "ontology")
-                if (value := getattr(args, name)) is not None
-            }
-            asyncio.run(run_mcp(McpSettings(**overrides)))
-        else:
-            asyncio.run(_chat(args.tenant, args.ontology))
+        return _dispatch(args)
     except KeyboardInterrupt:
-        status = 130
-    except MissingExtraError as error:
-        print(str(error), file=sys.stderr)
-        status = 1
-    except EmbedderUnavailableError as error:
-        print(f"{error}\n{error.hint}", file=sys.stderr)
-        status = 1
-    except ModelNotConfiguredError:
-        print(
+        return 130
+    except Exception as error:
+        return _report_error(error)
+
+
+def _dispatch(args: argparse.Namespace) -> int:
+    if args.command == "server":
+        return _run_server_command(args)
+    if args.command == "mcp":
+        from ontogr_mem.cli.mcp import run_mcp  # noqa: PLC0415
+
+        asyncio.run(run_mcp())
+        return 0
+    asyncio.run(_chat(args.tenant))
+    return 0
+
+
+def _report_error(error: Exception) -> int:
+    if isinstance(error, MissingExtraError):
+        message = str(error)
+    elif isinstance(error, EmbedderUnavailableError):
+        message = f"{error}\n{error.hint}"
+    elif isinstance(error, ModelNotConfiguredError):
+        message = (
             "Configure MEMORY_LLM_MODEL, MEMORY_LLM_BASE_URL and "
-            "MEMORY_LLM_API_KEY for answers and text extraction.",
-            file=sys.stderr,
+            "MEMORY_LLM_API_KEY for answers and text extraction."
         )
-        status = 1
-    except ValidationError:
-        print(
-            "Invalid memory settings; check the named MEMORY_* variables.",
-            file=sys.stderr,
+    elif isinstance(error, ValidationError):
+        message = "Invalid memory settings; check the named MEMORY_* variables."
+    elif isinstance(error, InvalidChange):
+        message = f"Invalid ontology: {error}"
+    elif isinstance(
+        error,
+        (
+            InvalidArgumentError,
+            ExplicitTenantError,
+            StoreInUseError,
+            ServerUnavailableError,
+        ),
+    ):
+        message = str(error)
+    elif isinstance(error, AgentMemoryError):
+        message = "Memory failed; check database, embedding and model settings."
+    else:
+        message = "Command failed; check the model endpoint and memory services."
+    print(message, file=sys.stderr)
+    return 1
+
+
+def _run_server_command(args: argparse.Namespace) -> int:
+    if args.server_command == "run":
+        _apply_server_env()
+        settings = McpSettings(tenant=args.tenant, ontology=args.ontology)
+        return asyncio.run(
+            serve(mcp_settings=settings, server_settings=ServerSettings())
         )
-        status = 1
-    except InvalidChange as error:
-        print(f"Invalid ontology: {error}", file=sys.stderr)
-        status = 1
-    except InvalidArgumentError as error:
-        print(str(error), file=sys.stderr)
-        status = 1
-    except ExplicitTenantError as error:
-        print(str(error), file=sys.stderr)
-        status = 1
-    except AgentMemoryError:
-        print(
-            "Memory failed; check database, embedding and model settings.",
-            file=sys.stderr,
-        )
-        status = 1
-    except Exception:
-        print(
-            "Command failed; check the model endpoint and memory services.",
-            file=sys.stderr,
-        )
-        status = 1
-    return status
+    if args.server_command == "status":
+        return _server_status()
+    return _server_stop()
 
 
 def _command_parser() -> argparse.ArgumentParser:
@@ -149,22 +156,70 @@ def _command_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     chat = commands.add_parser("chat", help="chat with persistent memory")
     chat.add_argument("--tenant", default=None, type=_tenant_id_argument)
-    chat.add_argument(
-        "--ontology",
-        type=Path,
-        help="Path to an ontology file (.yaml, .yml, .json or .ttl).",
-    )
-    mcp_parser = commands.add_parser("mcp", help="serve memory over MCP")
-    mcp_parser.add_argument("--transport", choices=("stdio", "http"), default=None)
-    mcp_parser.add_argument("--host", default=None)
-    mcp_parser.add_argument("--port", type=int, default=None)
-    mcp_parser.add_argument("--tenant", default=None, type=_tenant_id_argument)
-    mcp_parser.add_argument(
-        "--ontology",
-        type=Path,
-        help="Path to an ontology file (.yaml, .yml, .json or .ttl).",
-    )
+    commands.add_parser("mcp", help="serve memory over MCP")
+    server = commands.add_parser("server", help="manage the shared memory server")
+    server_commands = server.add_subparsers(dest="server_command", required=True)
+    run = server_commands.add_parser("run", help="run the memory server")
+    run.add_argument("--tenant", default=None, type=_tenant_id_argument)
+    run.add_argument("--ontology", type=Path)
+    server_commands.add_parser("status", help="show server status")
+    server_commands.add_parser("stop", help="stop the local server")
     return parser
+
+
+def _apply_server_env() -> None:
+    """Apply allowed values from the per-user server settings file."""
+    forbidden = {"MEMORY_GRAPH_URL", "MEMORY_STATE_URL", "MEMORY_DATA_DIR"}
+    values = dotenv_values(data_directory() / "server.env")
+    present = forbidden.intersection(key for key, value in values.items() if value)
+    if present:
+        name = sorted(present)[0]
+        raise ValueError(f"server.env cannot set {name}")
+    for key, value in values.items():
+        if value is not None:
+            os.environ[key] = value
+
+
+def _server_status() -> int:
+    info = read_server_info(data_directory() / "server.json")
+    if not info:
+        print("not running")
+        return 1
+    try:
+        health_url = f"http://127.0.0.1:{info['port']}/health"
+        with urllib.request.urlopen(health_url, timeout=2) as response:
+            health = json.load(response)
+    except (OSError, urllib.error.URLError):
+        print("not running")
+        return 1
+    roles = health.get("roles", {})
+    print(
+        f"running pid={health.get('pid')} version={health.get('version')} "
+        f"port={info.get('port')} store={health.get('store')} "
+        f"embedder={health.get('embedder')} roles={roles} "
+        f"embedding_model={health.get('embedding_model')}"
+    )
+    return 0
+
+
+def _server_stop() -> int:
+    info = read_server_info(data_directory() / "server.json")
+    if not info:
+        print("not running")
+        return 1
+    token = read_server_token(data_directory() / "server.token")
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{info['port']}/shutdown",
+        data=b"{}",
+        headers={"Authorization": f"Bearer {token}"} if token else {},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=2) as response:
+            return 0 if response.status == 202 else 1
+    except (OSError, urllib.error.URLError):
+        print("server is unreachable; no process was stopped", file=sys.stderr)
+        return 1
 
 
 __all__ = ["main"]

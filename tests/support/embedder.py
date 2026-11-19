@@ -6,12 +6,14 @@ import random
 from collections.abc import Mapping, Sequence
 
 from ontogr_mem.vectorstore import (
+    Embedder,
     EmbeddingGateway,
     EmbeddingPurpose,
     PermanentEmbeddingError,
     TransientEmbeddingError,
     VectorStoreSettings,
 )
+from ontogr_mem.vectorstore.source import EmbedderSource
 
 
 DIM = 3
@@ -143,3 +145,12 @@ async def no_sleep(seconds: float) -> None:
 def gateway(embedder: MockEmbedder, **settings: float) -> EmbeddingGateway:
     """Wrap `embedder` in a gateway that never sleeps between retries."""
     return EmbeddingGateway(embedder, VectorStoreSettings(**settings), sleep=no_sleep)
+
+
+def embedder_source(embedder: Embedder) -> EmbedderSource:
+    """Return a lazy source for a deterministic test embedder."""
+
+    async def load() -> MockEmbedder:
+        return embedder
+
+    return EmbedderSource(load)

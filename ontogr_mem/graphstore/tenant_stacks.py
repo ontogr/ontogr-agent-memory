@@ -18,15 +18,16 @@ from ontogr_mem.graphstore.schemas import (
 from ontogr_mem.graphstore.temporal.store import GraphTemporalStore
 from ontogr_mem.observability import Tracer
 from ontogr_mem.tenant_stores import TenantStores
-from ontogr_mem.vectorstore import Embedder, EmbeddingGateway, VectorStore
+from ontogr_mem.vectorstore import VectorStore
 from ontogr_mem.vectorstore.graph.falkordb import FalkorDBVectorBackend
 from ontogr_mem.vectorstore.graph.neo4j import Neo4jVectorBackend
+from ontogr_mem.vectorstore.source import EmbedderSource
 
 
 async def graph_stores(
     store: GraphStore,
     tenant_id: str,
-    embedder: Embedder,
+    embedder: EmbedderSource,
     *,
     tenant_keyed: bool,
     tracer: Tracer | None = None,
@@ -43,8 +44,7 @@ async def graph_stores(
         if tenant_keyed
         else FalkorDBVectorBackend(store, handle)
     )
-    vectors = VectorStore(vector_backend, EmbeddingGateway(embedder, tracer=tracer))
-    await vectors.ensure_ready()
+    vectors = VectorStore(vector_backend, embedder, tracer=tracer)
     resolver = GraphResolverStore(runner, tenant_keyed=tenant_keyed)
     episodes = GraphEpisodeStore(runner, tenant_keyed=tenant_keyed)
     temporal = GraphTemporalStore(store, handle, tenant_keyed=tenant_keyed)

@@ -24,7 +24,7 @@ class InvalidVectorError(VectorStoreError):
 
 
 class StoreNotReadyError(VectorStoreError):
-    """`ensure_ready` has not succeeded, so reads and writes are refused."""
+    """`ensure_ready` has not succeeded for an embedding-dependent operation."""
 
 
 class CapabilityError(VectorStoreError):
