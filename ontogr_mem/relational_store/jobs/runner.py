@@ -241,8 +241,12 @@ class JobRunner:
             await asyncio.sleep(heartbeat_seconds)
             try:
                 for job_id in tuple(self._orphans):
-                    await self._store.release_job(job_id)
-                    self._orphans.discard(job_id)
+                    try:
+                        await self._store.release_job(job_id)
+                    except Exception:
+                        log.exception("orphan job release failed for %s", job_id)
+                    else:
+                        self._orphans.discard(job_id)
                 now = self._clock.now()
                 for holder in self._lease_holders:
                     await holder.renew_leases(now)
@@ -264,7 +268,12 @@ class JobRunner:
         try:
             if self._recover_tenant is not None:
                 for tenant_id in await self._store.tenant_ids():
-                    await self._recover_tenant(tenant_id)
+                    try:
+                        await self._recover_tenant(tenant_id)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:
+                        log.exception("tenant recovery failed for %s", tenant_id)
         except asyncio.CancelledError:
             raise
         except Exception:
