@@ -34,15 +34,14 @@ class TestPostgresJobStore(JobStoreContract, EraseJournalContract):
         return factory
 
     async def test_schema_revision_is_recorded(self, pool):
-        """The baseline revision is applied once with its file checksum."""
+        """Every shipped revision is recorded with its file checksum."""
         await ensure_postgres_schema(pool)
-        ((revision, _, checksum),) = pending_revisions(SCHEMA_FILES / "files_pg")
+        revisions = pending_revisions(SCHEMA_FILES / "files_pg")
         async with pg_connection(pool) as connection:
-            recorded = await connection.fetchrow(
+            recorded = await connection.fetch(
                 "SELECT revision, checksum FROM schema_migrations"
             )
-        assert recorded is not None
-        assert (recorded["revision"], recorded["checksum"]) == (revision, checksum)
-        assert checksum == revision_checksum(
-            (SCHEMA_FILES / "files_pg" / "0001_baseline.sql").read_text("utf-8")
-        )
+        assert {row["revision"]: row["checksum"] for row in recorded} == {
+            revision: checksum for revision, _, checksum in revisions
+        }
+        assert all(checksum == revision_checksum(sql) for _, sql, checksum in revisions)

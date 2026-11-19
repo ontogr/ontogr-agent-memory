@@ -46,6 +46,7 @@ class TestJobRunner:
     ) -> None:
         """A release outage does not stop leases or queued jobs progressing."""
         renewed = asyncio.Event()
+        orphan_release_attempted = asyncio.Event()
         swept = asyncio.Event()
 
         class Lease:
@@ -72,10 +73,12 @@ class TestJobRunner:
                 return getattr(job_store, name)
 
             async def release_job(self, job_id: str) -> None:
+                orphan_release_attempted.set()
                 raise sqlite3.OperationalError("release unavailable")
 
             async def requeue_expired(self, now: object) -> None:
-                swept.set()
+                if orphan_release_attempted.is_set():
+                    swept.set()
                 await job_store.requeue_expired(now)
 
         runner = JobRunner(
@@ -86,10 +89,11 @@ class TestJobRunner:
             lease_holders=[Lease()],
         )
         try:
+            await runner.start()
             await runner.submit("t", "index", {})
             await runner.drain()
             monkeypatch.setattr(job_store, "save_job", original_save)
-            await runner.start_heartbeat()
+            await asyncio.wait_for(orphan_release_attempted.wait(), 1)
             await asyncio.wait_for(renewed.wait(), 1)
             await asyncio.wait_for(swept.wait(), 1)
         finally:
