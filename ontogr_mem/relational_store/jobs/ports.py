@@ -104,6 +104,18 @@ class JobStore(Protocol):
         ...
 
 
+class LeaseHolder(Protocol):
+    """Renew and release leases owned by one process."""
+
+    async def renew_leases(self, now: datetime) -> None:
+        """Renew this holder's active leases."""
+        ...
+
+    async def release_leases(self) -> None:
+        """Release this holder's active leases."""
+        ...
+
+
 class StateStore(JobStore, EraseJournal, Protocol):
     """Combine job and erase journal persistence with resource release."""
 

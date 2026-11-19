@@ -121,11 +121,32 @@ class ServiceJobs:
             },
             deps.clock,
             max_attempts=deps.max_attempts,
+            heartbeat_seconds=deps.heartbeat_seconds,
+            lease_holders=(deps.state, deps.operations),
+            can_run=self._can_run,
+            prepare_tenant=self._prepare_tenant,
         )
 
     async def start(self) -> int:
         """Start durable tenant job lanes after recovery has completed."""
         return await self._runner.start()
+
+    async def start_heartbeat(self) -> None:
+        """Start lease renewal before service recovery begins."""
+        await self._runner.start_heartbeat()
+
+    def _can_run(self, job: Job) -> bool:
+        if job.op != "add_memory":
+            return True
+        request = job.payload.get("request", {})
+        if request.get("kind") not in {MemoryKind.TEXT.value, MemoryKind.MESSAGE.value}:
+            return True
+        return self._deps.models.configured(
+            ModelRole.ENTITY_EXTRACTION
+        ) and self._deps.models.configured(ModelRole.FACT_EXTRACTION)
+
+    async def _prepare_tenant(self, tenant_id: str) -> object:
+        return await self._deps.tenants.get_or_create(tenant_id)
 
     async def add_memory(
         self,

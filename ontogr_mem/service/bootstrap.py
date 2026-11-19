@@ -109,6 +109,7 @@ async def build_service(
     closure_settings: ClosureSettings | None = None,
     limiter: CallerRateLimiter,
     max_attempts: int = 3,
+    heartbeat_seconds: float | None = None,
     tracer: Tracer | None = None,
     ontology: OntologyDeclaration | None = None,
     ontology_tenant: str | None = None,
@@ -140,6 +141,7 @@ async def build_service(
         ontology: Declaration applied when a tenant opens.
         ontology_tenant: Limit the declaration to this tenant when supplied.
         max_attempts: Maximum attempts for each queued job.
+        heartbeat_seconds: Optional interval for renewing shared-state leases.
         tracer: Optional tracer for service and embedding spans. PydanticAI model
             spans use caller-owned instrumentation.
         audit_log: Optional audit chain for service operations.
@@ -195,6 +197,7 @@ async def build_service(
             backend=parse_graph_url(settings.graph_url.get_secret_value()).backend,
             limiter=limiter,
             max_attempts=max_attempts,
+            heartbeat_seconds=heartbeat_seconds,
             tracer=selected_tracer,
             audit_log=audit_log or MemoryAuditLog(clock),
             confirm_tokens=confirm_tokens or ConfirmTokens(None, clock),
@@ -308,6 +311,11 @@ async def open_service(
             closure_settings=closure_settings or ClosureSettings(),
             limiter=limiter or CallerRateLimiter(),
             max_attempts=max_attempts,
+            heartbeat_seconds=(
+                selected_state.heartbeat_seconds
+                if isinstance(state_target, PostgresTarget)
+                else None
+            ),
             tracer=tracer,
             ontology=ontology,
             ontology_tenant=ontology_tenant,

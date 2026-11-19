@@ -342,5 +342,6 @@ class MemoryService:
     async def start(self) -> int:
         """Recover pending work, then start the job runner."""
         async with self._write_lock:
+            await self._jobs.start_heartbeat()
             await self._forget.recover_all()
             return await self._jobs.start()
