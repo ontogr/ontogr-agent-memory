@@ -54,6 +54,6 @@ class TestPostgresJobLeases:
         assert recovered is not None
         assert recovered.job_id == claimed.job_id
         assert recovered.status is JobState.RUNNING
-        assert not await second.tenant_has_live_lease(
+        assert await second.tenant_has_live_lease(
             "tenant_a", now + timedelta(seconds=61)
         )

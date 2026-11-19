@@ -8,11 +8,13 @@ from ontogr_mem.client import Memory
 from ontogr_mem.data_models.jobs import JobState
 from ontogr_mem.graphstore.falkordb import FalkorDBGraphStore
 from ontogr_mem.relational_store import engine
+from ontogr_mem.relational_store.config import StateSettings
 from ontogr_mem.service.bootstrap import ServiceSettings
 from tests.support.embedder import MockEmbedder
 from tests.support.falkordb import falkordb_test_url
 from tests.support.scripted_model import scripted_role_models
 from tests.support.tenants import new_tenant
+from tests.integration.relational_store.postgres.conftest import DSN
 
 
 @pytest.fixture(autouse=True)
@@ -37,6 +39,7 @@ class TestMemoryOnPostgresState:
             service_settings=ServiceSettings(
                 graph_url=falkordb_test_url(), _env_file=None
             ),
+            state_settings=StateSettings(url=DSN, _env_file=None),
             models=scripted_role_models(),
             embedder=MockEmbedder(),
         ) as memory:
