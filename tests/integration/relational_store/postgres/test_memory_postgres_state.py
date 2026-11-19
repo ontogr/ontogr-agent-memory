@@ -40,9 +40,7 @@ class TestMemoryOnPostgresState:
             models=scripted_role_models(),
             embedder=MockEmbedder(),
         ) as memory:
-            receipt = await memory.write_fact(
-                "The sky is blue.", wait_seconds=10
-            )
+            receipt = await memory.write_fact("The sky is blue.", wait_seconds=10)
             job = await memory.get_job(receipt.job_id)
 
         assert receipt.status == JobState.DONE
