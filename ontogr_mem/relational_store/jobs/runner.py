@@ -220,8 +220,11 @@ class JobRunner:
         )
 
     async def _heartbeat(self) -> None:
+        heartbeat_seconds = self._heartbeat_seconds
+        if heartbeat_seconds is None:
+            return
         while True:
-            await asyncio.sleep(self._heartbeat_seconds)
+            await asyncio.sleep(heartbeat_seconds)
             try:
                 for job_id in tuple(self._orphans):
                     await self._store.release_job(job_id)

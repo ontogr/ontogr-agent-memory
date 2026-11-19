@@ -54,7 +54,8 @@ class TestSqliteJobStore(JobStoreContract):
         try:
             assert await reopened.get_job("j1") == first
             assert await reopened.get_job("j2") == replace(second, tenant_id="tenant_b")
-            assert await reopened.requeue_running() == [
+            await reopened.requeue_expired(second.updated_at)
+            assert await reopened.queued_jobs() == [
                 replace(second, tenant_id="tenant_b", status=JobState.QUEUED)
             ]
         finally:

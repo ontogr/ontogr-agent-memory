@@ -409,6 +409,30 @@ class PostgresJobStore:
                 )
             return [erasure_from_row(row) for row in rows]
 
+    async def claim_recoverable(
+        self, tenant: str | None, now: datetime
+    ) -> list[ErasureRecord]:
+        """Return expired running erase rows, optionally filtered by Tenant."""
+        query = (
+            "SELECT seq, erasure_id, tenant, mode, principal_id, selector_kind, "
+            "target, episode_ids, fact_ids, observation_ids, entity_ids, "
+            "created_at, status, last_step, finished_at, residue, counts "
+            "FROM erasures WHERE status = 'running' AND "
+            "(lease_expires_at IS NULL OR lease_expires_at <= $1)"
+        )
+        async with pg_connection(self._pool) as connection:
+            if tenant is None:
+                rows = await connection.fetch(
+                    query + " ORDER BY created_at, seq", to_micros(now)
+                )
+            else:
+                rows = await connection.fetch(
+                    query + " AND tenant = $2 ORDER BY created_at, seq",
+                    to_micros(now),
+                    tenant,
+                )
+            return [erasure_from_row(row) for row in rows]
+
     async def get(self, erasure_id: str) -> ErasureRecord | None:
         """Return one erase row or None when its id is unknown."""
         async with pg_connection(self._pool) as connection:
