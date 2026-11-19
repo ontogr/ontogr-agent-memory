@@ -3,7 +3,6 @@
 import asyncio
 import hashlib
 import sqlite3
-from collections.abc import Sequence
 from math import inf, nan
 from typing import Any
 
@@ -478,6 +477,10 @@ class TestJobRunner:
 
             broken = False
 
+            def __getattr__(self, name: str) -> Any:
+                """Delegate store operations not overridden for failure injection."""
+                return getattr(job_store, name)
+
             async def create_job(self, job: Job) -> tuple[Job, bool]:
                 """Create a job through the real adapter."""
                 return await job_store.create_job(job)
@@ -494,20 +497,6 @@ class TestJobRunner:
                 if self.broken and method == "save_job" and job.tenant_id == "a":
                     raise sqlite3.OperationalError("storage outage")
                 return await job_store.save_job(job)
-
-            async def requeue_running(self) -> list[Job]:
-                """Recover jobs through the real adapter."""
-                return await job_store.requeue_running()
-
-            async def count_jobs(
-                self, tenant_ids: Sequence[str], statuses: Sequence[JobState]
-            ) -> int:
-                """Count jobs through the real adapter."""
-                return await job_store.count_jobs(tenant_ids, statuses)
-
-            async def tenant_ids(self) -> list[str]:
-                """List tenants through the real adapter."""
-                return await job_store.tenant_ids()
 
         store = FailingStore()
 
