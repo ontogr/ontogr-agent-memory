@@ -254,16 +254,15 @@ class Memory:
             selected_tenant = validate_tenant_id(tenant)
             state_settings = StateSettings()
             service_settings = ServiceSettings()
+            embedding_settings = EmbeddingSettings()
+            llm_config = LLMConfig()
             async with AsyncExitStack() as resources:
                 selected_models = models
                 if selected_models is None:
                     selected_models = build_models()
                     resources.push_async_callback(selected_models.aclose)
                 from ontogr_mem.client.remote import RemoteService  # noqa: PLC0415
-                from ontogr_mem.server.entry import (  # noqa: PLC0415
-                    _warn_settings_mismatch,
-                    ensure_server,
-                )
+                from ontogr_mem.server.entry import ensure_server  # noqa: PLC0415
 
                 endpoint = await ensure_server(
                     graph_url=service_settings.graph_url.get_secret_value(),
@@ -277,15 +276,18 @@ class Memory:
                     logging.getLogger(__name__).warning(
                         "Memory server lacks a configured extraction role."
                     )
-                _warn_settings_mismatch(
-                    endpoint,
-                    {
-                        role.value: selected_models.configured(role)
-                        for role in TEXT_WRITE_ROLES
-                    },
-                    EmbeddingSettings().model,
-                    LLMConfig().model,
-                )
+                client_roles = {
+                    role.value: selected_models.configured(role)
+                    for role in TEXT_WRITE_ROLES
+                }
+                if (
+                    endpoint.roles != client_roles
+                    or endpoint.embedding_model != embedding_settings.model
+                    or endpoint.llm_model != llm_config.model
+                ):
+                    logging.getLogger(__name__).warning(
+                        "Memory client settings differ from the connected server."
+                    )
                 remote = await RemoteService.open(
                     url=endpoint.url,
                     token=endpoint.token,

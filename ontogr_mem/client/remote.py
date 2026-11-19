@@ -3,6 +3,7 @@
 import asyncio
 import json
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from ontogr_mem._extras import import_extra
 from ontogr_mem.service.contracts import (
@@ -48,6 +49,19 @@ _ERROR_TYPES: dict[ErrorCode, type[ServiceError]] = {
 }
 
 
+def _mcp_url(url: str) -> str:
+    """Return the streamable HTTP endpoint for a configured server URL."""
+    parts = urlsplit(url)
+    path = parts.path.rstrip("/")
+    if path.endswith("/mcp"):
+        return urlunsplit(
+            (parts.scheme, parts.netloc, path, parts.query, parts.fragment)
+        )
+    return urlunsplit(
+        (parts.scheme, parts.netloc, f"{path}/mcp", parts.query, parts.fragment)
+    )
+
+
 class RemoteService:
     """Send tenant-scoped memory operations to a remote MCP server."""
 
@@ -64,7 +78,7 @@ class RemoteService:
         from fastmcp.client.transports import StreamableHttpTransport  # noqa: PLC0415
 
         transport = StreamableHttpTransport(
-            url,
+            _mcp_url(url),
             headers={
                 "Authorization": f"Bearer {token}",
                 "X-Memory-Tenant": tenant,

@@ -88,6 +88,7 @@ def _child_environment(graph_url: str, state_url: str) -> dict[str, str]:
         "HF_HUB_CACHE",
         "HF_HUB_OFFLINE",
         "HF_ENDPOINT",
+        "MEMORY_MCP_API_KEY",
     }
     environment = {
         key: value
