@@ -197,9 +197,11 @@ class TestPostgresJobLeases:
         """Reject progress writes after the owner's lease expires."""
         clock = FixedClock(datetime(2026, 10, 23, 12, tzinfo=UTC))
         store = PostgresJobStore(pool, clock, owner_id="first", lease_seconds=1)
-        await store.create_job(make_job())
+        job = make_job()
+        await store.create_job(job)
         claimed = await store.claim_next("tenant_a", clock.now(), lambda _: True)
         assert claimed is not None
+        assert claimed.job_id == job.job_id
         await store.set_job_progress(
             claimed.job_id, JobProgress(stage="index", done=1, total=3)
         )
