@@ -51,8 +51,14 @@ class JobStoreContract:
         """All record fields survive creation, saving, and reading."""
         job = make_job()
         created, replay = await store.create_job(job)
+        assert (created, replay) == (job, False)
+        assert await store.get_job(job.job_id) == job
+
+        claimed = await store.claim_next(job.tenant_id, T0, lambda _: True)
+        assert claimed == replace(job, status=JobState.RUNNING)
+        assert await store.get_job(job.job_id) == claimed
         saved = replace(
-            job,
+            claimed,
             status=JobState.FAILED,
             attempts=2,
             result={"nested": ["résultat", {"ok": False}]},
@@ -60,14 +66,28 @@ class JobStoreContract:
             updated_at=T0 + timedelta(seconds=1),
         )
 
-        await store.save_job(saved)
+        assert await store.save_job(saved)
 
-        assert (created, replay) == (job, False)
         assert await store.get_job(job.job_id) == saved
 
     async def test_missing_job_reads_as_none(self, store):
         """An unknown id has no record."""
         assert await store.get_job("nope") is None
+
+    async def test_claim_skips_ineligible_older_jobs_and_keeps_fifo(self, store):
+        """Claim the oldest eligible job when an older job cannot run."""
+        first = make_job("j1")
+        second = replace(make_job("j2"), idempotency_key=None)
+        third = replace(make_job("j3"), idempotency_key=None)
+        await store.create_job(first)
+        await store.create_job(second)
+        await store.create_job(third)
+
+        claimed = await store.claim_next("tenant_a", T0, lambda job: job.job_id != "j1")
+
+        assert claimed is not None
+        assert claimed.job_id == "j2"
+        assert [job.job_id for job in await store.queued_jobs()] == ["j1", "j3"]
 
     async def test_same_key_and_same_request_returns_the_stored_job_as_replay(
         self, store
@@ -75,8 +95,10 @@ class JobStoreContract:
         """A replay returns the first record, including its latest state."""
         job = make_job()
         await store.create_job(job)
-        done = replace(job, status=JobState.DONE, result={"ok": True})
-        await store.save_job(done)
+        claimed = await store.claim_next(job.tenant_id, T0, lambda _: True)
+        assert claimed == replace(job, status=JobState.RUNNING)
+        done = replace(claimed, status=JobState.DONE, result={"ok": True})
+        assert await store.save_job(done)
 
         replay = await store.create_job(replace(job, job_id="j2"))
 
@@ -129,15 +151,18 @@ class JobStoreContract:
         job = make_job()
         await store.create_job(job)
         await store.save_job(replace(job, error={"type": "Error", "message": "x"}))
+        claimed = await store.claim_next(job.tenant_id, T0, lambda _: True)
+        assert claimed is not None
         done = replace(
-            job,
+            claimed,
             status=JobState.DONE,
             attempts=3,
             result={"count": 2},
+            error=None,
             updated_at=T0 + timedelta(microseconds=1),
         )
 
-        await store.save_job(done)
+        assert await store.save_job(done)
 
         assert await store.get_job("j1") == done
 
@@ -148,13 +173,13 @@ class JobStoreContract:
 
         assert await store.get_job("j1") == job
 
-    async def test_requeue_running_returns_running_jobs_to_queued_oldest_first(
+    async def test_requeue_expired_returns_running_jobs_to_queued_oldest_first(
         self, store
     ):
         """Recovery includes queued jobs and preserves creation order for ties."""
         jobs = [
             replace(
-                make_job(f"j{i}"),
+                make_job(f"j{i}", f"tenant_{i}"),
                 idempotency_key=None,
                 created_at=T0 + timedelta(seconds=seconds),
             )
@@ -162,12 +187,15 @@ class JobStoreContract:
         ]
         for job in jobs:
             await store.create_job(job)
-        for job in jobs[:2]:
-            await store.save_job(replace(job, status=JobState.RUNNING, attempts=1))
+        for job in sorted(jobs, key=lambda job: job.created_at)[:2]:
+            claimed = await store.claim_next(job.tenant_id, T0, lambda _: True)
+            assert claimed == replace(job, status=JobState.RUNNING)
+            assert await store.save_job(replace(claimed, attempts=1))
 
-        recovered = await store.requeue_running()
+        await store.requeue_expired(T0 + timedelta(seconds=60, microseconds=1))
+        recovered = await store.queued_jobs()
 
-        expected = [replace(jobs[1], attempts=1), jobs[2], replace(jobs[0], attempts=1)]
+        expected = [replace(jobs[1], attempts=1), replace(jobs[2], attempts=1), jobs[0]]
         assert recovered == expected
         assert [await store.get_job(job.job_id) for job in expected] == expected
 
@@ -180,7 +208,8 @@ class JobStoreContract:
         for job in jobs:
             await store.create_job(job)
 
-        assert await store.requeue_running() == []
+        await store.requeue_expired(T0)
+        assert await store.queued_jobs() == []
         assert [await store.get_job(job.job_id) for job in jobs] == jobs
 
     async def test_counts_are_scoped_to_tenants_and_statuses(self, store):
@@ -221,6 +250,8 @@ class JobStoreContract:
         """A job read returns the last progress value written to its record."""
         job = make_job()
         await store.create_job(job)
+        claimed = await store.claim_next(job.tenant_id, T0, lambda _: True)
+        assert claimed == replace(job, status=JobState.RUNNING)
         progress = JobProgress(stage="index", done=25, total=100)
 
         await store.set_job_progress(job.job_id, progress)
@@ -233,6 +264,7 @@ class JobStoreContract:
         """Progress writes reject backwards counts and values past the total."""
         job = make_job()
         await store.create_job(job)
+        await store.claim_next(job.tenant_id, T0, lambda _: True)
         await store.set_job_progress(
             job.job_id, JobProgress(stage="index", done=20, total=100)
         )

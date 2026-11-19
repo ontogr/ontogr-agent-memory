@@ -22,6 +22,8 @@ class TestPostgresOperationStore(OperationStoreContract):
     @pytest.fixture
     async def operation_store(self, pool, clean_tables, clock: Clock) -> OperationStore:
         """Return an isolated operation store with interrupted runs marked."""
-        store = PostgresOperationStore(pool, clock)
+        store = PostgresOperationStore(
+            pool, clock, owner_id="test-owner", lease_seconds=60
+        )
         await store.mark_interrupted_runs()
         return store

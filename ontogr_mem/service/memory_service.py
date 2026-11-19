@@ -66,6 +66,7 @@ class MemoryService:
         self._jobs = ServiceJobs(deps, recorder, self._write_lock)
         self._queries = ServiceQueries(deps, recorder)
         self._forget = ForgetService(deps, recorder, self._jobs, self._write_lock)
+        self._jobs.set_recovery_callback(self._forget.recover_tenant)
 
     async def add_memory(
         self,
@@ -342,5 +343,6 @@ class MemoryService:
     async def start(self) -> int:
         """Recover pending work, then start the job runner."""
         async with self._write_lock:
+            await self._jobs.start_heartbeat()
             await self._forget.recover_all()
             return await self._jobs.start()

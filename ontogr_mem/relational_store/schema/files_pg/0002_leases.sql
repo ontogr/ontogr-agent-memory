@@ -1,0 +1,13 @@
+ALTER TABLE jobs DROP COLUMN IF EXISTS claimed_by;
+ALTER TABLE jobs DROP COLUMN IF EXISTS claimed_at;
+ALTER TABLE jobs DROP COLUMN IF EXISTS run_after;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS owner_id TEXT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS lease_expires_at BIGINT;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS heartbeat_at BIGINT;
+ALTER TABLE erasures ADD COLUMN IF NOT EXISTS owner_id TEXT;
+ALTER TABLE erasures ADD COLUMN IF NOT EXISTS lease_expires_at BIGINT;
+ALTER TABLE erasures ADD COLUMN IF NOT EXISTS heartbeat_at BIGINT;
+ALTER TABLE operation_rows ADD COLUMN IF NOT EXISTS owner_id TEXT;
+ALTER TABLE operation_rows ADD COLUMN IF NOT EXISTS lease_expires_at BIGINT;
+ALTER TABLE operation_rows ADD COLUMN IF NOT EXISTS heartbeat_at BIGINT;
+CREATE INDEX IF NOT EXISTS jobs_tenant_queue ON jobs (tenant_id, status, created_at, seq);

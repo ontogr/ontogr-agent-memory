@@ -1,6 +1,7 @@
 """In-memory operation storage for one event loop."""
 
 from dataclasses import replace
+from datetime import datetime
 from uuid import uuid4
 
 from ontogr_mem.data_models.clock import Clock
@@ -24,6 +25,12 @@ class MemoryOperationStore:
         """Create an empty operation store using the supplied clock."""
         self._clock = clock
         self._records: dict[str, OperationRecord] = {}
+
+    async def renew_leases(self, now: datetime) -> None:
+        """Keep the memory adapter's no-lease behavior."""
+
+    async def release_leases(self) -> None:
+        """Keep the memory adapter's no-lease behavior."""
 
     async def start(
         self,

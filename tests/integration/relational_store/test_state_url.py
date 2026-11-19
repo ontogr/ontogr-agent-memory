@@ -6,6 +6,7 @@ from ontogr_mem.relational_store import StateSettings, open_state_store
 from ontogr_mem.relational_store.postgres.jobs import PostgresJobStore
 from ontogr_mem.relational_store.sqlite import SqliteJobStore
 from ontogr_mem.store_urls import sqlite_url
+from tests.support.clock import FixedClock
 
 
 class TestStateUrl:
@@ -21,14 +22,18 @@ class TestStateUrl:
             _env_file=None,
         )
 
-        store = await open_state_store(settings)
+        store = await open_state_store(
+            settings, owner_id=uuid4().hex, clock=FixedClock()
+        )
 
         assert isinstance(store, PostgresJobStore)
 
     async def test_opens_sqlite_store(self, tmp_path) -> None:
         """A SQLite URL opens the SQLite adapter."""
         store = await open_state_store(
-            StateSettings(url=sqlite_url(tmp_path / "state.sqlite3"), _env_file=None)
+            StateSettings(url=sqlite_url(tmp_path / "state.sqlite3"), _env_file=None),
+            owner_id=uuid4().hex,
+            clock=FixedClock(),
         )
 
         assert isinstance(store, SqliteJobStore)

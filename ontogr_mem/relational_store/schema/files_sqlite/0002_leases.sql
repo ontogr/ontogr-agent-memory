@@ -1,0 +1,1 @@
+-- Lease columns are used only by Postgres.

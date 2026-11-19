@@ -9,6 +9,7 @@ from ontogr_mem.relational_store.jobs.erase_journal import (
 )
 from ontogr_mem.relational_store.jobs.errors import (
     IdempotencyConflictError,
+    LeaseLostError,
     UnknownJobOpError,
 )
 from ontogr_mem.relational_store.jobs.ports import JobStore, StateStore
@@ -34,6 +35,7 @@ __all__ = [
     "IdempotencyConflictError",
     "JobRunner",
     "JobStore",
+    "LeaseLostError",
     "MemoryJobStore",
     "MemoryOperationStore",
     "OperationKind",

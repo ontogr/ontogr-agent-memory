@@ -3,7 +3,7 @@
 import asyncio
 import hashlib
 import sqlite3
-from collections.abc import Sequence
+from math import inf, nan
 from typing import Any
 
 import pytest
@@ -22,6 +22,176 @@ from tests.support.clock import FixedClock
 
 class TestJobRunner:
     """Run handlers through the public runner API and inspect stored outcomes."""
+
+    @pytest.mark.parametrize("heartbeat_seconds", [0, -1, inf, -inf, nan])
+    def test_invalid_heartbeat_interval_is_rejected(
+        self, job_store: StateStore, heartbeat_seconds: float
+    ) -> None:
+        """Heartbeat intervals must permit a finite sleep between renewals."""
+
+        async def index(job: Job) -> dict[str, Any]:
+            return {}
+
+        with pytest.raises(ValueError, match="heartbeat_seconds"):
+            JobRunner(
+                job_store,
+                {"index": index},
+                FixedClock(),
+                heartbeat_seconds=heartbeat_seconds,
+            )
+
+    async def test_failed_orphan_release_does_not_skip_renewal_or_sweep(
+        self, job_store: StateStore, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A release outage does not stop leases or queued jobs progressing."""
+        renewed = asyncio.Event()
+        orphan_release_attempted = asyncio.Event()
+        swept = asyncio.Event()
+
+        class Lease:
+            async def renew_leases(self, now: object) -> None:
+                renewed.set()
+
+            async def release_leases(self) -> None:
+                pass
+
+        async def index(job: Job) -> dict[str, Any]:
+            return {}
+
+        original_save = job_store.save_job
+
+        async def fail_completion_save(job: Job) -> bool:
+            if job.status == JobState.DONE:
+                raise sqlite3.OperationalError("save unavailable")
+            return await original_save(job)
+
+        monkeypatch.setattr(job_store, "save_job", fail_completion_save)
+
+        class ReleaseFailingStore:
+            def __getattr__(self, name: str) -> Any:
+                return getattr(job_store, name)
+
+            async def release_job(self, job_id: str) -> None:
+                orphan_release_attempted.set()
+                raise sqlite3.OperationalError("release unavailable")
+
+            async def requeue_expired(self, now: object) -> None:
+                if orphan_release_attempted.is_set():
+                    swept.set()
+                await job_store.requeue_expired(now)
+
+        runner = JobRunner(
+            ReleaseFailingStore(),
+            {"index": index},
+            FixedClock(),
+            heartbeat_seconds=0.01,
+            lease_holders=[Lease()],
+        )
+        try:
+            await runner.start()
+            await runner.submit("t", "index", {})
+            await runner.drain()
+            monkeypatch.setattr(job_store, "save_job", original_save)
+            await asyncio.wait_for(orphan_release_attempted.wait(), 1)
+            await asyncio.wait_for(renewed.wait(), 1)
+            await asyncio.wait_for(swept.wait(), 1)
+        finally:
+            await runner.stop()
+
+    async def test_stop_releases_holder_leases_without_heartbeat(
+        self, job_store: StateStore
+    ) -> None:
+        """Release configured holder leases even when renewal is not enabled."""
+        released = asyncio.Event()
+
+        class Lease:
+            async def renew_leases(self, now: object) -> None:
+                pass
+
+            async def release_leases(self) -> None:
+                released.set()
+
+        async def index(job: Job) -> dict[str, Any]:
+            return {}
+
+        runner = JobRunner(
+            job_store,
+            {"index": index},
+            FixedClock(),
+            lease_holders=[Lease()],
+        )
+        await runner.start()
+        await runner.stop()
+
+        assert released.is_set()
+
+    async def test_start_keeps_heartbeat_sweeps_with_a_submitted_lane(
+        self, job_store: StateStore, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A lane started by submit keeps heartbeat sweeps enabled."""
+        running = asyncio.Event()
+        release = asyncio.Event()
+        swept = asyncio.Event()
+
+        async def blocking(job: Job) -> dict[str, Any]:
+            running.set()
+            await release.wait()
+            return {}
+
+        original_requeue = job_store.requeue_expired
+
+        async def count_requeue(now: object) -> None:
+            swept.set()
+            await original_requeue(now)
+
+        monkeypatch.setattr(job_store, "requeue_expired", count_requeue)
+
+        runner = JobRunner(
+            job_store,
+            {"blocking": blocking},
+            FixedClock(),
+            heartbeat_seconds=0.01,
+        )
+        try:
+            await runner.submit("t", "blocking", {})
+            await asyncio.wait_for(running.wait(), 1)
+            await runner.start()
+            await asyncio.wait_for(swept.wait(), 1)
+        finally:
+            release.set()
+            await asyncio.wait_for(runner.drain(), 2)
+            await runner.stop()
+
+    async def test_failed_tenant_recovery_does_not_skip_later_tenants(
+        self, job_store: StateStore
+    ) -> None:
+        """One tenant recovery error does not prevent later tenants recovering."""
+        recovered = asyncio.Event()
+
+        async def recover(tenant_id: str) -> None:
+            if tenant_id == "a":
+                raise RuntimeError("recovery unavailable")
+            if tenant_id == "b":
+                recovered.set()
+
+        async def index(job: Job) -> dict[str, Any]:
+            return {}
+
+        runner = JobRunner(
+            job_store,
+            {"index": index},
+            FixedClock(),
+            heartbeat_seconds=0.01,
+            recover_tenant=recover,
+        )
+        for tenant_id in ("a", "b"):
+            await runner.submit(tenant_id, "index", {})
+        await runner.drain()
+        try:
+            await runner.start()
+            await asyncio.wait_for(recovered.wait(), 1)
+        finally:
+            await runner.stop()
 
     async def test_stored_job_error_hides_url_credentials(
         self, job_store: StateStore
@@ -357,7 +527,7 @@ class TestJobRunner:
         assert failed.error is not None
         assert failed.error["type"] == "UnknownJobOpError"
 
-    @pytest.mark.parametrize("method", ["get_job", "save_job"])
+    @pytest.mark.parametrize("method", ["claim_next", "save_job"])
     async def test_store_failure_stops_only_its_lane_until_restart(
         self, job_store: StateStore, method: str
     ) -> None:
@@ -371,36 +541,31 @@ class TestJobRunner:
 
             broken = False
 
+            def __getattr__(self, name: str) -> Any:
+                """Delegate store operations not overridden for failure injection."""
+                return getattr(job_store, name)
+
             async def create_job(self, job: Job) -> tuple[Job, bool]:
                 """Create a job through the real adapter."""
                 return await job_store.create_job(job)
 
             async def get_job(self, job_id: str) -> Job | None:
-                """Read a job unless its tenant has a simulated outage."""
-                job = await job_store.get_job(job_id)
-                if self.broken and method == "get_job" and job and job.tenant_id == "a":
-                    raise sqlite3.OperationalError("storage outage")
-                return job
+                """Read a job through the real adapter."""
+                return await job_store.get_job(job_id)
 
-            async def save_job(self, job: Job) -> None:
+            async def claim_next(
+                self, tenant_id: str, now: Any, can_run: Any
+            ) -> Job | None:
+                """Claim work unless its tenant has a simulated outage."""
+                if self.broken and method == "claim_next" and tenant_id == "a":
+                    raise sqlite3.OperationalError("storage outage")
+                return await job_store.claim_next(tenant_id, now, can_run)
+
+            async def save_job(self, job: Job) -> bool:
                 """Save a job unless its tenant has a simulated outage."""
                 if self.broken and method == "save_job" and job.tenant_id == "a":
                     raise sqlite3.OperationalError("storage outage")
-                await job_store.save_job(job)
-
-            async def requeue_running(self) -> list[Job]:
-                """Recover jobs through the real adapter."""
-                return await job_store.requeue_running()
-
-            async def count_jobs(
-                self, tenant_ids: Sequence[str], statuses: Sequence[JobState]
-            ) -> int:
-                """Count jobs through the real adapter."""
-                return await job_store.count_jobs(tenant_ids, statuses)
-
-            async def tenant_ids(self) -> list[str]:
-                """List tenants through the real adapter."""
-                return await job_store.tenant_ids()
+                return await job_store.save_job(job)
 
         store = FailingStore()
 

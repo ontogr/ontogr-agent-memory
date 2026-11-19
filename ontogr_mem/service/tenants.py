@@ -57,7 +57,12 @@ class TenantRuntimeCache:
 
     async def tenant_ids(self) -> list[str]:
         """Return known and durable tenant ids for startup recovery."""
-        return sorted(self._known_tenants | set(await self._state.tenant_ids()))
+        erasures = await self._state.running()
+        return sorted(
+            self._known_tenants
+            | set(await self._state.tenant_ids())
+            | {record.tenant for record in erasures}
+        )
 
     async def get(self, tenant_id: str, *, create: bool) -> TenantRuntime:
         """Return a cached runtime or assemble it from the tenant factory."""

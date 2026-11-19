@@ -65,7 +65,7 @@ jobs:
             timeout: 15
           - name: relational-store
             paths: tests/integration/relational_store
-            services: relational
+            services: falkordb neo4j relational
             workers: "0"
             timeout: 15
           - name: access-observability

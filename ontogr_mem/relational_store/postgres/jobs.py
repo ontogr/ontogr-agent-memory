@@ -1,19 +1,24 @@
 """PostgreSQL job persistence over a shared connection pool."""
 
-from collections.abc import Sequence
+from collections.abc import AsyncGenerator, Callable, Sequence
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from ontogr_mem.data_models.clock import Clock
 from ontogr_mem.data_models.jobs import Job, JobProgress, JobState
 from ontogr_mem.data_models.tenant import validate_tenant_id
-from ontogr_mem.data_models.timestamps import to_micros
+from ontogr_mem.data_models.timestamps import from_micros, to_micros
 from ontogr_mem.errors import StoreError
 from ontogr_mem.relational_store.engine import pg_connection
 from ontogr_mem.relational_store.jobs.erase_journal import (
     ErasureRecord,
     ErasureStatus,
 )
-from ontogr_mem.relational_store.jobs.errors import IdempotencyConflictError
+from ontogr_mem.relational_store.jobs.errors import (
+    IdempotencyConflictError,
+    LeaseLostError,
+)
 from ontogr_mem.relational_store.jobs.rows import (
     JOB_COLUMNS,
     dumps,
@@ -39,22 +44,32 @@ _INSERT_JOB = (
 class PostgresJobStore:
     """Keep durable jobs in one Postgres database behind a shared pool.
 
-    The single-lane runner matches the SQLite adapter. The ``claim`` method,
-    which multi-worker deployments need, exists only on this adapter and is not
-    part of the shared port.
+    Jobs are leased to one process at a time and claimed in tenant order.
 
     Args:
         pool: Process-wide connection pool; the caller runs
             ``ensure_postgres_schema`` before constructing the store.
+        owner_id: Identity recorded on rows leased by this process.
+        lease_seconds: Duration of each lease.
+        clock: Service clock used for lease checks.
     """
 
-    def __init__(self, pool: "asyncpg.Pool") -> None:
+    def __init__(
+        self, pool: "asyncpg.Pool", clock: Clock, *, owner_id: str, lease_seconds: float
+    ) -> None:
         """Bind the store to its pool without taking a connection."""
         self._pool = pool
+        self._clock = clock
+        self._owner_id = owner_id
+        self._lease_micros = int(lease_seconds * 1_000_000)
 
     async def create_job(self, job: Job) -> tuple[Job, bool]:
         """Atomically insert a job or replay a matching Tenant request key."""
         async with pg_connection(self._pool) as connection, connection.transaction():
+            await connection.fetchval(
+                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                job.tenant_id,
+            )
             row = await connection.fetchrow(_INSERT_JOB, *job_values(job))
             if row is not None:
                 return job_from_row(row), False
@@ -80,14 +95,28 @@ class PostgresJobStore:
             row = await connection.fetchrow(f"{_SELECT_JOB} WHERE job_id = $1", job_id)
             return None if row is None else job_from_row(row)
 
-    async def save_job(self, job: Job) -> None:
+    async def save_job(self, job: Job) -> bool:
         """Replace an existing record without storing its replay flag."""
-        async with pg_connection(self._pool) as connection:
+        async with pg_connection(self._pool) as connection, connection.transaction():
+            existing_job_id = await connection.fetchval(
+                "SELECT job_id FROM jobs WHERE job_id = $1 FOR UPDATE", job.job_id
+            )
+            if existing_job_id is None:
+                raise KeyError(job.job_id)
+            owner_filter = (
+                "(owner_id = $14 AND status = 'running' AND lease_expires_at > $15)"
+            )
+            if job.status is JobState.QUEUED:
+                owner_filter += " OR (owner_id IS NULL AND status = 'queued')"
             status = await connection.execute(
                 "UPDATE jobs SET tenant_id = $1, op = $2, payload = $3, "
                 "request_hash = $4, idempotency_key = $5, status = $6, "
                 "attempts = $7, result = $8, error = $9, created_at = $10, "
-                "updated_at = $11, trace_id = $12 WHERE job_id = $13",
+                "updated_at = $11, trace_id = $12, "
+                "owner_id = CASE WHEN $6 = 'queued' THEN NULL ELSE owner_id END, "
+                "lease_expires_at = CASE WHEN $6 = 'queued' THEN NULL "
+                "ELSE lease_expires_at END WHERE job_id = $13 "
+                f"AND ({owner_filter})",
                 job.tenant_id,
                 job.op,
                 dumps(job.payload),
@@ -101,42 +130,186 @@ class PostgresJobStore:
                 to_micros(job.updated_at),
                 job.trace_id,
                 job.job_id,
+                self._owner_id,
+                to_micros(self._clock.now()),
             )
-            if status == "UPDATE 0":
-                raise KeyError(job.job_id)
+            return status != "UPDATE 0"
 
     async def set_job_progress(self, job_id: str, progress: JobProgress) -> None:
         """Persist monotonic progress inside one serialized transaction."""
         async with pg_connection(self._pool) as connection, connection.transaction():
             row = await connection.fetchrow(
-                "SELECT progress_done FROM jobs WHERE job_id = $1 FOR UPDATE",
+                "SELECT progress_done, owner_id, status, lease_expires_at "
+                "FROM jobs WHERE job_id = $1 FOR UPDATE",
                 job_id,
             )
             if row is None:
                 raise KeyError(job_id)
+            if (
+                row["owner_id"] != self._owner_id
+                or row["status"] != "running"
+                or row["lease_expires_at"] is None
+                or row["lease_expires_at"] <= to_micros(self._clock.now())
+            ):
+                message = f"job {job_id} lease is no longer held"
+                raise LeaseLostError(message)
             previous_done = row["progress_done"]
             if previous_done is not None and progress.done < previous_done:
                 raise ValueError("job progress cannot move backwards")
             await connection.execute(
                 "UPDATE jobs SET progress_stage = $1, progress_done = $2, "
-                "progress_total = $3 WHERE job_id = $4",
+                "progress_total = $3 WHERE job_id = $4 AND owner_id = $5 "
+                "AND status = 'running' AND lease_expires_at > $6",
                 progress.stage,
                 progress.done,
                 progress.total,
                 job_id,
+                self._owner_id,
+                to_micros(self._clock.now()),
             )
 
-    async def requeue_running(self) -> list[Job]:
-        """Requeue interrupted work and return queued jobs by creation time."""
-        async with pg_connection(self._pool) as connection, connection.transaction():
-            await connection.execute(
-                "UPDATE jobs SET status = 'queued', claimed_by = NULL, "
-                "claimed_at = NULL WHERE status = 'running'"
-            )
+    async def queued_jobs(self) -> list[Job]:
+        """Return queued jobs oldest first."""
+        async with pg_connection(self._pool) as connection:
             rows = await connection.fetch(
                 f"{_SELECT_JOB} WHERE status = 'queued' ORDER BY created_at, seq"
             )
             return [job_from_row(row) for row in rows]
+
+    async def requeue_expired(self, now: datetime) -> None:
+        """Requeue running jobs whose lease is missing or expired."""
+        async with pg_connection(self._pool) as connection:
+            await connection.execute(
+                "UPDATE jobs SET status = 'queued', owner_id = NULL, "
+                "lease_expires_at = NULL WHERE status = 'running' AND "
+                "(lease_expires_at IS NULL OR lease_expires_at <= $1)",
+                to_micros(now),
+            )
+
+    async def claim_next(
+        self, tenant_id: str, now: datetime, can_run: Callable[[Job], bool]
+    ) -> Job | None:
+        """Claim the oldest queued job when this tenant has no live lease."""
+        async with pg_connection(self._pool) as connection, connection.transaction():
+            await connection.fetchval(
+                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", tenant_id
+            )
+            has_live_lease = await connection.fetchval(
+                "SELECT EXISTS (SELECT 1 FROM jobs WHERE tenant_id = $1 "
+                "AND status = 'running' AND lease_expires_at > $2) OR "
+                "EXISTS (SELECT 1 FROM erasures WHERE tenant = $1 "
+                "AND status = 'running' AND lease_expires_at > $2)",
+                tenant_id,
+                to_micros(now),
+            )
+            if has_live_lease:
+                return None
+            rows = await connection.fetch(
+                f"SELECT seq, {JOB_COLUMNS} FROM jobs WHERE tenant_id = $1 "
+                "AND status = 'queued' ORDER BY created_at, seq FOR UPDATE",
+                tenant_id,
+            )
+            for row in rows:
+                job = job_from_row(row)
+                if not can_run(job):
+                    continue
+                expiry = to_micros(now) + self._lease_micros
+                updated = await connection.fetchrow(
+                    "UPDATE jobs SET status = 'running', owner_id = $1, "
+                    "lease_expires_at = $2, heartbeat_at = $3 WHERE seq = $4 "
+                    f"RETURNING seq, {JOB_COLUMNS}",
+                    self._owner_id,
+                    expiry,
+                    to_micros(now),
+                    row["seq"],
+                )
+                return job_from_row(updated)
+            return None
+
+    async def tenant_has_live_lease(self, tenant_id: str, now: datetime) -> bool:
+        """Return whether a job or erase row has a live lease for the tenant."""
+        async with pg_connection(self._pool) as connection:
+            return bool(
+                await connection.fetchval(
+                    "SELECT EXISTS (SELECT 1 FROM jobs WHERE tenant_id = $1 "
+                    "AND status = 'running' AND lease_expires_at > $2) OR "
+                    "EXISTS (SELECT 1 FROM erasures WHERE tenant = $1 "
+                    "AND status = 'running' AND lease_expires_at > $2)",
+                    tenant_id,
+                    to_micros(now),
+                )
+            )
+
+    async def live_lease_expires_at(
+        self, tenant_id: str, now: datetime
+    ) -> datetime | None:
+        """Return the latest live running job lease for a tenant."""
+        async with pg_connection(self._pool) as connection:
+            value = await connection.fetchval(
+                "SELECT max(lease_expires_at) FROM jobs WHERE tenant_id = $1 "
+                "AND status = 'running' AND lease_expires_at > $2",
+                tenant_id,
+                to_micros(now),
+            )
+            return None if value is None else from_micros(value)
+
+    @asynccontextmanager
+    async def tenant_lock(self, tenant_id: str) -> AsyncGenerator[None, None]:
+        """Hold the session advisory lock for one tenant."""
+        async with pg_connection(self._pool) as connection:
+            await connection.fetchval(
+                "SELECT pg_advisory_lock(hashtextextended($1, 0))", tenant_id
+            )
+            try:
+                yield
+            finally:
+                await connection.fetchval(
+                    "SELECT pg_advisory_unlock(hashtextextended($1, 0))", tenant_id
+                )
+
+    async def renew_leases(self, now: datetime) -> None:
+        """Renew this owner's live job and erasure leases."""
+        async with pg_connection(self._pool) as connection:
+            await connection.execute(
+                "UPDATE jobs SET lease_expires_at = $1, heartbeat_at = $2 "
+                "WHERE status = 'running' AND owner_id = $3 "
+                "AND lease_expires_at > $2",
+                to_micros(now) + self._lease_micros,
+                to_micros(now),
+                self._owner_id,
+            )
+            await connection.execute(
+                "UPDATE erasures SET lease_expires_at = $1, heartbeat_at = $2 "
+                "WHERE status = 'running' AND owner_id = $3 "
+                "AND lease_expires_at > $2",
+                to_micros(now) + self._lease_micros,
+                to_micros(now),
+                self._owner_id,
+            )
+
+    async def release_leases(self) -> None:
+        """Release every job and erasure lease held by this owner."""
+        async with pg_connection(self._pool) as connection:
+            await connection.execute(
+                "UPDATE jobs SET owner_id = NULL, lease_expires_at = NULL "
+                "WHERE owner_id = $1",
+                self._owner_id,
+            )
+            await connection.execute(
+                "UPDATE erasures SET owner_id = NULL, lease_expires_at = NULL "
+                "WHERE owner_id = $1",
+                self._owner_id,
+            )
+
+    async def release_job(self, job_id: str) -> None:
+        """Release one job lease held by this owner."""
+        async with pg_connection(self._pool) as connection:
+            await connection.execute(
+                "UPDATE jobs SET owner_id = NULL, lease_expires_at = NULL "
+                "WHERE owner_id = $1 AND job_id = $2",
+                self._owner_id,
+                job_id,
+            )
 
     async def count_jobs(
         self, tenant_ids: Sequence[str], statuses: Sequence[JobState]
@@ -176,54 +349,19 @@ class PostgresJobStore:
             )
             return int(status.split()[-1])
 
-    async def claim(self, worker_id: str, *, limit: int, now: datetime) -> list[Job]:
-        """Claim queued jobs whose run-after time has passed.
-
-        This query exists only on Postgres: workers claim disjoint batches
-        with ``FOR UPDATE SKIP LOCKED`` while SQLite keeps its single-lane
-        runner (ADR 0084).
-
-        Args:
-            worker_id: Stable identity recorded on each claimed row.
-            limit: Maximum number of jobs to claim; must be positive.
-            now: Current time a job's run-after deadline is compared to.
-
-        Returns:
-            The claimed jobs, oldest first, each marked running.
-
-        Raises:
-            ValueError: If ``worker_id`` is empty or ``limit`` is not positive.
-        """
-        if not worker_id:
-            raise ValueError("worker id must not be empty")
-        if limit < 1:
-            raise ValueError("claim limit must be at least 1")
-        async with pg_connection(self._pool) as connection, connection.transaction():
-            rows = await connection.fetch(
-                "WITH ready AS ("
-                "SELECT seq FROM jobs WHERE status = 'queued' "
-                "AND run_after <= $2 ORDER BY created_at, seq LIMIT $3 "
-                "FOR UPDATE SKIP LOCKED) "
-                "UPDATE jobs SET status = 'running', claimed_by = $1, "
-                "claimed_at = $2 FROM ready WHERE jobs.seq = ready.seq "
-                f"RETURNING jobs.seq, {JOB_COLUMNS}",
-                worker_id,
-                to_micros(now),
-                limit,
-            )
-            return [job_from_row(row) for row in rows]
-
     async def create(self, record: ErasureRecord) -> str:
         """Store a running erase row and return its id."""
         if record.status is not ErasureStatus.RUNNING:
             raise ValueError("new erase journal rows must be running")
+        now = self._clock.now()
         async with pg_connection(self._pool) as connection:
             await connection.execute(
                 "INSERT INTO erasures (erasure_id, tenant, mode, principal_id, "
                 "selector_kind, target, episode_ids, fact_ids, observation_ids, "
                 "entity_ids, created_at, status, last_step, finished_at, residue, "
-                "counts) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, "
-                "$12, $13, NULL, $14, $15)",
+                "counts, owner_id, lease_expires_at, heartbeat_at) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, "
+                "$12, $13, NULL, $14, $15, $16, $17, $18)",
                 record.erasure_id,
                 record.tenant,
                 record.mode,
@@ -239,6 +377,9 @@ class PostgresJobStore:
                 record.last_step,
                 dumps(record.residue),
                 dumps(record.counts),
+                self._owner_id,
+                to_micros(now) + self._lease_micros,
+                to_micros(now),
             )
             return record.erasure_id
 
@@ -247,7 +388,9 @@ class PostgresJobStore:
         if not step:
             raise ValueError("erase step must not be empty")
         async with pg_connection(self._pool) as connection:
-            await self._update_running(connection, erasure_id, "step", step)
+            await self._update_running(
+                connection, erasure_id, "step", step, to_micros(self._clock.now())
+            )
 
     async def finish(
         self,
@@ -271,6 +414,7 @@ class PostgresJobStore:
                 dumps(residue),
                 dumps(counts),
                 to_micros(at),
+                to_micros(self._clock.now()),
             )
 
     async def running(self, tenant: str | None = None) -> list[ErasureRecord]:
@@ -288,6 +432,85 @@ class PostgresJobStore:
                 rows = await connection.fetch(
                     query + " AND tenant = $1 ORDER BY created_at, seq", tenant
                 )
+            return [erasure_from_row(row) for row in rows]
+
+    async def claim_recoverable(
+        self, tenant: str | None, now: datetime
+    ) -> list[ErasureRecord]:
+        """Claim expired running erase rows, optionally filtered by Tenant."""
+        lease_expiry = to_micros(now) + self._lease_micros
+        async with pg_connection(self._pool) as connection, connection.transaction():
+            if tenant is not None:
+                await connection.fetchval(
+                    "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", tenant
+                )
+                if await connection.fetchval(
+                    "SELECT EXISTS (SELECT 1 FROM jobs WHERE tenant_id = $1 "
+                    "AND status = 'running' AND lease_expires_at > $2)",
+                    tenant,
+                    to_micros(now),
+                ):
+                    return []
+            else:
+                tenants = await connection.fetch(
+                    "SELECT DISTINCT tenant FROM erasures WHERE status = 'running' "
+                    "AND (lease_expires_at IS NULL OR lease_expires_at <= $1) "
+                    "ORDER BY tenant",
+                    to_micros(now),
+                )
+                records: list[ErasureRecord] = []
+                for row in tenants:
+                    tenant_id = row["tenant"]
+                    await connection.fetchval(
+                        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+                        tenant_id,
+                    )
+                    if await connection.fetchval(
+                        "SELECT EXISTS (SELECT 1 FROM jobs WHERE tenant_id = $1 "
+                        "AND status = 'running' AND lease_expires_at > $2)",
+                        tenant_id,
+                        to_micros(now),
+                    ):
+                        continue
+                    claimed = await connection.fetch(
+                        "WITH candidates AS (SELECT seq FROM erasures "
+                        "WHERE tenant = $4 AND status = 'running' AND "
+                        "(lease_expires_at IS NULL OR lease_expires_at <= $1) AND "
+                        "(owner_id IS NULL OR lease_expires_at IS NULL OR "
+                        "lease_expires_at <= $1) "
+                        "ORDER BY created_at, seq FOR UPDATE SKIP LOCKED) "
+                        "UPDATE erasures SET owner_id = $2, lease_expires_at = $3, "
+                        "heartbeat_at = $1 WHERE seq IN "
+                        "(SELECT seq FROM candidates) RETURNING seq, erasure_id, "
+                        "tenant, mode, principal_id, selector_kind, target, "
+                        "episode_ids, fact_ids, observation_ids, entity_ids, "
+                        "created_at, status, last_step, finished_at, residue, counts",
+                        to_micros(now),
+                        self._owner_id,
+                        lease_expiry,
+                        tenant_id,
+                    )
+                    records.extend(erasure_from_row(item) for item in claimed)
+                return records
+            rows = await connection.fetch(
+                "WITH candidates AS (SELECT seq FROM erasures "
+                "WHERE status = 'running' AND "
+                "(lease_expires_at IS NULL OR lease_expires_at <= $1) AND "
+                "(owner_id IS NULL OR lease_expires_at IS NULL OR "
+                "lease_expires_at <= $1) AND "
+                "($4::text IS NULL OR tenant = $4) "
+                "ORDER BY created_at, seq FOR UPDATE SKIP LOCKED) "
+                "UPDATE erasures SET owner_id = $2, lease_expires_at = $3, "
+                "heartbeat_at = $1 WHERE seq IN (SELECT seq FROM candidates) "
+                "RETURNING seq, erasure_id, tenant, mode, principal_id, "
+                "selector_kind, target, episode_ids, fact_ids, observation_ids, "
+                "entity_ids, created_at, status, last_step, finished_at, "
+                "residue, counts",
+                to_micros(now),
+                self._owner_id,
+                lease_expiry,
+                tenant,
+            )
             return [erasure_from_row(row) for row in rows]
 
     async def get(self, erasure_id: str) -> ErasureRecord | None:
@@ -316,25 +539,36 @@ class PostgresJobStore:
         if kind == "step":
             status = await connection.execute(
                 "UPDATE erasures SET last_step = $1 "
-                "WHERE erasure_id = $2 AND status = 'running'",
+                "WHERE erasure_id = $2 AND status = 'running' "
+                "AND owner_id = $3 AND lease_expires_at > "
+                "$4",
                 values[0],
                 erasure_id,
+                self._owner_id,
+                values[1],
             )
         else:
             status = await connection.execute(
                 "UPDATE erasures SET status = $1, residue = $2, counts = $3, "
-                "finished_at = $4 WHERE erasure_id = $5 AND status = 'running'",
+                "finished_at = $4 WHERE erasure_id = $5 AND status = 'running' "
+                "AND owner_id = $6 AND lease_expires_at > "
+                "$7",
                 values[0],
                 values[1],
                 values[2],
                 values[3],
                 erasure_id,
+                self._owner_id,
+                values[4],
             )
         if status != "UPDATE 0":
             return
-        row = await connection.fetchval(
+        current_status = await connection.fetchval(
             "SELECT status FROM erasures WHERE erasure_id = $1", erasure_id
         )
-        if row is None:
+        if current_status is None:
             raise KeyError(erasure_id)
-        raise ValueError("erase journal row is already finished")
+        if current_status != ErasureStatus.RUNNING.value:
+            raise ValueError("erase journal row is already finished")
+        message = f"erasure {erasure_id} lease is no longer held"
+        raise LeaseLostError(message)

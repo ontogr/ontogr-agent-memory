@@ -209,7 +209,10 @@ class TestEraseWorkflow:
             world.runtime.clock,
         )
 
-        results = await resumed.recover("erase-test")
+        records = await world.journal.claim_recoverable(
+            "erase-test", world.runtime.clock.now()
+        )
+        results = await resumed.recover(records)
 
         assert len(results) == 1
         assert results[0].status == ErasureStatus.COMPLETED.value
@@ -226,7 +229,10 @@ class TestEraseWorkflow:
         assert person.canonical_name == "Bob"
         assert person.summary == ""
         assert await world.journal.running("erase-test") == []
-        assert await resumed.recover("erase-test") == []
+        records = await world.journal.claim_recoverable(
+            "erase-test", world.runtime.clock.now()
+        )
+        assert await resumed.recover(records) == []
 
 
 async def _runtime(world: EraseWorld) -> TenantRuntime:

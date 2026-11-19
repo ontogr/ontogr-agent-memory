@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from ontogr_mem.data_models.jobs import JobState
 from ontogr_mem.relational_store import (
+    ErasureRecord,
     OperationKind,
 )
 from ontogr_mem.relational_store.audit import (
@@ -240,7 +241,14 @@ class ForgetService:
             )
             workflow = self._deps.workflow
             try:
-                result = await workflow.run(principal.id, tenant, plan, mode)
+                async with self._deps.state.tenant_lock(tenant):
+                    now = self._deps.clock.now()
+                    if await self._deps.state.tenant_has_live_lease(tenant, now):
+                        raise ConflictError(
+                            "wait for tenant jobs to finish before forgetting"
+                        )
+                    record = await workflow.begin(principal.id, tenant, plan, mode)
+                result = await workflow.execute(record, plan)
             except Exception as exc:
                 await self._audit_forget(
                     principal.id,
@@ -379,7 +387,7 @@ class ForgetService:
         tenant = await self._deps.tenants.require(
             principal, tenant, Grant.ADMIN, "clear_tenant", target="tenant"
         )
-        async with self._write_lock:
+        async with self._write_lock, self._deps.state.tenant_lock(tenant):
             pending = await self._deps.state.count_jobs(
                 [tenant], [JobState.QUEUED, JobState.RUNNING]
             )
@@ -413,7 +421,10 @@ class ForgetService:
                             tenant=tenant,
                             target="tenant",
                             trace_id=context.trace_id,
-                            detail={"mode": "clear", "error_class": type(exc).__name__},
+                            detail={
+                                "mode": "clear",
+                                "error_class": type(exc).__name__,
+                            },
                         )
                     )
                     raise
@@ -448,15 +459,30 @@ class ForgetService:
         tenant_ids = tuple(await self._deps.tenants.tenant_ids())
         episodes_recovered = 0
         erases: list[ForgetResult] = []
-        workflow = self._deps.workflow
         for tenant_id in tenant_ids:
+            result = await self.recover_tenant(tenant_id)
+            if result is None:
+                continue
+            recovered, _, results = result
+            episodes_recovered += recovered
+            erases.extend(results)
+        return RecoveryReport(tenant_ids, episodes_recovered, tuple(erases))
+
+    async def recover_tenant(
+        self, tenant_id: str
+    ) -> tuple[int, list[ErasureRecord], list[ForgetResult]] | None:
+        """Recover temporal episodes and erase rows when no worker owns a lease."""
+        now = self._deps.clock.now()
+        records = await self._deps.state.claim_recoverable(tenant_id, now)
+        async with self._deps.state.tenant_lock(tenant_id):
+            now = self._deps.clock.now()
+            if await self._deps.state.live_lease_expires_at(tenant_id, now):
+                return None
+
             runtime = await self._deps.tenants.get(tenant_id, create=True)
             ontology = await runtime.ontology.catalog()
             report = await runtime.engine(ontology, runtime.resolver.store).recover()
-            episodes_recovered += report.counts[Outcome.EPISODE_RECOVERED.value]
-
-            records = await self._deps.state.running(tenant_id)
-            results = await workflow.recover(tenant_id)
+            results = await self._deps.workflow.recover(records)
             for record, result in zip(records, results, strict=True):
                 async with self._recorder.track(
                     OperationKind.ERASE, "system", record.tenant
@@ -485,8 +511,7 @@ class ForgetService:
                         },
                     )
                 )
-                erases.append(result)
-        return RecoveryReport(tenant_ids, episodes_recovered, tuple(erases))
+        return report.counts[Outcome.EPISODE_RECOVERED.value], records, results
 
     async def _audit_forget(
         self,

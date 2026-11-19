@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -108,6 +109,7 @@ async def build_service(
     closure_settings: ClosureSettings | None = None,
     limiter: CallerRateLimiter,
     max_attempts: int = 3,
+    heartbeat_seconds: float | None = None,
     tracer: Tracer | None = None,
     ontology: OntologyDeclaration | None = None,
     ontology_tenant: str | None = None,
@@ -139,6 +141,7 @@ async def build_service(
         ontology: Declaration applied when a tenant opens.
         ontology_tenant: Limit the declaration to this tenant when supplied.
         max_attempts: Maximum attempts for each queued job.
+        heartbeat_seconds: Optional interval for renewing shared-state leases.
         tracer: Optional tracer for service and embedding spans. PydanticAI model
             spans use caller-owned instrumentation.
         audit_log: Optional audit chain for service operations.
@@ -194,6 +197,7 @@ async def build_service(
             backend=parse_graph_url(settings.graph_url.get_secret_value()).backend,
             limiter=limiter,
             max_attempts=max_attempts,
+            heartbeat_seconds=heartbeat_seconds,
             tracer=selected_tracer,
             audit_log=audit_log or MemoryAuditLog(clock),
             confirm_tokens=confirm_tokens or ConfirmTokens(None, clock),
@@ -259,13 +263,16 @@ async def open_service(
     service_settings = settings or ServiceSettings()
     selected_state = state_settings or StateSettings()
     selected_clock = clock or SystemClock()
+    owner_id = uuid4().hex
 
     async with AsyncExitStack() as resources:
         selected_models = models if models is not None else build_models()
         if models is None:
             resources.push_async_callback(selected_models.aclose)
 
-        state = await open_state_store(selected_state)
+        state = await open_state_store(
+            selected_state, owner_id=owner_id, clock=selected_clock
+        )
         resources.push_async_callback(state.close)
 
         selected_stores_factory = stores_factory
@@ -283,7 +290,10 @@ async def open_service(
             )
         else:
             operations, audit_log, audit_sink = await _postgres_audit(
-                state_target, selected_clock
+                state_target,
+                selected_clock,
+                owner_id=owner_id,
+                lease_seconds=selected_state.lease_seconds,
             )
 
         authorizer = Authorizer(audit_sink, selected_clock, tracer=tracer)
@@ -303,6 +313,11 @@ async def open_service(
             closure_settings=closure_settings or ClosureSettings(),
             limiter=limiter or CallerRateLimiter(),
             max_attempts=max_attempts,
+            heartbeat_seconds=(
+                selected_state.heartbeat_seconds
+                if isinstance(state_target, PostgresTarget)
+                else None
+            ),
             tracer=tracer,
             ontology=ontology,
             ontology_tenant=ontology_tenant,
@@ -383,11 +398,16 @@ async def _sqlite_audit(
 async def _postgres_audit(
     target: PostgresTarget,
     clock: Clock,
+    *,
+    owner_id: str,
+    lease_seconds: float,
 ) -> tuple[OperationStore, AuditLog, AuditSink]:
     """Share one process-wide pool for operation and chained audit rows."""
     pool = await pg_pool(target.dsn.get_secret_value())
     await ensure_postgres_schema(pool)
-    operations = PostgresOperationStore(pool, clock)
+    operations = PostgresOperationStore(
+        pool, clock, owner_id=owner_id, lease_seconds=lease_seconds
+    )
     await operations.mark_interrupted_runs()
     audit_log = PostgresAuditLog(pool, clock)
     return operations, audit_log, ChainedAuditSink(audit_log)
