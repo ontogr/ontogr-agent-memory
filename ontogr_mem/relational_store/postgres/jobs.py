@@ -1,7 +1,8 @@
 """PostgreSQL job persistence over a shared connection pool."""
 
-from collections.abc import Sequence
-from datetime import datetime
+from collections.abc import AsyncIterator, Callable, Sequence
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from ontogr_mem.data_models.jobs import Job, JobProgress, JobState
@@ -39,18 +40,22 @@ _INSERT_JOB = (
 class PostgresJobStore:
     """Keep durable jobs in one Postgres database behind a shared pool.
 
-    The single-lane runner matches the SQLite adapter. The ``claim`` method,
-    which multi-worker deployments need, exists only on this adapter and is not
-    part of the shared port.
+    Jobs are leased to one process at a time and claimed in tenant order.
 
     Args:
         pool: Process-wide connection pool; the caller runs
             ``ensure_postgres_schema`` before constructing the store.
+        owner_id: Identity recorded on rows leased by this process.
+        lease_seconds: Duration of each lease.
     """
 
-    def __init__(self, pool: "asyncpg.Pool") -> None:
+    def __init__(
+        self, pool: "asyncpg.Pool", *, owner_id: str, lease_seconds: float
+    ) -> None:
         """Bind the store to its pool without taking a connection."""
         self._pool = pool
+        self._owner_id = owner_id
+        self._lease_micros = int(lease_seconds * 1_000_000)
 
     async def create_job(self, job: Job) -> tuple[Job, bool]:
         """Atomically insert a job or replay a matching Tenant request key."""
@@ -126,17 +131,131 @@ class PostgresJobStore:
                 job_id,
             )
 
-    async def requeue_running(self) -> list[Job]:
-        """Requeue interrupted work and return queued jobs by creation time."""
-        async with pg_connection(self._pool) as connection, connection.transaction():
-            await connection.execute(
-                "UPDATE jobs SET status = 'queued', claimed_by = NULL, "
-                "claimed_at = NULL WHERE status = 'running'"
-            )
+    async def queued_jobs(self) -> list[Job]:
+        """Return queued jobs oldest first."""
+        async with pg_connection(self._pool) as connection:
             rows = await connection.fetch(
                 f"{_SELECT_JOB} WHERE status = 'queued' ORDER BY created_at, seq"
             )
             return [job_from_row(row) for row in rows]
+
+    async def requeue_expired(self, now: datetime) -> None:
+        """Requeue running jobs whose lease is missing or expired."""
+        async with pg_connection(self._pool) as connection:
+            await connection.execute(
+                "UPDATE jobs SET status = 'queued', owner_id = NULL, "
+                "lease_expires_at = NULL WHERE status = 'running' AND "
+                "(lease_expires_at IS NULL OR lease_expires_at <= $1)",
+                to_micros(now),
+            )
+
+    async def claim_next(
+        self, tenant_id: str, now: datetime, can_run: Callable[[str], bool]
+    ) -> Job | None:
+        """Claim the oldest queued job when this tenant has no live lease."""
+        async with pg_connection(self._pool) as connection, connection.transaction():
+            await connection.fetchval(
+                "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", tenant_id
+            )
+            row = await connection.fetchrow(
+                "SELECT seq FROM jobs WHERE tenant_id = $1 AND status = 'queued' "
+                "ORDER BY created_at, seq LIMIT 1 FOR UPDATE",
+                tenant_id,
+            )
+            if row is None:
+                return None
+            job_row = await connection.fetchrow(
+                f"{_SELECT_JOB} WHERE seq = $1", row["seq"]
+            )
+            job = job_from_row(job_row)
+            if not can_run(job.op):
+                return None
+            expiry = to_micros(now) + self._lease_micros
+            updated = await connection.fetchrow(
+                "UPDATE jobs SET status = 'running', owner_id = $1, "
+                "lease_expires_at = $2, heartbeat_at = $3 WHERE seq = $4 "
+                f"RETURNING seq, {JOB_COLUMNS}",
+                self._owner_id,
+                expiry,
+                to_micros(now),
+                row["seq"],
+            )
+            return job_from_row(updated)
+
+    async def tenant_has_live_lease(self, tenant_id: str, now: datetime) -> bool:
+        """Return whether a job or erase row has a live lease for the tenant."""
+        async with pg_connection(self._pool) as connection:
+            return bool(
+                await connection.fetchval(
+                    "SELECT EXISTS (SELECT 1 FROM jobs WHERE tenant_id = $1 "
+                    "AND status = 'running' AND lease_expires_at > $2) OR "
+                    "EXISTS (SELECT 1 FROM erasures WHERE tenant = $1 "
+                    "AND status = 'running' AND lease_expires_at > $2)",
+                    tenant_id,
+                    to_micros(now),
+                )
+            )
+
+    async def live_lease_expires_at(
+        self, tenant_id: str, now: datetime
+    ) -> datetime | None:
+        """Return the latest live running job lease for a tenant."""
+        async with pg_connection(self._pool) as connection:
+            value = await connection.fetchval(
+                "SELECT max(lease_expires_at) FROM jobs WHERE tenant_id = $1 "
+                "AND status = 'running' AND lease_expires_at > $2",
+                tenant_id,
+                to_micros(now),
+            )
+            return (
+                None
+                if value is None
+                else datetime.fromtimestamp(value / 1_000_000, UTC)
+            )
+
+    @asynccontextmanager
+    async def tenant_lock(self, tenant_id: str) -> AsyncIterator[None]:
+        """Hold the session advisory lock for one tenant."""
+        async with pg_connection(self._pool) as connection:
+            await connection.fetchval(
+                "SELECT pg_advisory_lock(hashtextextended($1, 0))", tenant_id
+            )
+            try:
+                yield
+            finally:
+                await connection.fetchval(
+                    "SELECT pg_advisory_unlock(hashtextextended($1, 0))", tenant_id
+                )
+
+    async def renew_leases(self, now: datetime) -> None:
+        """Renew this owner's running job leases."""
+        async with pg_connection(self._pool) as connection:
+            await connection.execute(
+                "UPDATE jobs SET lease_expires_at = $1, heartbeat_at = $2 "
+                "WHERE status = 'running' AND owner_id = $3",
+                to_micros(now) + self._lease_micros,
+                to_micros(now),
+                self._owner_id,
+            )
+
+    async def release_leases(self) -> None:
+        """Release every job lease held by this owner."""
+        async with pg_connection(self._pool) as connection:
+            await connection.execute(
+                "UPDATE jobs SET owner_id = NULL, lease_expires_at = NULL "
+                "WHERE owner_id = $1",
+                self._owner_id,
+            )
+
+    async def release_job(self, job_id: str) -> None:
+        """Release one job lease held by this owner."""
+        async with pg_connection(self._pool) as connection:
+            await connection.execute(
+                "UPDATE jobs SET owner_id = NULL, lease_expires_at = NULL "
+                "WHERE owner_id = $1 AND job_id = $2",
+                self._owner_id,
+                job_id,
+            )
 
     async def count_jobs(
         self, tenant_ids: Sequence[str], statuses: Sequence[JobState]

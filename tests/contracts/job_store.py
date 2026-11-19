@@ -148,7 +148,7 @@ class JobStoreContract:
 
         assert await store.get_job("j1") == job
 
-    async def test_requeue_running_returns_running_jobs_to_queued_oldest_first(
+    async def test_requeue_expired_returns_running_jobs_to_queued_oldest_first(
         self, store
     ):
         """Recovery includes queued jobs and preserves creation order for ties."""
@@ -165,7 +165,8 @@ class JobStoreContract:
         for job in jobs[:2]:
             await store.save_job(replace(job, status=JobState.RUNNING, attempts=1))
 
-        recovered = await store.requeue_running()
+        await store.requeue_expired(T0)
+        recovered = await store.queued_jobs()
 
         expected = [replace(jobs[1], attempts=1), jobs[2], replace(jobs[0], attempts=1)]
         assert recovered == expected
@@ -180,7 +181,8 @@ class JobStoreContract:
         for job in jobs:
             await store.create_job(job)
 
-        assert await store.requeue_running() == []
+        await store.requeue_expired(T0)
+        assert await store.queued_jobs() == []
         assert [await store.get_job(job.job_id) for job in jobs] == jobs
 
     async def test_counts_are_scoped_to_tenants_and_statuses(self, store):

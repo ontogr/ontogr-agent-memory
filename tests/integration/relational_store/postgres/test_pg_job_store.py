@@ -1,7 +1,6 @@
 """The Postgres job store passes the shared job and erase contracts."""
 
 from collections.abc import Awaitable, Callable
-from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
@@ -16,7 +15,7 @@ from ontogr_mem.relational_store.schema.runner import (
     revision_checksum,
 )
 from tests.contracts.erase_journal import EraseJournalContract
-from tests.contracts.job_store import JobStoreContract, make_job
+from tests.contracts.job_store import JobStoreContract
 
 
 T0 = datetime(2026, 10, 23, 12, 0, 0, tzinfo=UTC)
@@ -30,26 +29,9 @@ class TestPostgresJobStore(JobStoreContract, EraseJournalContract):
         """Return a factory for one open store on the shared database."""
 
         async def factory() -> StateStore:
-            return PostgresJobStore(pool)
+            return PostgresJobStore(pool, owner_id="test-owner", lease_seconds=60)
 
         return factory
-
-    async def test_claim_takes_disjoint_queued_batches(self, pool, clean_tables):
-        """Two workers claim disjoint batches oldest first."""
-        store = PostgresJobStore(pool)
-        for index in range(4):
-            job, _ = await store.create_job(
-                replace(make_job(job_id=f"j{index}"), idempotency_key=f"req-{index}")
-            )
-        first = await store.claim("worker-a", limit=2, now=T0)
-        second = await store.claim("worker-b", limit=2, now=T0)
-        third = await store.claim("worker-a", limit=2, now=T0)
-
-        assert [job.job_id for job in first] == ["j0", "j1"]
-        assert [job.job_id for job in second] == ["j2", "j3"]
-        assert third == []
-        running = await store.requeue_running()
-        assert len(running) == 4
 
     async def test_schema_revision_is_recorded(self, pool):
         """The baseline revision is applied once with its file checksum."""

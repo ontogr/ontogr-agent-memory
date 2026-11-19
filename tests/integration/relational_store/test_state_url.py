@@ -21,14 +21,15 @@ class TestStateUrl:
             _env_file=None,
         )
 
-        store = await open_state_store(settings)
+        store = await open_state_store(settings, owner_id=uuid4().hex)
 
         assert isinstance(store, PostgresJobStore)
 
     async def test_opens_sqlite_store(self, tmp_path) -> None:
         """A SQLite URL opens the SQLite adapter."""
         store = await open_state_store(
-            StateSettings(url=sqlite_url(tmp_path / "state.sqlite3"), _env_file=None)
+            StateSettings(url=sqlite_url(tmp_path / "state.sqlite3"), _env_file=None),
+            owner_id=uuid4().hex,
         )
 
         assert isinstance(store, SqliteJobStore)

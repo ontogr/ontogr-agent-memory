@@ -1,5 +1,6 @@
 """Async storage contract for operation rows."""
 
+from datetime import datetime
 from typing import Protocol
 
 from ontogr_mem.data_models.usage import OperationUsage
@@ -14,6 +15,14 @@ from ontogr_mem.relational_store.operations.models import (
 
 class OperationStore(Protocol):
     """Persist operations from all Tenants and report their usage."""
+
+    async def renew_leases(self, now: datetime) -> None:
+        """Renew this process's running operation leases."""
+        ...
+
+    async def release_leases(self) -> None:
+        """Release this process's operation leases."""
+        ...
 
     async def start(
         self,

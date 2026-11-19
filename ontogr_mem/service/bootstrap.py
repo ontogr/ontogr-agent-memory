@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -259,13 +260,14 @@ async def open_service(
     service_settings = settings or ServiceSettings()
     selected_state = state_settings or StateSettings()
     selected_clock = clock or SystemClock()
+    owner_id = uuid4().hex
 
     async with AsyncExitStack() as resources:
         selected_models = models if models is not None else build_models()
         if models is None:
             resources.push_async_callback(selected_models.aclose)
 
-        state = await open_state_store(selected_state)
+        state = await open_state_store(selected_state, owner_id=owner_id)
         resources.push_async_callback(state.close)
 
         selected_stores_factory = stores_factory
@@ -283,7 +285,8 @@ async def open_service(
             )
         else:
             operations, audit_log, audit_sink = await _postgres_audit(
-                state_target, selected_clock
+                state_target, selected_clock, owner_id=owner_id,
+                lease_seconds=selected_state.lease_seconds,
             )
 
         authorizer = Authorizer(audit_sink, selected_clock, tracer=tracer)
@@ -383,11 +386,16 @@ async def _sqlite_audit(
 async def _postgres_audit(
     target: PostgresTarget,
     clock: Clock,
+    *,
+    owner_id: str,
+    lease_seconds: float,
 ) -> tuple[OperationStore, AuditLog, AuditSink]:
     """Share one process-wide pool for operation and chained audit rows."""
     pool = await pg_pool(target.dsn.get_secret_value())
     await ensure_postgres_schema(pool)
-    operations = PostgresOperationStore(pool, clock)
+    operations = PostgresOperationStore(
+        pool, clock, owner_id=owner_id, lease_seconds=lease_seconds
+    )
     await operations.mark_interrupted_runs()
     audit_log = PostgresAuditLog(pool, clock)
     return operations, audit_log, ChainedAuditSink(audit_log)
