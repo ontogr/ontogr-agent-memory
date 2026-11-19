@@ -354,6 +354,7 @@ class PostgresJobStore:
         """Store a running erase row and return its id."""
         if record.status is not ErasureStatus.RUNNING:
             raise ValueError("new erase journal rows must be running")
+        now = self._clock.now()
         async with pg_connection(self._pool) as connection:
             await connection.execute(
                 "INSERT INTO erasures (erasure_id, tenant, mode, principal_id, "
@@ -378,8 +379,8 @@ class PostgresJobStore:
                 dumps(record.residue),
                 dumps(record.counts),
                 self._owner_id,
-                to_micros(record.created_at) + self._lease_micros,
-                to_micros(record.created_at),
+                to_micros(now) + self._lease_micros,
+                to_micros(now),
             )
             return record.erasure_id
 
