@@ -92,17 +92,17 @@ class JobRunner:
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._finished: dict[str, asyncio.Event] = {}
         self._blocked: set[str] = set()
+        self._lifecycle = asyncio.Lock()
+        self._orphans: set[str] = set()
+        self._started = False
+        self._stopping = False
+        self._heartbeat_task: asyncio.Task[None] | None = None
 
     def set_recovery_callback(
         self, callback: Callable[[str], Awaitable[object]]
     ) -> None:
         """Set tenant recovery after service collaborators are assembled."""
         self._recover_tenant = callback
-        self._lifecycle = asyncio.Lock()
-        self._orphans: set[str] = set()
-        self._started = False
-        self._stopping = False
-        self._heartbeat_task: asyncio.Task[None] | None = None
 
     async def start(self) -> int:
         """Recover queued and interrupted jobs and return the number enqueued.
@@ -174,6 +174,7 @@ class JobRunner:
             job, replayed = await self._store.create_job(candidate)
             if not replayed:
                 self._finished.setdefault(job.job_id, asyncio.Event())
+                await self.start_heartbeat()
                 self._start_lane(job.tenant_id)
             event = self._finished.get(job.job_id)
         if wait_s > 0 and not job.status.is_terminal:
