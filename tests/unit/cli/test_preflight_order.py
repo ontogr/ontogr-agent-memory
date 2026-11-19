@@ -76,6 +76,12 @@ class TestPreflightBeforeOpen:
 
             sys.meta_path.insert(0, Blocker())
             from ontogr_mem.cli import main
+            from ontogr_mem.client import Memory
+
+            async def unexpected_open(cls, *args, **kwargs):
+                raise RuntimeError("MEMORY_OPEN_CALLED")
+
+            Memory.open = unexpected_open
             sys.exit(main([{command!r}]))
         """
         result = subprocess.run(
@@ -88,6 +94,7 @@ class TestPreflightBeforeOpen:
 
         assert result.returncode == 1, result.stdout + result.stderr
         assert f"missing extras: {', '.join(expected)}" in result.stderr
+        assert "MEMORY_OPEN_CALLED" not in result.stderr
         if expects_uvx:
             assert 'uvx --from "ontogr-mem[' in result.stderr
         if state_url == "sqlite":
