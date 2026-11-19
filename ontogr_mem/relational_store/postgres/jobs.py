@@ -2,13 +2,13 @@
 
 from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from ontogr_mem.data_models.clock import Clock
 from ontogr_mem.data_models.jobs import Job, JobProgress, JobState
 from ontogr_mem.data_models.tenant import validate_tenant_id
-from ontogr_mem.data_models.timestamps import to_micros
+from ontogr_mem.data_models.timestamps import from_micros, to_micros
 from ontogr_mem.errors import StoreError
 from ontogr_mem.relational_store.engine import pg_connection
 from ontogr_mem.relational_store.jobs.erase_journal import (
@@ -254,7 +254,7 @@ class PostgresJobStore:
             return (
                 None
                 if value is None
-                else datetime.fromtimestamp(value / 1_000_000, UTC)
+                else from_micros(value)
             )
 
     @asynccontextmanager
