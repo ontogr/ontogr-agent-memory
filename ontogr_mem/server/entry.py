@@ -229,18 +229,18 @@ async def ensure_server(  # noqa: PLR0912, PLR0915
         info = read_server_info(directory / "server.json")
         if info and isinstance(info.get("port"), int):
             current_url = f"http://127.0.0.1:{info['port']}"
+            refreshed = McpSettings()
+            token = (
+                refreshed.api_key.get_secret_value()
+                if refreshed.api_key is not None
+                else None
+            ) or read_server_token(directory / "server.token")
             health = await asyncio.to_thread(_health, current_url, token)
             if (
                 health
                 and health.get("version") == version
                 and health.get("store") == expected_store
             ):
-                refreshed = McpSettings()
-                token = (
-                    refreshed.api_key.get_secret_value()
-                    if refreshed.api_key is not None
-                    else None
-                ) or read_server_token(directory / "server.token")
                 return _endpoint(current_url, health, token)
         await asyncio.sleep(0.2)
     raise ServerUnavailableError(f"Memory server did not become ready. See {log_path}")

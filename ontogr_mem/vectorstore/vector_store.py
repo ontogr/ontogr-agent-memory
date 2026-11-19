@@ -110,10 +110,36 @@ class VectorStore:
         """Return what the backend can do."""
         return self.backend.capabilities
 
+    async def _initialize_locked(self) -> None:
+        """Load the embedder and create the spaces while holding `_init_lock`."""
+        if self._ready:
+            return
+        embedder = await self.source()
+        gateway = EmbeddingGateway(embedder, settings=self.settings, tracer=self.tracer)
+        specs = {
+            kind: SpaceSpec(
+                kind,
+                gateway.model_id,
+                gateway.dim,
+                TEMPLATES[kind].id,
+                TEMPLATES[kind].version,
+            )
+            for kind in self.kinds
+        }
+        await self.backend.ensure_ready(list(specs.values()))
+        await SpaceRegistry(self.backend, gateway).ensure(specs)
+        self.gateway, self.specs, self._ready = gateway, specs, True
+
+    async def _ensure_initialized(self) -> None:
+        """Initialize on first use without probing an already ready backend."""
+        async with self._init_lock:
+            await self._initialize_locked()
+
     async def ensure_ready(self) -> None:
         """Verify the backend and the embedding spaces.
 
-        The store refuses reads and writes until this succeeds.
+        The store refuses reads and writes until this succeeds. Later calls
+        check the backend again and recreate an index that was dropped.
 
         Raises:
             SpaceMismatchError: If the embedder, the stored space or an index
@@ -122,28 +148,13 @@ class VectorStore:
         """
         async with self._init_lock:
             if self._ready:
+                await self.backend.ensure_ready(list(self.specs.values()))
                 return
-            embedder = await self.source()
-            gateway = EmbeddingGateway(
-                embedder, settings=self.settings, tracer=self.tracer
-            )
-            specs = {
-                kind: SpaceSpec(
-                    kind,
-                    gateway.model_id,
-                    gateway.dim,
-                    TEMPLATES[kind].id,
-                    TEMPLATES[kind].version,
-                )
-                for kind in self.kinds
-            }
-            await self.backend.ensure_ready(list(specs.values()))
-            await SpaceRegistry(self.backend, gateway).ensure(specs)
-            self.gateway, self.specs, self._ready = gateway, specs, True
+            await self._initialize_locked()
 
     async def embedding_gateway(self) -> EmbeddingGateway:
         """Return the initialized gateway, loading the embedder when needed."""
-        await self.ensure_ready()
+        await self._ensure_initialized()
         if self.gateway is None:
             msg = "embedding gateway is unavailable after initialization"
             raise StoreNotReadyError(msg)
@@ -175,7 +186,7 @@ class VectorStore:
         Raises:
             ValueError: If an item's extras do not fit `kind`.
         """
-        await self.ensure_ready()
+        await self._ensure_initialized()
         self._spec(kind)
         template = TEMPLATES[kind]
         latest: dict[str, EmbedItem] = {}
@@ -307,6 +318,7 @@ class VectorStore:
             IndexDriftError: If the index is missing or unusable.
             QueryTimeoutError: If the query exceeded its time limit.
         """
+        await self._ensure_initialized()
         spec = self._spec(kind)
         if k <= 0:
             return []

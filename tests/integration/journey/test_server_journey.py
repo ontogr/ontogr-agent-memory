@@ -164,7 +164,7 @@ class TestServerJourney:
                 "forget_memory",
                 "get_skill",
             }
-            source = "Rina leads the Atlas research team."
+            source = "Rina works at the Atlas research team."
             write = await client.call_tool(
                 "write_facts",
                 {
@@ -172,9 +172,11 @@ class TestServerJourney:
                     "facts": [
                         {
                             "subject": "Rina",
-                            "relation": "leads",
+                            "subject_type": "Person",
+                            "relation": "works_at",
                             "object": "Atlas research team",
-                            "quote": "Rina leads the Atlas research team.",
+                            "object_type": "Organization",
+                            "evidence_quote": source,
                         }
                     ],
                 },
@@ -191,14 +193,16 @@ class TestServerJourney:
                     pytest.fail(f"Job {job_id} did not finish within 60 seconds")
                 await asyncio.sleep(0.25)
             assert job["status"] == "done", job
+            fact_ids = job["result"]["fact_ids"]
+            assert len(fact_ids) == 1, job
             search = await client.call_tool(
                 "search_memory", {"query": "Atlas research team"}
             )
-            assert receipt["fact_ids"][0] in str(search.structured_content)
+            assert fact_ids[0] in str(search.structured_content)
         artifact = {
             "steps": ["list_tools", "write_facts", "wait_for_job", "search_memory"],
             "job_id": job_id,
-            "fact_id": receipt["fact_ids"][0],
+            "fact_id": fact_ids[0],
             "elapsed_seconds": time.monotonic() - started,
         }
         artifact_path = Path(os.environ.get("JOURNEY_ARTIFACT", "journey-result.json"))
