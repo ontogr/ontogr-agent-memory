@@ -1,0 +1,66 @@
+---
+title: Tenants, episodes, and jobs
+description: The partition, the unit of source content, and the unit of background work.
+---
+
+A tenant is the only partition of memory. Nothing is shared between tenants:
+each has its own graph names, vectors, jobs, and ontology. A call from a client
+or an MCP connection always names one tenant.
+
+## Tenants
+
+On FalkorDB the graph for a tenant is named `m_<tenant>`. On Neo4j a shared
+database holds all tenants and every node and edge carries a `_tenant`
+property. Composed state keeps jobs, operation rows, and audit rows for every
+tenant in one state file or database.
+
+A tenant id has 1 to 60 letters, digits, dashes, or underscores. A remote graph
+requires an explicit tenant, because the default name cannot select a tenant on
+a shared hosted store. The server reads the tenant from the `X-Memory-Tenant`
+header of a connection; no tool argument selects it.
+
+The principal is local and fixed. A client uses one caller id with read, write,
+and forget grants on its tenant, and a CLI clear uses a temporary admin grant.
+The service does not store users, keys, or grants; a caller passes its principal
+on each request. See [Python API](../reference/python-api.mdx) for the grant
+model.
+
+## Episodes
+
+An episode is one unit of source content. Ingestion accepts five source kinds:
+
+| Kind | Input | Output |
+| --- | --- | --- |
+| `message` | One chat message | One episode |
+| `document` | A document split into parts | One episode per non-empty part |
+| `tool_output` | One tool call result | One episode |
+| `event` | One provider event | One episode |
+| `record` | One row from a system of record | One episode per row update |
+
+An episode stores its source as `system|ref`, its actor with a role, its raw
+content, and a content hash. The id is deterministic over the source,
+occurrence time, and content hash, so repeated content is skipped. The hash is
+written last as a commit marker: a crash before it leaves the episode pending,
+and the next run writes it again.
+
+Every later object points back to an episode, which is what makes a fact
+explainable. See [Facts and provenance](facts-and-provenance.mdx).
+
+## Jobs
+
+A write queues a job and returns a receipt with its id and status. Jobs run in
+serial lanes per tenant, and lanes for different tenants run in parallel. A
+read does not create a job.
+
+| Status | Meaning |
+| --- | --- |
+| `queued` | Waiting for its tenant lane. |
+| `running` | Being processed. |
+| `done` | Finished with a result. |
+| `failed` | Finished with an error. |
+
+A receipt can show `queued` or `running` after a bounded wait. Call `get_job`
+for the final status, result, and error. Each write accepts an idempotency key;
+a repeated key returns the original job instead of creating duplicate work. At
+startup, jobs left running are put back in the queue, and a replayed job skips
+an episode that is already committed with the same hash.

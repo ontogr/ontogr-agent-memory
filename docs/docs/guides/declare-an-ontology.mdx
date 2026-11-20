@@ -1,0 +1,64 @@
+---
+title: Declare an ontology
+description: Replace the default entity and relation types for a tenant with your own file.
+---
+
+A tenant starts with the default catalog from `ontogr_mem/ontology/default.yaml`.
+Pass a declaration when you open memory to replace it. YAML, JSON, and Turtle
+files are accepted, as are a list of Pydantic classes and an
+`OntologyDeclaration`.
+
+## Create a declaration file
+
+```yaml
+entities:
+  - label: Person
+    description: An individual human.
+  - label: Employer
+    description: A company that employs people.
+relations:
+  - label: EMPLOYS
+    kind: single
+    patterns:
+      - {source: Employer, target: Person}
+```
+
+Include every type the tenant should use: a declaration replaces the default
+rather than adding to it. A relation with `kind: single` keeps one value per
+subject, and `many` allows several. Patterns appear in the prompt and are
+enforced in code.
+
+## Apply the file
+
+Pass the path when you open memory:
+
+```python notest
+from pathlib import Path
+
+from ontogr_mem.client import Memory
+
+
+async def open_with_ontology() -> None:
+    async with Memory.open(
+        tenant="docs_ontology", ontology=Path("ontology.yaml")
+    ) as memory:
+        catalog = await memory.get_ontology()
+        print(catalog)
+```
+
+For a server, set `MEMORY_MCP_ONTOLOGY` in `server.env` or pass
+`--ontology ontology.yaml` to `ontogr-mem server run`. The `chat` command no
+longer accepts `--ontology`.
+
+## What changes
+
+On first access, memory commits one ontology version if the declaration changes
+the stored catalog. Reopening with the same declaration commits nothing. A type
+keeps its id while its label stays the same. Use `renamed_from` to rename a
+type, `merged_into` to redirect one, and `deprecated: true` to retire it.
+Omitted types are deprecated, and existing aliases are kept.
+
+Changing the ontology makes older episodes stale. Call `stale_episodes()` to
+list them; refresh an episode by writing its text again and forgetting the old
+one. See [The ontology](../concepts/ontology.mdx) and
+[Python API](../reference/python-api.mdx).

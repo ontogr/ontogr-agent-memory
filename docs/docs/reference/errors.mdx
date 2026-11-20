@@ -1,0 +1,38 @@
+---
+title: Errors
+description: Stable error codes, their meaning, and the default service limits.
+---
+
+Service errors carry a stable code, a message, and an optional hint. MCP tools
+return them as JSON with the same fields. Internal error details are masked in
+tool responses.
+
+| Code | Meaning |
+| --- | --- |
+| `invalid_argument` | A field is missing, malformed, or out of range. |
+| `not_found` | The tenant or object does not exist, or the caller cannot see it. |
+| `conflict` | The request collides with current state, such as a stale slot revision. |
+| `llm_unavailable` | A verb that needs a model was called without one, or a provider call failed after retries. |
+| `rate_limited` | The caller spent its token budget for the minute. |
+| `payload_too_large` | A field is over its byte limit. |
+| `confirmation_required` | A destructive verb is missing its confirmation token. |
+| `internal` | An unexpected failure inside the service. |
+
+## Limits
+
+The default limits are 60 writes and 600 reads per caller per minute, 64 KiB per
+content field, and 100 results per read. The limiter is per process.
+
+`llm_unavailable` has three distinct causes: no model is configured for the
+role, a provider call such as a timeout ends the extraction, or a reply still
+does not match the expected shape after two re-asks. A fact that fails a check
+after a valid reply is dropped with a reason code instead of failing the job.
+`timeout_s` applies to each HTTP attempt, and the extraction pipelines never
+truncate input. A prompt larger than the model's context window is rejected by
+the provider.
+
+`not_found` is returned for a missing tenant, a missing object, and a missing
+grant alike. A store lock error is reported separately when `Memory.open` is
+used while the server owns the state file; stop the server or use
+`Memory.connect`. See [Python API](python-api.mdx) and
+[MCP tools](mcp-tools.mdx).

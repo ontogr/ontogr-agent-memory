@@ -1,0 +1,46 @@
+---
+title: Keyless and model mode
+description: Which component extracts facts and when the server needs a model.
+---
+
+The server has two modes. The mode is decided by the configured extraction
+roles, not by removing a single key: deleting `MEMORY_LLM_API_KEY` does not
+disable a model that is still configured.
+
+## Keyless mode
+
+No model is configured on the server. The host's model reads the source text,
+extracts facts, and calls `write_facts` with the source and the facts. The
+server stores the exact source text as one episode, checks every quote, name,
+and identity value against it, applies the ontology rules, and stores the valid
+facts. A request carries at most 1000 facts, each text field at most 4096
+characters, and at most 10 identity values per endpoint. Host writes do not
+call the contradiction judge.
+
+The server's model settings are independent of the host's subscription. **A
+host subscription token is never a model key**: do not copy it into
+`MEMORY_LLM_API_KEY` or any other model setting. See
+[Set up a model](../guides/set-up-a-model.mdx).
+
+## Model mode
+
+The server configures both `ENTITY_EXTRACTION` and `FACT_EXTRACTION` and
+extracts entities and facts from plain text itself. `add_memory` is listed as an
+MCP tool only in this mode; `MEMORY_MCP_TOOLS` can remove tools but cannot add
+it. `chat` needs the `ANSWER` role in addition to the extraction roles.
+
+A model name can use the `openai-chat:`, `openai-responses:`, or `anthropic:`
+prefix. A name without a prefix uses OpenAI-compatible chat. Every configured
+role needs a base URL, from its own variable or from `MEMORY_LLM_BASE_URL`.
+
+## Write receipt and jobs
+
+Both modes queue writes. The receipt names a job, so call `get_job` until its
+status is terminal. A finished `write_facts` result has `fact_ids`, `unplaced`,
+and `dropped`. Each dropped entry has an `index`, a `reason`, and a `detail`;
+the index is the zero-based position in the submitted facts. The source episode
+is kept even when every fact is dropped.
+
+The bearer key `MEMORY_MCP_API_KEY` authenticates HTTP requests. It is not a
+model key and does not protect stdio, where access to the launched process is
+the boundary.

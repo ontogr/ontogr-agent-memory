@@ -1,0 +1,60 @@
+---
+title: Forget memory
+description: Close a fact or remove an episode with a preview and confirmation.
+---
+
+Forget has two paths. A soft forget closes a fact and keeps its history. A hard
+forget removes data, previews what it will remove, and writes a journal row so a
+crash can be resumed.
+
+## Modes
+
+| Mode | Effect |
+| --- | --- |
+| `invalidate` | Closes the fact now and keeps its history. |
+| `delete` | Removes the observations and the stored episode. |
+| `memory_only` | Removes derived facts and keeps the episode record. |
+| `erase` | Deletes, then scans the graph and indexes for residue. |
+
+## Invalidate a fact from a host
+
+The `forget_memory` MCP tool invalidates one fact. It closes the fact's
+validity and keeps its history; it does not erase the source. A write is queued,
+so call `get_job` with the receipt's job id to confirm it finished.
+
+## Remove an episode from Python
+
+A hard mode needs a preview followed by a confirmation token in the same open
+service lifetime. This example needs a reachable store and a model-free
+configuration; it is labeled `notest` because it performs destructive writes.
+
+```python notest
+import asyncio
+
+from ontogr_mem.client import Memory
+
+
+async def forget_an_episode(episode_id: str) -> None:
+    async with Memory.open(tenant="docs_forget") as memory:
+        preview = await memory.forget(episode_id=episode_id, dry_run=True)
+        result = await memory.forget(
+            episode_id=episode_id,
+            confirm_token=preview.confirm_token,
+        )
+        print(result)
+
+
+asyncio.run(forget_an_episode("<episode id>"))
+```
+
+A preview reports the affected ids and collateral facts. `erase` fails when it
+finds residue it cannot clean and lists what it could not remove. After a crash,
+startup resumes a journal row that is still running.
+
+## What stays
+
+Audit rows, operation rows, and erasure rows stay after a forget. Removing the
+remaining files on a machine is covered in
+[Remove stored data](../reference/data-removal.mdx). See
+[Python API](../reference/python-api.mdx) for the `forget` and `invalidate`
+contracts.

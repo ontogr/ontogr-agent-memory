@@ -1,0 +1,64 @@
+---
+title: How data flows
+description: The steps a write, a read, and a hard forget take through the stores.
+---
+
+## A write
+
+1. The service checks the rate limit, opens an operation row, and checks the write grant. Every decision is appended to the audit log.
+2. The service stores the request as a job and returns a receipt with its id. A repeated idempotency key returns the original job.
+3. The tenant's job lane runs one job at a time and records each attempt.
+4. Ingestion writes the episode with its source and actor to the graph and records the content hash last.
+5. For text or message writes, extraction finds entities and resolution links them to canonical entities. A structured fact skips extraction.
+6. Fact extraction returns claims with quotes and valid times, and the ontology maps each relation to a stable type.
+7. The temporal engine marks the episode pending, writes observations, and reconciles each affected slot into fact versions.
+8. Fact vectors are written after the fact is in the graph.
+9. The engine appends a ledger entry, then marks the episode committed with its hash.
+10. The service writes the episode metadata and vector, marks the job done, and closes the operation row with its outcome and usage.
+
+Each step is safe to run again after a crash. An episode without a hash is
+written again, pending episodes are settled at startup, running jobs are
+requeued, and a failed vector write keeps the item for retry without rolling
+back the fact.
+
+## Entity and fact extraction
+
+In the default two-pass mode, entity extraction and fact extraction run
+separately over the same episode. `MEMORY_EXTRACTION_MODE=combined` requests
+both in one pass. The ontology supplies the allowed types, and resolution links
+each name to a canonical entity through a ladder:
+
+1. a URI match,
+2. a strict key or alias match,
+3. a fuzzy Jaccard match,
+4. a model verdict for the remaining ambiguous pairs.
+
+A name that cannot be found in the episode is discarded. A failed model call
+ends the extraction with `llm_unavailable`; an invalid reply gets two re-asks.
+A fact that fails a check after a valid reply is dropped with a reason code.
+Every extracted fact carries a verbatim quote, and a bad relation type or
+time that cannot be parsed clears that part while the fact keeps a reason code.
+Merges keep a `merged_into` pointer and a snapshot, so they can be undone.
+
+## A read
+
+1. The service checks the rate limit, opens an operation row, and checks the read grant for each tenant.
+2. The retriever embeds the query once.
+3. The vector, keyword, and entity lanes run at the same time; the graph lane walks outward from seed entities they supply.
+4. Reciprocal rank fusion merges the lanes, an optional reranker scores a shortlist, and the retriever builds a context block within the token budget.
+5. The service closes the operation row with its usage.
+
+A read creates no job. An empty result reports `indexing` while jobs for the
+searched tenants are still queued or running. See
+[Retrieval](retrieval.mdx) for the four lanes.
+
+## A hard forget
+
+1. The service checks the forget grant and verifies the confirmation token from a preview.
+2. The workflow writes a row to the erase journal before it changes data.
+3. It removes temporal evidence, indexes, entities, and episodes, updating the journal after each step. Erase then scans for residue.
+4. It closes the journal row as completed, or as failed with the residue found, and appends an audit row.
+5. After a crash, startup resumes journal rows that are still running. Audit and operation rows stay.
+
+Consolidation is a separate background run over one tenant. It is not part of
+the write path and has no Journey page in this guide.

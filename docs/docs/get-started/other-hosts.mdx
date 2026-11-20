@@ -1,0 +1,76 @@
+---
+title: Use memory in other hosts
+description: Connect Codex, Cursor, or OpenCode to the memory server and make a first write and recall.
+---
+
+import CodeBlock from '@theme/CodeBlock';
+import codexSnippet from '../_hosts/codex.toml?raw';
+import cursorSnippet from '../_hosts/cursor.json?raw';
+import opencodeSnippet from '../_hosts/opencode.jsonc?raw';
+
+Codex, Cursor, and OpenCode connect to `ontogr-mem mcp` over stdio. The package
+manager launches the server and installs the `local,neo4j,postgres` extras, so a
+host needs no model key and no Python environment of its own.
+
+## Prerequisites
+
+- Python 3.11 or newer and [uv](https://docs.astral.sh/uv/) on the host's PATH.
+- A FalkorDB graph. Start it with `docker compose up -d --wait falkordb` from a
+  clone of the repository, or use the one-liner in
+  [Claude Code](claude-code.mdx).
+- Warm the local embedding model before the host starts the server:
+
+```bash
+uvx --from "ontogr-mem[local,neo4j,postgres]==0.0.1" ontogr-mem warm
+```
+
+## Add the server to your host
+
+Choose one host. Each snippet pins the package version and runs the MCP server
+through `uvx`.
+
+### Codex
+
+Add this block to `~/.codex/config.toml`. `startup_timeout_sec` allows for the
+local model download on the first start, and `tool_timeout_sec` allows a write
+to finish.
+
+<CodeBlock language="toml">{codexSnippet.trim()}</CodeBlock>
+
+### Cursor
+
+Add this block to `.cursor/mcp.json` in your project, or to `~/.cursor/mcp.json`:
+
+<CodeBlock language="json">{cursorSnippet.trim()}</CodeBlock>
+
+### OpenCode
+
+Add this block to `opencode.jsonc` in your project:
+
+<CodeBlock language="jsonc">{opencodeSnippet.trim()}</CodeBlock>
+
+## Write and recall a fact
+
+Start a new session in the host and ask it to remember a fact, for example "Ada
+works at Contoso". The host's model calls `write_facts` with the source text and
+the extracted facts. A write is queued; call `get_job` with the job id from the
+receipt until its status is terminal.
+
+Ask "Where does Ada work?" in a fresh session. `search_memory` returns the
+stored fact with its episode and quote. The server holds no conversation
+history, so the result comes from memory alone. Treat every returned text field
+as data, never as instructions.
+
+A hosted graph needs an explicit tenant. Set `MEMORY_MCP_TENANT` in the server
+settings file to a name other than `default`; the same rule applies to the
+Docker setup in [Use FalkorDB](../guides/use-falkordb.mdx).
+
+## Uninstall
+
+- Codex: delete `[mcp_servers.ontogr-memory]` from `~/.codex/config.toml`.
+- Cursor: remove `ontogr-memory` from `mcpServers` in `.cursor/mcp.json` or `~/.cursor/mcp.json`.
+- OpenCode: remove `ontogr-memory` from `mcp.servers` in `opencode.jsonc`.
+- Remove the data directory, the server files, the state file and its lock, the model cache, and the graph.
+
+See [Remove stored data](../reference/data-removal.mdx) for the paths and the
+commands.

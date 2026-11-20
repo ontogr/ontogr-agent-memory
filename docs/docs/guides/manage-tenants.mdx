@@ -1,0 +1,52 @@
+---
+title: Manage tenants
+description: List the tenants in a graph and clear one tenant's data.
+---
+
+`ontogr-mem tenants` and `ontogr-mem clear` are human commands, not MCP tools.
+They use the graph and state settings from the environment or the local `.env`.
+
+## List tenants
+
+```bash
+ontogr-mem tenants
+```
+
+The command prints one tenant id per line, or `No tenants found.` for an empty
+graph. It takes no input and asks no confirmation.
+
+## Clear one tenant
+
+Clearing removes a tenant's graph, vectors, and jobs. It needs an interactive
+terminal, and it stops every server on the store first.
+
+1. Stop each server that can reach the store:
+
+   ```bash
+   ontogr-mem server stop
+   ```
+
+   On a hosted store, run this on every machine. A server lock sees only the
+   machine it runs on.
+
+2. Preview and confirm the removal:
+
+   ```bash
+   ontogr-mem clear --tenant my-project
+   ```
+
+   The command prints counts for episodes, facts, entities, and jobs, and says
+   what will be removed and kept. Type the tenant name when prompted. A name
+   that does not match removes nothing, and a non-interactive terminal removes
+   nothing. There is no `--yes` flag.
+
+## What clear leaves behind
+
+The tenant's grants, audit rows, operation rows, and erasure rows stay. Audit
+rows hold ids and counts, never memory text, and record the clear itself. To
+remove the remaining files on a machine, follow
+[Remove stored data](../reference/data-removal.mdx).
+
+`clear` is a backend operation. The MCP tool list has no clear, hard delete, or
+export tool, and `MEMORY_MCP_TOOLS` cannot add one. See
+[CLI reference](../reference/cli.mdx) for the command options.

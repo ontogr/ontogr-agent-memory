@@ -1,0 +1,47 @@
+---
+title: Observability
+description: Spans, metrics, operation rows, audit rows, and model call tracing.
+---
+
+| Facility | What it records |
+| --- | --- |
+| Spans | Timed steps for writes, retrieval, erase, export, forget, history, model calls, and auth checks. |
+| Tracers | No-op, in-memory, and OpenTelemetry implementations. |
+| Metrics | Plain counters and latency observations, exported by the caller. |
+| Operation rows | One row per write, read, invalidate, erase, export, or history call, with timing, outcome, error summary, and usage. |
+| Audit rows | Access decisions and destructive operations, linked by a hash chain. |
+| Request context | Principal, tenant, trace id, session, operation id, latency budget, and usage for one call. |
+
+Trace attributes are redacted and size limited. Audit rows never hold memory
+text; they carry ids and counts, so an edit or deletion in the middle of a
+chain is detectable. `stats` returns tenant counts and usage without creating
+an operation row.
+
+## Enable model call tracing
+
+Tracing is off by default. PydanticAI instrumentation starts only when the
+caller turns it on. Run this once before extraction runs, with an
+OpenTelemetry tracer provider that the caller has configured:
+
+```python
+from pydantic_ai import Agent, InstrumentationSettings
+
+Agent.instrument_all(
+    InstrumentationSettings(
+        tracer_provider=tracer_provider,
+        include_content=False,
+        include_binary_content=False,
+        include_model_request_parameters=False,
+    )
+)
+```
+
+The service tracer records service and embedding spans. Typed PydanticAI model
+spans require caller-owned instrumentation; ordinary service setup does not
+enable it. These settings keep prompts, instructions, model responses, binary
+content, and request parameters out of spans. The caller owns the tracer
+provider and its exporters.
+
+Install the `otel` extra for the OpenTelemetry implementation. See
+[Configuration](configuration.mdx) for any exporter settings and
+[Errors](errors.mdx) for the codes recorded on failed calls.

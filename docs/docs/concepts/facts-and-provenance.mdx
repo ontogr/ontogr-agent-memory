@@ -1,0 +1,59 @@
+---
+title: Facts, time, and provenance
+description: How a claim is versioned on two time axes and traced back to its source.
+---
+
+A fact is what the system currently believes about a relation between two
+entities. A change writes a new fact version and closes the old one, so the
+history stays available.
+
+## Two time axes
+
+| Axis | Fields | Meaning |
+| --- | --- | --- |
+| Valid time | `valid_from`, `valid_to` | When the fact was true in the world. |
+| System time | `recorded_at`, `expired_at` | When the system recorded or closed the fact. |
+
+The default read returns the current belief. `as_of` asks what was true on a
+date; `known_at` asks what the system believed on that date. Overlap windows
+and `include_history` change the view. A repeated fact after an end opens a new
+run instead of extending the old one, and arrival order does not change the
+timeline.
+
+A slot is one subject and relation type, plus the object when the relation can
+hold many values. A slot commit compares its revision, writes fact versions and
+supersession rows, and appends ledger entries in one statement. A revision
+mismatch raises a conflict for the caller to reload and retry.
+
+Retraction, reset, and deletion differ:
+
+| Operation | Effect |
+| --- | --- |
+| Retraction | Marks an episode withdrawn, keeps its node, and writes a ledger entry. Facts built from it are closed in history. |
+| Reset | Clears what extraction produced for one episode, keeps the node, and re-derives the affected slots. |
+| Deletion | Removes an episode and what hangs on it. |
+
+## Contradictions
+
+When two facts cannot both stand, the handler decides which is current and
+keeps the other in history.
+
+- Rules handle single-valued relations, where two values cannot both stand in one slot.
+- For each new actual state fact with candidates, an optional model call checks the candidates. A contradiction closes the earlier fact at the later fact's start. A failed call leaves both facts live.
+- A decision recorded by `TemporalEngine.record_decision` overrides the rules and the judge.
+- A verdict is `update`, `correction`, `dispute`, or `uncertain`, and is keyed by the pair, a hash of the inputs, and the prompt version. A changed fact makes the verdict stale.
+
+Host writes do not call the judge. See
+[Keyless and model mode](keyless-and-model-mode.mdx).
+
+## Provenance
+
+Every fact leads back to the text that supports it:
+
+- An observation holds one dated claim with its statement, verbatim quote, and episode id.
+- Each fact edge carries the ids of the observations that support it.
+- An episode keeps its source, actor, and committed content hash.
+- Every temporal write appends to a hash-chained ledger. `verify` finds an edited, inserted, or deleted entry in the middle of a chain.
+
+The ledger chain does not stop a database owner who rewrites every later hash.
+Audit rows keep ids and counts, never memory text.

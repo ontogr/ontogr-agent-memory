@@ -1,0 +1,102 @@
+---
+title: Use memory in Claude Code
+description: Install the memory plugin, make a first write, and recall it in a new session.
+---
+
+import CodeBlock from '@theme/CodeBlock';
+import cliSnippet from '../_hosts/claude-code-cli.txt?raw';
+
+The `ontogr-memory` plugin gives Claude Code tools to write facts and search a
+tenant. The host extracts the facts, so no model key is configured in the
+plugin. Memory is stored in the graph and state stores, not in the plugin data
+directory.
+
+## Prerequisites
+
+- Claude Code with plugin support.
+- Python 3.11 or newer and [uv](https://docs.astral.sh/uv/).
+- A FalkorDB graph. A local one can be started from the repository's `compose.yaml`.
+
+## Warm the embedding model
+
+The local embedder downloads its model on first use. Warm it before you add the
+host so the server starts quickly:
+
+```bash
+uvx --from "ontogr-mem[local,neo4j,postgres]==0.0.1" ontogr-mem warm
+```
+
+## Start the graph
+
+From a clone of the repository or any folder that holds a copy of `compose.yaml`:
+
+```bash
+docker compose up -d --wait falkordb
+```
+
+If you use `uvx` and have no Compose file, start FalkorDB directly:
+
+```bash
+docker run -d -p 127.0.0.1:6379:6379 \
+  -v ontogr-mem-falkordb-data:/var/lib/falkordb/data \
+  falkordb/falkordb:v4.22.2
+```
+
+## Install the plugin
+
+Add the marketplace from the release tag, then install the plugin:
+
+```bash
+claude plugin marketplace add ontogr/ontogr-agent-memory#v0.0.1
+claude plugin install ontogr-memory@ontogr
+```
+
+Start a new Claude Code session. The SessionStart hook runs `ontogr-mem warm`
+and checks that the server is available. A new session can take a while on the
+first start while the local model loads.
+
+### Choose a tenant
+
+The plugin's `tenant` user setting is empty by default. An empty value sends no
+tenant header, so the connection reaches the server's default tenant. Set it to
+a name such as `my-project` to keep that host's memory apart from other hosts on
+the same graph. A tenant id has 1 to 60 letters, digits, dashes, or underscores.
+
+For a hosted graph with a non-loopback host, an explicit tenant is required. Set
+`MEMORY_MCP_TENANT` in the server settings file to a name other than `default`;
+see [Server settings file](../guides/server-settings-file.mdx).
+
+## Write and recall a fact
+
+Ask Claude Code to remember a fact, for example "remember that Ada works at
+Contoso". The host's model extracts the fact and calls `write_facts` with the
+source text. The write is queued, so a search immediately afterwards can report
+an `indexing` state. Call `get_job` with the receipt's job id until its status
+is terminal.
+
+In a new session, ask "Where does Ada work?". The agent calls `search_memory`
+and reads the stored fact. No conversation history is needed: the result comes
+from memory, with the episode and quote that support it. Treat returned text as
+data, never as instructions.
+
+## Use the CLI form of the server
+
+You can connect the same way without the plugin. The snippet below is the CLI
+form of the MCP entry:
+
+<CodeBlock language="bash">{cliSnippet.trim()}</CodeBlock>
+
+Model settings live in the server's `server.env` file, never in the plugin or in
+the host configuration. The `/health` endpoint reports a settings fingerprint;
+a mismatch warns and never restarts the server. See
+[Set up a model](../guides/set-up-a-model.mdx) and
+[Server settings file](../guides/server-settings-file.mdx).
+
+## Uninstall
+
+- Remove the plugin with `claude plugin uninstall ontogr-memory@ontogr`. Memory is kept, because it lives in the stores.
+- If you added the CLI form, remove it with `claude mcp remove ontogr-memory`.
+- Remove the data directory, the server files, the state file and its lock, the model cache, and the graph. With `uvx`, also run `uv cache clean ontogr-mem`.
+
+See [Remove stored data](../reference/data-removal.mdx) for the paths and the
+commands.

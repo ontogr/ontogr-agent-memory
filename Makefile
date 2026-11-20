@@ -1,4 +1,4 @@
-.PHONY: sync test test-integration services-up services-down test-all cov-report cov lint-typing lint-style lint-fmt lint-check lint-typos lint-actions lint-all security-bandit security-audit security build wheel-test image-build image-up image-down check-distribution changelog clean help
+.PHONY: sync test test-integration services-up services-down test-all cov-report cov lint-typing lint-style lint-fmt lint-check lint-typos lint-actions lint-all security-bandit security-audit security build wheel-test image-build image-up image-down check-distribution changelog clean help docs-generate docs-api docs-config docs-install docs-dev docs-build docs-lint-links docs-check-version docs-version docs-test sync-docs-pins
 
 export UV_LOCKED = 1
 UV_SYNC_ARGS ?= --no-extra fastembed-gpu
@@ -30,6 +30,17 @@ help:
 	@echo "  make image-down       - Stop the image and remove test volumes"
 	@echo "  make check-distribution - Check release and integration pins"
 	@echo "  make changelog        - Add a release section to CHANGELOG.md (VERSION=x.y.z)"
+	@echo "  make docs-generate    - Regenerate the API pages and the configuration table"
+	@echo "  make docs-api         - Regenerate the Python API pages"
+	@echo "  make docs-config      - Regenerate the configuration table"
+	@echo "  make docs-install     - Install the docs site dependencies with npm ci"
+	@echo "  make docs-dev         - Run the docs site locally"
+	@echo "  make docs-build       - Build the docs site"
+	@echo "  make docs-lint-links  - Reject absolute links between docs pages"
+	@echo "  make docs-check-version - Require a docs freeze for the package version"
+	@echo "  make docs-version     - Freeze the docs for the package version"
+	@echo "  make docs-test        - Run the Python blocks in the docs pages"
+	@echo "  make sync-docs-pins   - Sync the docs-api pre-commit pin from uv.lock"
 	@echo "  make clean            - Clean build artifacts and cache"
 
 sync:
@@ -104,6 +115,7 @@ build:
 	uv build
 
 wheel-test: build
+	tar -tzf dist/*.tar.gz | grep -E '^[^/]+/(docs|node_modules)/' && exit 1 || true
 	rm -rf .wheelenv
 	uv venv .wheelenv
 	uv pip install --python .wheelenv/bin/python dist/*.whl
@@ -134,8 +146,69 @@ changelog:
 	@# git-cliff ends the file with a blank line, which the end-of-file hook removes.
 	@printf '%s\n' "$$(cat CHANGELOG.md)" > CHANGELOG.md.tmp && mv CHANGELOG.md.tmp CHANGELOG.md
 
+DOCS_GRIFFE2MD ?= uv run --group docs griffe2md
+DOCS_PYTHON ?= uv run python
+DOCS_API_PKGS ?= ontogr_mem.client ontogr_mem.errors ontogr_mem.service.contracts
+
+docs-generate: docs-api docs-config
+
+docs-api:
+	mkdir -p docs/docs/api
+	find docs/docs/api -mindepth 1 -type f ! -name index.md -delete
+	find docs/docs/api -mindepth 1 -type d -empty -delete
+	i=2; for p in $(DOCS_API_PKGS); do \
+	  { printf '%s\n' '---' "title: $$p" "sidebar_position: $$i" '---' ''; \
+	    $(DOCS_GRIFFE2MD) $$p -f; } > docs/docs/api/$$p.md.tmp \
+	    && mv docs/docs/api/$$p.md.tmp docs/docs/api/$$p.md || exit 1; \
+	  i=$$((i+1)); done
+	$(DOCS_PYTHON) .github/scripts/docs_api_links.py docs/docs/api
+
+docs-config:
+	$(DOCS_PYTHON) .github/scripts/docs_config_table.py
+
+docs-install:
+	cd docs && npm ci
+
+docs-dev: docs-api
+	cd docs && npm start
+
+# Absolute links like /guides/x always open the latest version. Relative file links stay in the version.
+docs-lint-links:
+	@grep -rEn --include='*.md' --include='*.mdx' '(\]\(|href=")/[A-Za-z0-9]' docs/docs --exclude-dir=api; \
+	status=$$?; \
+	if [ $$status -eq 0 ]; then echo "Link to docs pages with relative file paths such as ../concepts/how-data-flows.mdx."; exit 1; fi; \
+	if [ $$status -ne 1 ]; then exit $$status; fi
+
+# The version of the package. The docs version of a release has the same name.
+DOCS_VERSION = $(shell $(DOCS_PYTHON) -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+
+# A pull request that raises the version in pyproject.toml must also freeze its docs.
+docs-check-version:
+	@grep -qF '"$(DOCS_VERSION)"' docs/versions.json \
+	  || { echo "docs/versions.json has no $(DOCS_VERSION). Run 'make docs-version' in the pull request that bumps the version."; exit 1; }
+
+# Freeze the docs of the version in pyproject.toml before the release is tagged.
+docs-version: docs-api
+	cd docs && npx docusaurus docs:version $(DOCS_VERSION)
+
+docs-build: docs-generate docs-lint-links
+	cd docs && { npm run build > build.log 2>&1; status=$$?; cat build.log; exit $$status; }
+	@# Docusaurus reports many problems as warnings and still exits with success.
+	@sed -E 's/\x1B\[[0-9;]*m//g' docs/build.log | grep -q '^\[SUCCESS\]' \
+	  && ! sed -E 's/\x1B\[[0-9;]*m//g' docs/build.log | grep -qE '^\[(WARNING|ERROR)\]' \
+	  || { echo "The docs build did not finish cleanly. Read docs/build.log."; exit 1; }
+
+# The docs tests need a FalkorDB server on loopback. The generated API pages hold
+# docstring examples that are not self-contained, so they never run.
+docs-test:
+	uv run --group docs pytest --markdown-docs docs/docs/get-started docs/docs/guides \
+		-o addopts="" -p no:cacheprovider --forked -q --junitxml=docs-snippets-results.xml
+
+sync-docs-pins:
+	$(DOCS_PYTHON) .github/scripts/update_precommit_docs_pins.py
+
 clean:
-	rm -rf .coverage coverage.xml htmlcov dist build .wheelenv *.egg-info pytest-results.xml pytest-integration-results*.xml coverage-integration.xml
+	rm -rf .coverage coverage.xml htmlcov dist build .wheelenv *.egg-info pytest-results.xml pytest-integration-results*.xml coverage-integration.xml docs/build docs/.docusaurus docs/build.log
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type d -name .pytest_cache -exec rm -rf {} +
 	find . -type d -name .ruff_cache -exec rm -rf {} +

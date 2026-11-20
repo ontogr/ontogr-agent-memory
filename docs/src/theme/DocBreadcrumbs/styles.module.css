@@ -1,0 +1,17 @@
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.8rem;
+}
+
+.crumbs {
+  min-width: 0;
+}
+
+.crumbs :global(.breadcrumbsContainer),
+.crumbs nav {
+  margin-bottom: 0;
+}

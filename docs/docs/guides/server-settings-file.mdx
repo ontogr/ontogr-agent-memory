@@ -1,0 +1,62 @@
+---
+title: Server settings file
+description: The per-user server.env file, its allowed keys, and its precedence.
+---
+
+`server.env` holds the settings of the memory server for the current user. The
+host that starts a server does not pass model keys or ontology paths in its
+environment: the server reads them from this file instead.
+
+## Path and creation
+
+The file lives at `server.env` in the data directory. `ontogr-mem doctor`
+prints its path and the names of the keys it currently sets, never their values.
+The data directory depends on the platform:
+
+| Platform | Data directory |
+| --- | --- |
+| Linux | `$XDG_DATA_HOME/ontogr-mem` or `~/.local/share/ontogr-mem` |
+| macOS | `~/Library/Application Support/ontogr-mem` |
+| Windows | `%LOCALAPPDATA%\ontogr-mem` |
+
+Set `MEMORY_DATA_DIR` to move it. The file is created with owner-only
+permissions on POSIX.
+
+## Allowed keys
+
+The file may set model, embedding, ontology, key, port, tenant, and idle
+settings, for example:
+
+```text
+MEMORY_LLM_MODEL=<model name>
+MEMORY_LLM_BASE_URL=<endpoint>
+MEMORY_LLM_API_KEY=<model key>
+MEMORY_MCP_TENANT=my-project
+MEMORY_MCP_ONTOLOGY=/path/to/ontology.yaml
+MEMORY_SERVER_IDLE_MINUTES=30
+```
+
+It refuses `MEMORY_GRAPH_URL`, `MEMORY_STATE_URL`, and `MEMORY_DATA_DIR`. Store
+URLs come from the starter's configuration, not from this file. A command that
+sees one of those keys in the file fails with an error naming the key.
+
+## Precedence
+
+`ontogr-mem server run` loads the file into its own process environment before
+it builds any settings, so a terminal that starts a server by hand cannot
+change those settings. Only values that are not already present are applied.
+An auto-started server gets an allowlisted environment that excludes
+`MEMORY_LLM_*`, `MEMORY_EMBEDDING_*`, and ontology keys. An absent file means the
+defaults. In a container, plain environment variables are used instead.
+
+## Verify the file
+
+```bash
+ontogr-mem doctor
+```
+
+The settings-file line reports whether the file exists and which keys it sets.
+The `/health` endpoint reports a settings fingerprint; a mismatch with the
+client's view warns and never restarts the server. See
+[Set up a model](set-up-a-model.mdx) and
+[The per-user server](../concepts/per-user-server.mdx).

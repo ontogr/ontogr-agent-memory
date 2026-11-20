@@ -1,0 +1,64 @@
+.hero {
+  padding: 4rem 0 3rem;
+  border-bottom: 1px solid var(--ifm-color-emphasis-300);
+  background: var(--ifm-background-surface-color);
+}
+
+.hero h1 {
+  font-size: clamp(2.25rem, 5vw, 3.5rem);
+  letter-spacing: -0.02em;
+  margin-bottom: 1rem;
+}
+
+.pitch {
+  max-width: 48rem;
+  font-size: 1.25rem;
+  line-height: 1.6;
+  color: var(--ifm-color-emphasis-700);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  margin: 2rem 0 1rem;
+}
+
+.facts {
+  color: var(--ifm-color-emphasis-600);
+  font-size: 0.875rem;
+}
+
+.section {
+  padding: 3rem 0;
+}
+
+.paths {
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0 0;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+}
+
+.pathLink {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  height: 100%;
+  padding: 1.25rem;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 0.5rem;
+  text-decoration: none;
+}
+
+.pathLink:hover {
+  border-color: var(--ifm-color-primary);
+  text-decoration: none;
+}
+
+.pathLink span {
+  color: var(--ifm-color-emphasis-700);
+}

@@ -1,0 +1,41 @@
+---
+title: Use Neo4j
+description: Point memory at a Neo4j graph with a selected database.
+---
+
+A Neo4j graph URL uses the `bolt`, `bolt+s`, `bolt+ssc`, `neo4j`, `neo4j+s`, or
+`neo4j+ssc` scheme. The host is required, and a user name is required when a
+password is present.
+
+```bash
+export MEMORY_GRAPH_URL=neo4j://user:password@neo4j.example.com:7687/?database=memory
+```
+
+The `database` query value selects one database; only that key is accepted and
+only one value is allowed. The default is `neo4j`. Percent-encode special
+characters in credentials.
+
+## One embedding space per database
+
+All tenants share one Neo4j database and are separated by a `_tenant` property,
+but vector indexes are shared across tenants in that database. One embedding
+model and dimension must be used for the whole database. Every machine on the
+same store uses the same embedding model; startup fails on a mismatch. To use a
+different model, create a separate database or instance and point a new tenant
+at it. See [Set up a model](set-up-a-model.mdx).
+
+## Verify the connection
+
+Install the driver extra with `uv add "ontogr-mem[neo4j]"` and run:
+
+```bash
+ontogr-mem doctor
+```
+
+The graph identity in the output includes the selected database and no
+credentials. A remote graph requires an explicit tenant other than `default`;
+set `MEMORY_MCP_TENANT` in the environment or in the server settings file.
+`ontogr-mem tenants` lists the tenants the graph reports.
+
+Pool and resilience settings use the `MEMORY_NEO4J_` prefix; see
+[Configuration](../reference/configuration.mdx).

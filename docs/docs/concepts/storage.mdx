@@ -1,0 +1,52 @@
+---
+title: Storage
+description: Which store holds memory, vectors, episodes, and service control data.
+---
+
+Components reach storage through async ports with domain verbs and no raw query
+method. Domain code sees only ports, and each port has a contract suite that
+runs against every live adapter.
+
+| Store | Holds | Backends |
+| --- | --- | --- |
+| Graph store | Episodes with sources and actors, entities, aliases, mentions, observations, fact versions, the temporal ledger, the ontology, and consolidation records. | FalkorDB (default) or Neo4j |
+| Vector store | Embeddings of entity names, fact statements, and episode text, each with a hash of the embedded text. | Graph-native |
+| Relation store | Jobs with their request payloads, operation rows, audit rows, and the erase journal. | SQLite (default) or Postgres |
+
+Memory content lives in the graph and vector stores. The relation store holds
+control data only, never memory text, and has no in-memory backend. A
+deployment that shares state between processes can use FalkorDB for the graph
+and Postgres for the relation store.
+
+## Graph store
+
+One graph holds all component labels for a tenant. FalkorDB uses a graph named
+`m_<tenant>`; Neo4j uses one shared database with `_tenant` on every node and
+edge. Each component declares its labels, indexes, and constraints, and the
+graph store combines them when it opens a tenant. The graph kernel supplies
+connections and tenancy, checks schemas, retries failed calls, trips a circuit
+breaker, and provides a guarded write that writes nothing when its guard fails.
+
+## Vector store
+
+Embeddings are properties on graph objects, keyed by the ids of the objects
+they describe. A vector is replaced only when the hash of its text changes, and
+a registry pins the model for each kind with its dimension and text template. A
+different model on the same tenant raises a space mismatch error. Every backend
+returns a normalized cosine score, and a failed search raises instead of
+returning an empty list.
+
+## Episode store
+
+Raw source text lives on episode nodes in the graph with its format, metadata,
+source system, reference, actor, and content hash. The node also records its
+temporal status and committed hash, which lets startup settle writes a crash
+left pending. The embedding of the episode text goes to the vector store.
+
+## Relation store
+
+Jobs, operation rows with usage and cost, the hash-chained audit log, and the
+erase journal live here. The service does not store users, keys, or grants: a
+caller passes a principal with its grants on each call. SQLite is the default,
+and Postgres serves a deployment that shares state. See
+[Use Postgres for state](../guides/use-postgres-state.mdx).

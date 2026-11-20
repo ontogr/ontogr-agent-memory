@@ -38,6 +38,7 @@ support can open `.claude/skills/<name>/SKILL.md` directly.
 | When you are doing... | Use |
 | --- | --- |
 | Drafting or revising prose, including replies, instruction files, docs, comments, docstrings, commits, and PRs | `writing-plain` plus the relevant task skill |
+| Writing or reviewing user-facing documentation pages under `docs/` | `writing-diataxis-docs` |
 | Adding or changing tests | `writing-tests` |
 | Adding or updating docstrings or comments | `writing-docstrings` |
 | Fixing type-check failures from `ty` | `fixing-ty-errors` |

@@ -1,0 +1,39 @@
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.label {
+  margin-right: 0.25rem;
+  color: var(--ifm-color-content-secondary);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.chip {
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--agrag-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ifm-color-content-secondary);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.chip:hover {
+  background: var(--ifm-color-emphasis-100);
+}
+
+.on {
+  border-color: transparent;
+  background: var(--ifm-menu-color-background-active);
+  color: var(--ifm-color-primary);
+  font-weight: 500;
+}

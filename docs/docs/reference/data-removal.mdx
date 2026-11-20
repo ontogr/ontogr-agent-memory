@@ -1,0 +1,68 @@
+---
+title: Remove stored data
+description: The complete checklist for removing memory, state, server files, and caches.
+---
+
+Memory lives in the stores, not in a client or a plugin. Removing a host may
+leave every stored fact intact. Work through the items that apply to your
+setup; each one is destructive and cannot be undone.
+
+## 1. Stop servers
+
+```bash
+ontogr-mem server stop
+```
+
+Run this on every machine that can reach a shared store. A server lock sees only
+the machine it runs on. Uninstalling a Claude Code plugin deletes
+`${CLAUDE_PLUGIN_DATA}` unless you pass `--keep-data`; memory is not stored
+there.
+
+## 2. Remove tenant data
+
+To remove one tenant's memory, use the interactive clear command. It keeps
+audit rows, operation rows, and erasure rows.
+
+```bash
+ontogr-mem clear --tenant <name>
+```
+
+To remove the whole graph and state store, remove the graph data volume and the
+state file or database. See [Manage tenants](../guides/manage-tenants.mdx).
+
+## 3. Remove local files
+
+Remove the data directory and the cache directory for your platform:
+
+| Platform | Data directory | Cache directory |
+| --- | --- | --- |
+| Linux | `$XDG_DATA_HOME/ontogr-mem` or `~/.local/share/ontogr-mem` | `$XDG_CACHE_HOME/ontogr-mem` or `~/.cache/ontogr-mem` |
+| macOS | `~/Library/Application Support/ontogr-mem` | `~/Library/Caches/ontogr-mem` |
+| Windows | `%LOCALAPPDATA%\ontogr-mem` | `%LOCALAPPDATA%\ontogr-mem\cache` |
+
+The data directory holds `server.lock`, `server.token`, `server.json`,
+`server.log`, `server.env`, and the SQLite state file with its `-wal`, `-shm`,
+and `.lock` files. The model cache is in the `fastembed` subdirectory of the
+cache directory, or at `FASTEMBED_CACHE_PATH` when set. Run
+`uv cache clean ontogr-mem` if you installed through `uvx`.
+
+## 4. Remove containers and volumes
+
+For the Compose stack:
+
+```bash
+docker compose down
+docker volume rm ontogr-mem-falkordb-data ontogr-mem-state ontogr-mem-models
+```
+
+Remove the host configuration block for each host you used: the
+`[mcp_servers.ontogr-memory]` block in Codex, the `ontogr-memory` entry in
+Cursor's `mcpServers` or OpenCode's `mcp.servers`, or the plugin and MCP entry
+in Claude Code. Remove the installed package with `uv remove ontogr-mem` or
+`uv tool uninstall ontogr-mem`.
+
+## What removal does not change
+
+Audit rows, operation rows, and erasure rows remain after a `clear` or a forget,
+because they record the operation. They hold ids and counts, never memory text.
+Removing the state file or database removes those records as well.

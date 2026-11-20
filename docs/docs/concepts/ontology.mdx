@@ -1,0 +1,52 @@
+---
+title: The ontology
+description: The entity and relation types a tenant allows and how their ids define identity.
+---
+
+Each tenant has a catalog of entity types and relation types with aliases.
+Stable type ids keep labels from drifting, so one relation cannot appear under
+many names with incomparable facts.
+
+## Types and ids
+
+Type ids are stable integers from `ontogr_mem/ontology/default.yaml`: a new
+tenant starts with ten entity types and 31 relation types. A type can be
+deprecated or merged, but old ids remain resolvable. A catalog change is a
+change set applied by one pure function and committed with a compare-and-swap
+against the current head, so a stale head fails instead of overwriting another
+change.
+
+Relation kinds control cardinality: `single` keeps one value per subject,
+`many` allows several, and `judged` follows the same write policy as `many`.
+A relation type can declare source and target patterns; the patterns appear in
+the prompt and are enforced in code.
+
+## Unknown types
+
+A label the catalog does not hold is handled by kind:
+
+| Kind | Behavior |
+| --- | --- |
+| Entity type | The entity is kept with the Unknown type. |
+| Relation type | The fact is kept as an unplaced fact and counted in `unplaced`. |
+
+Lookups expose `type_label` with the catalog label and `proposed_type` with the
+model's name when an entity uses the Unknown type. The proposed name does not
+replace the catalog label. Search type filters include descendants and resolve
+old labels and aliases through the tenant's ontology; an unknown label raises
+`invalid_argument`.
+
+## Identity and compatibility
+
+Ontology type ids define which entities can match or merge. Resolution follows
+ontology type merges and treats sibling or unrelated types as distinct.
+Identity attributes declared on a type are inherited from parent types. Shared
+identity values can confirm a match, and conflicting values prevent a merge.
+
+Custom resolver integrations must provide the active ontology's `TypeLinks`
+when they call `resolve`, `deduplicate`, or `merge`. Use `resolver.linked(links)`
+to bind one ontology snapshot for consolidation operations, and include
+`ontology_type_id` on entity records; use `0` for the Unknown type.
+
+To declare an ontology for a tenant, follow
+[Declare an ontology](../guides/declare-an-ontology.mdx).
