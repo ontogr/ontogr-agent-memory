@@ -25,15 +25,10 @@ jobs:
         with:
           enable-cache: false
 
-      - name: Check the tag matches the package version
+      - name: Check distribution versions and files
         env:
           TAG: ${{ github.ref_name }}
-        run: |
-          version=$(uv run --no-project python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
-          if [ "${TAG#v}" != "$version" ]; then
-            echo "::error::Tag $TAG does not match the package version $version in pyproject.toml"
-            exit 1
-          fi
+        run: uv run --no-project python scripts/check_distribution.py
 
       - name: Build distributions
         run: |
@@ -51,3 +46,52 @@ jobs:
 
       - name: Publish on PyPI
         run: uv publish --trusted-publishing always
+
+  publish-image:
+    name: Publish container image
+    needs: release-on-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+      - uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check whether this is a final release
+        id: tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo 'final=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'final=false' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ghcr.io/ontogr/ontogr-agent-memory
+          flavor: latest=false
+          tags: |
+            type=match,pattern=v(.*),group=1
+            type=raw,value=latest,enable=${{ steps.tag.outputs.final == 'true' }}
+      - name: Build and push multi-architecture image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: mode=max
+          sbom: true
