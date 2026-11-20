@@ -10,7 +10,7 @@ description: Saves durable facts, decisions and preferences as sourced facts or 
 - Use `add_memory` when it is listed. Pass plain text in `content` so the tool can extract facts.
 - If `add_memory` is not listed, use `write_facts` when it is listed. Pass the exact source text and the facts you extracted from it.
 - If neither tool is listed, say that saving is not enabled on this connection.
-- Use `forget_memory` only when it is listed and the user asks to withdraw a known fact. It closes the fact's validity and keeps its history.
+- Use `forget_memory` only when it is listed and the user asks to withdraw a known fact. It closes the fact's validity and keeps its history. It does not erase the source or every copy of the data.
 
 ## Prepare a sourced write
 
