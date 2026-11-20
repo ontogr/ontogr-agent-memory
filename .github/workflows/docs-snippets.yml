@@ -41,8 +41,6 @@ jobs:
     timeout-minutes: 30
     env:
       UV_PYTHON: "3.12"
-      DOCS_TEST_DATA_ROOT: ${{ runner.temp }}/ontogr-docs-data
-      FASTEMBED_CACHE_PATH: ${{ runner.temp }}/fastembed-cache
     services:
       falkordb:
         image: falkordb/falkordb:v4.22.2
@@ -71,6 +69,9 @@ jobs:
           path: ${{ runner.temp }}/fastembed-cache
           key: fastembed-${{ hashFiles('uv.lock') }}
       - name: Run docs code blocks
+        env:
+          DOCS_TEST_DATA_ROOT: ${{ runner.temp }}/ontogr-docs-data
+          FASTEMBED_CACHE_PATH: ${{ runner.temp }}/fastembed-cache
         run: make docs-test
       - name: Stop every page server
         if: always()

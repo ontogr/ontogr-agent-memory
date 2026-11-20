@@ -62,9 +62,17 @@ def docs_page_store(
         return
     environment = os.environ.copy()
     environment["MEMORY_DATA_DIR"] = str(data_directory)
-    subprocess.run(
+    result = subprocess.run(
         [sys.executable, "-m", "ontogr_mem", "server", "stop"],
         env=environment,
         capture_output=True,
+        text=True,
         check=False,
     )
+    if result.returncode:
+        detail = result.stderr.strip() or result.stdout.strip()
+        print(
+            f"server stop failed for {page} with exit code {result.returncode}"
+            + (f": {detail}" if detail else ""),
+            file=sys.stderr,
+        )
