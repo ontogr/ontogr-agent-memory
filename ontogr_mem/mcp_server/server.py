@@ -41,6 +41,7 @@ def build_server(
         "ontogr-memory", instructions=INSTRUCTIONS, mask_error_details=True, auth=auth
     )
     enabled = set(server_settings.tools)
+
     def register(name: str, method: str, tags: set[str]) -> None:
         memory = memory_for_request(None)
 
