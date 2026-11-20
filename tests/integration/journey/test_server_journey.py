@@ -356,9 +356,11 @@ class TestServerJourney:
             )
             assert fact_id in str(search.structured_content)
 
-        with urllib.request.urlopen(
-            "http://127.0.0.1:18000/health", timeout=5
-        ) as response:
+        health_request = urllib.request.Request(
+            "http://127.0.0.1:18000/health",
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        with urllib.request.urlopen(health_request, timeout=5) as response:
             assert response.status == 200
 
     def test_server_recovers_after_crash(
