@@ -1,4 +1,4 @@
-.PHONY: sync test test-integration services-up services-down test-all cov-report cov lint-typing lint-style lint-fmt lint-check lint-typos lint-actions lint-all security-bandit security-audit security build wheel-test changelog clean help
+.PHONY: sync test test-integration services-up services-down test-all cov-report cov lint-typing lint-style lint-fmt lint-check lint-typos lint-actions lint-all security-bandit security-audit security build wheel-test image-build image-up image-down check-distribution changelog clean help
 
 export UV_LOCKED = 1
 UV_SYNC_ARGS ?= --no-extra fastembed-gpu
@@ -25,6 +25,10 @@ help:
 	@echo "  make security         - Run all security scans"
 	@echo "  make build            - Build sdist and wheel into dist/"
 	@echo "  make wheel-test       - Install the built wheel in a clean env and import it"
+	@echo "  make image-build      - Build the local container image"
+	@echo "  make image-up         - Start the image and FalkorDB for a Journey run"
+	@echo "  make image-down       - Stop the image and remove test volumes"
+	@echo "  make check-distribution - Check release and integration pins"
 	@echo "  make changelog        - Add a release section to CHANGELOG.md (VERSION=x.y.z)"
 	@echo "  make clean            - Clean build artifacts and cache"
 
@@ -105,6 +109,20 @@ wheel-test: build
 	uv pip install --python .wheelenv/bin/python dist/*.whl
 	cd /tmp && "$(CURDIR)/.wheelenv/bin/python" -c "import ontogr_mem, ontogr_mem.consolidation, ontogr_mem.data_models, ontogr_mem.entity_extraction, ontogr_mem.fact_extraction, ontogr_mem.graphstore, ontogr_mem.ingestion, ontogr_mem.llm, ontogr_mem.observability, ontogr_mem.ontology, ontogr_mem.paths, ontogr_mem.relational_store, ontogr_mem.requirements, ontogr_mem.resolution, ontogr_mem.resilience, ontogr_mem.retrieval, ontogr_mem.server, ontogr_mem.service, ontogr_mem.store_urls, ontogr_mem.temporal, ontogr_mem.vectorstore; from ontogr_mem.ontology import default_ontology; default_ontology(); print(ontogr_mem.__version__)"
 	cd /tmp && "$(CURDIR)/.wheelenv/bin/python" -c "from ontogr_mem.mcp_server.skills import SKILLS_ROOT; names = ['memory-write', 'memory-recall']; assert all((SKILLS_ROOT / name / 'SKILL.md').read_text(encoding='utf-8').strip() for name in names), 'packaged skill file is missing or empty'; print('packaged skills ok:', ', '.join(names))"
+
+IMAGE ?= ontogr-agent-memory:local
+
+image-build:
+	docker build --tag $(IMAGE) .
+
+image-up:
+	ONTOGR_MEM_IMAGE=$(IMAGE) docker compose -f tests/integration/compose.yaml -f tests/integration/compose.image.yaml up -d --wait falkordb mcp
+
+image-down:
+	ONTOGR_MEM_IMAGE=$(IMAGE) docker compose -f tests/integration/compose.yaml -f tests/integration/compose.image.yaml down -v
+
+check-distribution:
+	uv run --no-project python scripts/check_distribution.py
 
 changelog:
 	@test -n "$(VERSION)" || { echo "Usage: make changelog VERSION=x.y.z"; exit 1; }

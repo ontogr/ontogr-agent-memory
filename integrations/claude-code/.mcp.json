@@ -1,0 +1,1 @@
+{"mcpServers":{"ontogr-memory":{"command":"uvx","args":["--from","ontogr-mem[local,neo4j,postgres]==0.0.1","ontogr-mem","mcp"],"env":{"MEMORY_MCP_TENANT":"${user_config.tenant}"}}}}

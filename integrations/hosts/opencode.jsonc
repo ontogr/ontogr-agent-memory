@@ -1,0 +1,11 @@
+{
+  "mcp": {
+    "servers": {
+      "ontogr-memory": {
+        "type": "local",
+        "command": ["uvx", "--from", "ontogr-mem[local,neo4j,postgres]==0.0.1", "ontogr-mem", "mcp"],
+        "timeout": { "startup": 120000 }
+      }
+    }
+  }
+}

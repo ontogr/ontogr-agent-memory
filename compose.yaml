@@ -5,7 +5,7 @@ services:
       BROWSER: "0"
     ports: ["127.0.0.1:6379:6379"]
     volumes:
-      - falkordb-data:/var/lib/falkordb/data
+      - ontogr-mem-falkordb-data:/var/lib/falkordb/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 3s
@@ -13,15 +13,18 @@ services:
       retries: 20
 
   mcp:
-    build: .
+    image: ghcr.io/ontogr/ontogr-agent-memory:${ONTOGR_MEM_VERSION:-0.0.1}
     depends_on:
       falkordb:
         condition: service_healthy
     ports:
       - "127.0.0.1:8000:8000"
+    # The graph host is not loopback, so the server needs a named tenant.
+    # Set MEMORY_MCP_TENANT when you override MEMORY_GRAPH_URL.
     environment:
       MEMORY_GRAPH_URL: redis://falkordb:6379
       MEMORY_STATE_URL: sqlite:////data/state/agent_memory_state.sqlite3
+      MEMORY_DATA_DIR: /data/state
       FASTEMBED_CACHE_PATH: /data/models
       MEMORY_EMBEDDING_PROVIDER: null
       MEMORY_EMBEDDING_MODEL: null
@@ -39,11 +42,14 @@ services:
       MEMORY_LLM_BASE_URL: ${MEMORY_LLM_BASE_URL:-}
       MEMORY_LLM_API_KEY: ${MEMORY_LLM_API_KEY:-}
     volumes:
-      - mcp-state:/data/state
-      - mcp-model-cache:/data/models
+      - ontogr-mem-state:/data/state
+      - ontogr-mem-models:/data/models
     stop_grace_period: 5m
 
 volumes:
-  falkordb-data:
-  mcp-state:
-  mcp-model-cache:
+  ontogr-mem-falkordb-data:
+    name: ontogr-mem-falkordb-data
+  ontogr-mem-state:
+    name: ontogr-mem-state
+  ontogr-mem-models:
+    name: ontogr-mem-models

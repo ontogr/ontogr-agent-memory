@@ -151,10 +151,22 @@ jobs:
       - name: Start the test services
         if: matrix.suite.services != ''
         run: make services-up SERVICES="$SERVICES"
+      - name: Generate container API key
+        if: matrix.suite.name == 'journey'
+        run: echo "MEMORY_MCP_API_KEY=$(python -c 'import secrets; print(secrets.token_urlsafe(32))')" >> "$GITHUB_ENV"
+      - name: Build the container image
+        if: matrix.suite.name == 'journey'
+        run: make image-build IMAGE=ontogr-agent-memory:ci
+      - name: Start the container image
+        if: matrix.suite.name == 'journey'
+        run: make image-up IMAGE=ontogr-agent-memory:ci
       - name: Run integration tests
         # Stops a hung run early enough for the service logs below to upload.
         timeout-minutes: 25
         run: make test-integration INTEGRATION_PATHS="$INTEGRATION_PATHS" INTEGRATION_WORKERS="$INTEGRATION_WORKERS"
+      - name: Stop the container image
+        if: ${{ always() && matrix.suite.name == 'journey' }}
+        run: make image-down IMAGE=ontogr-agent-memory:ci
       - name: Show service logs
         if: failure() && matrix.suite.services != ''
         run: |

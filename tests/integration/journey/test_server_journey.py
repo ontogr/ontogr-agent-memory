@@ -9,6 +9,7 @@ import secrets
 import select
 import subprocess
 import time
+import urllib.request
 from collections.abc import Generator
 from pathlib import Path
 
@@ -298,6 +299,68 @@ class TestServerJourney:
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_path.write_text(json.dumps(artifact, indent=2) + "\n")
         _run_data_command_journey(installed_cli, journey_env)
+
+    async def test_stdio_front_uses_container_server(
+        self, installed_cli: Path, journey_env: dict[str, str]
+    ) -> None:
+        """The image server shares facts across stdio clients and stays healthy."""
+        server_url = "http://127.0.0.1:18000/mcp"
+        api_key = os.environ["MEMORY_MCP_API_KEY"]
+        environment = {
+            **journey_env,
+            "MEMORY_MCP_SERVER_URL": server_url,
+            "MEMORY_MCP_API_KEY": api_key,
+            "MEMORY_MCP_TENANT": "journey_container",
+        }
+        transport = StdioTransport(
+            command=str(installed_cli), args=["mcp"], env=environment
+        )
+        async with Client(transport) as client:
+            source = "Rina works at the Container journey team."
+            receipt = await client.call_tool(
+                "write_facts",
+                {
+                    "source_text": source,
+                    "facts": [
+                        {
+                            "subject": "Rina",
+                            "subject_type": "Person",
+                            "relation": "works_at",
+                            "object": "Container journey team",
+                            "object_type": "Organization",
+                            "evidence_quote": source,
+                        }
+                    ],
+                },
+            )
+            job_id = receipt.structured_content["job_id"]
+            deadline = time.monotonic() + 60
+            while True:
+                job_result = await client.call_tool("get_job", {"job_id": job_id})
+                job = job_result.structured_content
+                if job["status"] in {"done", "failed", "cancelled"}:
+                    break
+                if time.monotonic() >= deadline:
+                    pytest.fail(f"Job {job_id} did not finish within 60 seconds")
+                await asyncio.sleep(0.25)
+            assert job["status"] == "done", job
+            fact_id = job["result"]["fact_ids"][0]
+
+        second_transport = StdioTransport(
+            command=str(installed_cli), args=["mcp"], env=environment
+        )
+        async with Client(second_transport) as client:
+            search = await client.call_tool(
+                "search_memory", {"query": "Container journey team"}
+            )
+            assert fact_id in str(search.structured_content)
+
+        health_request = urllib.request.Request(
+            "http://127.0.0.1:18000/health",
+            headers={"Authorization": f"Bearer {api_key}"},
+        )
+        with urllib.request.urlopen(health_request, timeout=5) as response:
+            assert response.status == 200
 
     def test_server_recovers_after_crash(
         self, installed_cli: Path, journey_env: dict[str, str]

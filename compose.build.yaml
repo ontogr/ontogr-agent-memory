@@ -1,0 +1,4 @@
+services:
+  mcp:
+    build: .
+    image: ontogr-agent-memory:local

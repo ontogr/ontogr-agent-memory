@@ -462,7 +462,7 @@ uv run ontogr-mem mcp
 # Or, in a separate terminal:
 uv run ontogr-mem mcp --transport http --host 127.0.0.1 --port 8000
 # Container alternative, with state and model-cache volumes:
-docker compose up -d --build mcp
+docker compose -f compose.yaml -f compose.build.yaml up -d --build mcp
 ```
 
 `docker compose up -d --wait falkordb` runs from a clone or a copy of `compose.yaml`, as the earlier sections explain. The container serves HTTP at `http://127.0.0.1:8000/mcp`, and Compose publishes that port on host loopback only. The image sets `MEMORY_MCP_TRANSPORT`, `MEMORY_MCP_HOST` and `MEMORY_MCP_PORT` to `http`, `0.0.0.0` and `8000`, and environment variables or Compose can override them. The image binds all container interfaces and the server only warns when no key is set, so set `MEMORY_MCP_API_KEY` before publishing the port beyond host loopback or sharing the container network.
