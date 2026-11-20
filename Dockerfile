@@ -20,6 +20,6 @@ ENV PATH="/app/.venv/bin:$PATH" \
     MEMORY_MCP_HOST=0.0.0.0 \
     MEMORY_MCP_PORT=8000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=6 \
-    CMD ["/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).close()"]
+    CMD ["/app/.venv/bin/python", "-c", "import os, urllib.request; request = urllib.request.Request('http://127.0.0.1:8000/health', headers={'Authorization': f\"Bearer {os.environ['MEMORY_MCP_API_KEY']}\"}); urllib.request.urlopen(request, timeout=4).close()"]
 ENTRYPOINT ["ontogr-mem"]
 CMD ["server", "run"]
