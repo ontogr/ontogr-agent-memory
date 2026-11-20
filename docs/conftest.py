@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -26,8 +27,8 @@ def _data_root() -> tuple[Path, tempfile.TemporaryDirectory[str] | None]:
     return Path(temporary.name), temporary
 
 
-DATA_ROOT, _TEMP_DATA_ROOT = _data_root()
 # Keep the temporary directory referenced so cleanup runs when the parent exits.
+DATA_ROOT, _TEMP_DATA_ROOT = _data_root()
 _last_item_by_page: dict[str, pytest.Item] = {}
 
 
@@ -47,7 +48,7 @@ def pytest_collection_modifyitems(
 @pytest.fixture(autouse=True)
 def docs_page_store(
     request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
-) -> None:
+) -> Iterator[None]:
     """Give a page its own data directory and stop its server after the page."""
     path = getattr(request.node, "path", None)
     if path is None or path.suffix not in {".md", ".mdx"}:
