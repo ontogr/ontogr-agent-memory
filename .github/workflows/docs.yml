@@ -63,7 +63,13 @@ jobs:
       - run: make sync
       - run: make docs-generate
       - name: Fail when generated docs changed
-        run: git diff --exit-code -- docs/docs/api docs/docs/reference/configuration.mdx
+        run: |
+          git diff --exit-code -- docs/docs/api docs/docs/reference/configuration.mdx
+          untracked=$(git status --porcelain --untracked-files=all -- docs/docs/api)
+          if [ -n "$untracked" ]; then
+            echo "Untracked generated API pages: $untracked"
+            exit 1
+          fi
       - name: Check host snippet copies and distribution pins
         run: make check-distribution
 

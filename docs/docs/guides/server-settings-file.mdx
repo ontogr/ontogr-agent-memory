@@ -43,11 +43,12 @@ sees one of those keys in the file fails with an error naming the key.
 ## Precedence
 
 `ontogr-mem server run` loads the file into its own process environment before
-it builds any settings, so a terminal that starts a server by hand cannot
-change those settings. Only values that are not already present are applied.
-An auto-started server gets an allowlisted environment that excludes
-`MEMORY_LLM_*`, `MEMORY_EMBEDDING_*`, and ontology keys. An absent file means the
-defaults. In a container, plain environment variables are used instead.
+it builds any settings. The loader applies only keys that are not already set,
+so an environment variable exported in the terminal wins over the same key in
+`server.env`. An auto-started server gets an allowlisted environment that
+excludes `MEMORY_LLM_*`, `MEMORY_EMBEDDING_*`, and ontology keys, so those keys
+come from the file. An absent file means the defaults. In a container, plain
+environment variables are used instead.
 
 ## Verify the file
 

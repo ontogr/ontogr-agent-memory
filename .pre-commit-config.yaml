@@ -79,7 +79,7 @@ repos:
         pass_filenames: false
       - id: docs-api
         name: docs-api (griffe2md)
-        entry: "bash -c 'DOCS_GRIFFE2MD=griffe2md DOCS_PYTHON=python make docs-api'"
+        entry: "bash -c 'PYTHONPATH=. DOCS_GRIFFE2MD=griffe2md DOCS_PYTHON=python make docs-api'"
         language: python
         additional_dependencies: ["griffe2md==1.5.1"]
         pass_filenames: false

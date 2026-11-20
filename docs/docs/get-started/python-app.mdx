@@ -51,6 +51,7 @@ async def main() -> None:
         receipt = await memory.write_facts(source, [fact])
         job = await memory.get_job(receipt.job_id)
         print(job.status)
+        await memory.drain()
 
 
 asyncio.run(main())
