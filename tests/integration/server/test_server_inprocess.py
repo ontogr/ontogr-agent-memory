@@ -23,6 +23,7 @@ from pydantic import SecretStr
 from ontogr_mem.mcp_server.settings import McpSettings
 from ontogr_mem.paths import data_directory
 from ontogr_mem.server.app import serve
+from ontogr_mem.server.entry import ensure_server
 from ontogr_mem.server.settings import ServerSettings
 from tests.support.falkordb import falkordb_test_url
 
@@ -180,6 +181,23 @@ class TestInProcessServer:
                 assert {"tenant", "version", "entity_types", "relation_types"} <= set(
                     ontology
                 )
+
+    async def test_explicit_mcp_url_returns_server_endpoint(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """An explicit MCP URL resolves to the server base URL."""
+        monkeypatch.chdir(tmp_path)
+        async with _serving() as (_task, _info, base_url):
+            monkeypatch.setenv("MEMORY_MCP_SERVER_URL", f"{base_url}/mcp")
+            monkeypatch.setenv("MEMORY_MCP_API_KEY", TEST_KEY)
+
+            endpoint = await ensure_server(
+                graph_url=falkordb_test_url(),
+                state_url=f"sqlite:///{tmp_path / 'state.sqlite3'}",
+            )
+
+            assert endpoint.url == base_url
+            assert endpoint.token == TEST_KEY
 
     async def test_non_loopback_without_key_refuses_then_restarts(self) -> None:
         """A keyless non-loopback bind refuses and frees locks for a later start."""
