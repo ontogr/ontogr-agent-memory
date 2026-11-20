@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from ontogr_mem.errors import MissingExtraError
 from ontogr_mem.paths import model_cache_directory
 from ontogr_mem.vectorstore.builtin import local as local_module
 from ontogr_mem.vectorstore.builtin.formatting import ENCODING_POLICIES
@@ -23,7 +24,6 @@ from ontogr_mem.vectorstore.errors import (
 
 
 SETUP_HINTS = (
-    "ontogr-mem[fastembed]",
     "MEMORY_EMBEDDING_MODEL",
     "MEMORY_EMBEDDING_BASE_URL",
 )
@@ -1257,17 +1257,17 @@ class TestLocalEmbedder:
         assert len(results) == 1
         assert results[0][:2] == pytest.approx([0.6, 0.8])
 
-    async def test_open_raises_unavailable_with_setup_hint_without_fastembed(
+    async def test_open_raises_missing_extra_without_fastembed(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A missing fastembed package makes `open` raise the setup error."""
+        """A missing fastembed package surfaces as the missing-extra error."""
         # A None entry makes the import fail the same way a missing package does.
         monkeypatch.setitem(sys.modules, "fastembed", None)
 
-        with pytest.raises(EmbedderUnavailableError) as excinfo:
+        with pytest.raises(MissingExtraError) as excinfo:
             await LocalEmbedder.open()
 
-        assert_setup_hint(excinfo.value)
+        assert excinfo.value.extras == ("fastembed",)
 
     async def test_open_raises_unavailable_when_the_model_cannot_load(
         self, monkeypatch: pytest.MonkeyPatch

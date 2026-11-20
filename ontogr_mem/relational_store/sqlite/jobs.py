@@ -3,7 +3,8 @@
 import asyncio
 import sqlite3
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import AsyncGenerator, Callable, Sequence
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import TypeVar
 
@@ -113,7 +114,7 @@ class SqliteJobStore:
 
         return await asyncio.to_thread(lambda: self._locked(get))
 
-    async def save_job(self, job: Job) -> None:
+    async def save_job(self, job: Job) -> bool:
         """Replace an existing record without storing its replay response flag."""
         values = _values(job)
 
@@ -129,6 +130,7 @@ class SqliteJobStore:
                 raise KeyError(job.job_id)
 
         await asyncio.to_thread(lambda: self._locked(save))
+        return True
 
     async def set_job_progress(self, job_id: str, progress: JobProgress) -> None:
         """Persist monotonic progress inside a serialized SQLite transaction."""
@@ -151,11 +153,18 @@ class SqliteJobStore:
 
         await asyncio.to_thread(lambda: self._locked(update))
 
-    async def requeue_running(self) -> list[Job]:
-        """Requeue interrupted work and return queued jobs by creation time."""
+    async def requeue_expired(self, now: datetime) -> None:
+        """Requeue every running job; SQLite stores have one process."""
 
-        def requeue(db: sqlite3.Connection) -> list[Job]:
+        def requeue(db: sqlite3.Connection) -> None:
             db.execute("UPDATE jobs SET status = 'queued' WHERE status = 'running'")
+
+        await asyncio.to_thread(lambda: self._locked(requeue))
+
+    async def queued_jobs(self) -> list[Job]:
+        """Return queued jobs oldest first."""
+
+        def queued(db: sqlite3.Connection) -> list[Job]:
             return [
                 job_from_row(row)
                 for row in db.execute(
@@ -164,7 +173,69 @@ class SqliteJobStore:
                 )
             ]
 
-        return await asyncio.to_thread(lambda: self._locked(requeue))
+        return await asyncio.to_thread(lambda: self._locked(queued))
+
+    async def claim_next(
+        self, tenant_id: str, now: datetime, can_run: Callable[[Job], bool]
+    ) -> Job | None:
+        """Mark the oldest runnable tenant job as running."""
+
+        def claim(db: sqlite3.Connection) -> Job | None:
+            db.execute("BEGIN IMMEDIATE")
+            rows = db.execute(
+                "SELECT * FROM jobs WHERE tenant_id = ? AND status = 'queued' "
+                "ORDER BY created_at, seq",
+                (tenant_id,),
+            ).fetchall()
+            for row in rows:
+                job = job_from_row(row)
+                if not can_run(job):
+                    continue
+                db.execute(
+                    "UPDATE jobs SET status = 'running' WHERE job_id = ?",
+                    (job.job_id,),
+                )
+                return job_from_row(
+                    db.execute(
+                        "SELECT * FROM jobs WHERE job_id = ?", (job.job_id,)
+                    ).fetchone()
+                )
+            return None
+
+        return await asyncio.to_thread(lambda: self._locked(claim))
+
+    async def tenant_has_live_lease(self, tenant_id: str, now: datetime) -> bool:
+        """Report that SQLite jobs do not have leases."""
+        return False
+
+    async def live_lease_expires_at(
+        self, tenant_id: str, now: datetime
+    ) -> datetime | None:
+        """Return no expiry because SQLite jobs do not have leases."""
+        return None
+
+    @asynccontextmanager
+    async def tenant_lock(self, tenant_id: str) -> AsyncGenerator[None, None]:
+        """Yield without locking the single-process store."""
+        yield
+
+    async def renew_leases(self, now: datetime) -> None:
+        """Keep the SQLite adapter's no-lease behavior."""
+        return
+
+    async def release_leases(self) -> None:
+        """Keep the SQLite adapter's no-lease behavior."""
+        return
+
+    async def release_job(self, job_id: str) -> None:
+        """Keep the SQLite adapter's no-lease behavior."""
+        return
+
+    async def claim_recoverable(
+        self, tenant: str | None, now: datetime
+    ) -> list[ErasureRecord]:
+        """Return all running erase rows for single-process recovery."""
+        return await self.running(tenant)
 
     async def count_jobs(
         self, tenant_ids: Sequence[str], statuses: Sequence[JobState]

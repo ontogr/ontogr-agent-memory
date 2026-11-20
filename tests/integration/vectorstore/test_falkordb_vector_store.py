@@ -24,7 +24,7 @@ from tests.contracts.vector_store import (
     node_item,
     seed_edges,
 )
-from tests.support.embedder import MockEmbedder, gateway
+from tests.support.embedder import MockEmbedder, embedder_source
 from tests.support.tenants import new_tenant
 from tests.support.vector_graph import seed_graph
 from tests.support.vectors import (
@@ -66,14 +66,14 @@ class TestFalkorDBVectorStore(GraphVectorStoreContract):
             handle = await falkordb_store.open(new_tenant(), [VECTOR])
             tenants.append(handle.tenant)
             backend = FalkorDBVectorBackend(falkordb_store, handle)
-            store = VectorStore(backend, gateway(chosen))
+            store = VectorStore(backend, embedder_source(chosen))
             runner = falkordb_store.runner(handle)
 
             async def seed(kind: VectorKind, ids, **props: object) -> None:
                 await seed_graph(falkordb_store, handle, kind, ids, **props)
 
             def reopen(other: MockEmbedder) -> VectorStore:
-                return VectorStore(backend, gateway(other))
+                return VectorStore(backend, embedder_source(other))
 
             async def drop_index(kind: VectorKind) -> None:
                 await runner.run(

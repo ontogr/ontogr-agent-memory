@@ -439,7 +439,7 @@ class _FailingReranker:
 
 class _FailingVectors:
     def __init__(self, vectors) -> None:
-        self.gateway = vectors.gateway
+        self.embedding_gateway = vectors.embedding_gateway
 
     async def search(self, *args, **kwargs):
         raise VectorStoreError("vector search unavailable")
@@ -494,7 +494,7 @@ class _StaleEpisodeVectors:
     """Inject a stale hit even when a graph backend cascades vector deletion."""
 
     def __init__(self, vectors) -> None:
-        self.gateway = vectors.gateway
+        self.embedding_gateway = vectors.embedding_gateway
         self.vectors = vectors
 
     async def search(self, kind, vector, *, k, filters=None, min_score=None):

@@ -108,6 +108,10 @@ class GraphStore(Protocol):
         """Delete the tenant's graph."""
         ...
 
+    async def list_tenants(self) -> list[str]:
+        """Return tenant ids currently represented in the graph store."""
+        ...
+
     async def close(self) -> None:
         """Release resources."""
         ...

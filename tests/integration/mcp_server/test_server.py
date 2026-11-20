@@ -35,6 +35,7 @@ WITHOUT_ADD_MEMORY = [
     "get_entity",
     "list_entities",
     "get_ontology",
+    "stale_episodes",
     "get_job",
     "write_facts",
     "forget_memory",
@@ -46,6 +47,7 @@ WITH_ADD_MEMORY = [
     "get_entity",
     "list_entities",
     "get_ontology",
+    "stale_episodes",
     "get_job",
     "add_memory",
     "write_facts",
@@ -94,7 +96,7 @@ async def open_client(
         embedder=MockEmbedder(),
     ) as memory:
         settings = McpSettings(_env_file=None, api_key=None, skills_extension=False)
-        server = build_server(memory, settings=settings)
+        server = build_server(lambda request_tenant: memory, settings=settings)
         async with Client(server) as client:
             yield client
 

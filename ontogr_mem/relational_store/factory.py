@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from ontogr_mem.data_models.clock import Clock
 from ontogr_mem.paths import ensure_directory
 from ontogr_mem.relational_store.config import StateSettings
 from ontogr_mem.relational_store.engine import pg_pool
@@ -23,14 +24,18 @@ def _sqlite_store(target: SqliteTarget) -> StateStore:
     return SqliteJobStore(str(path))
 
 
-async def _postgres_store(target: PostgresTarget) -> StateStore:
+async def _postgres_store(
+    target: PostgresTarget, clock: Clock, *, owner_id: str, lease_seconds: float
+) -> StateStore:
     """Open pooled job and erasure state with its schema ensured."""
     pool = await pg_pool(target.dsn.get_secret_value())
     await ensure_postgres_schema(pool)
-    return PostgresJobStore(pool)
+    return PostgresJobStore(pool, clock, owner_id=owner_id, lease_seconds=lease_seconds)
 
 
-async def open_state_store(settings: StateSettings) -> StateStore:
+async def open_state_store(
+    settings: StateSettings, *, owner_id: str, clock: Clock
+) -> StateStore:
     """Open the durable backend selected by the configured state URL.
 
     A SQLite URL opens a file at the configured path. A Postgres URL takes a
@@ -40,6 +45,8 @@ async def open_state_store(settings: StateSettings) -> StateStore:
 
     Args:
         settings: Configuration carrying the state store URL.
+        owner_id: Identifier shared by stores owned by one service process.
+        clock: Service clock used for lease checks.
 
     Returns:
         An open store that the caller must close.
@@ -49,5 +56,10 @@ async def open_state_store(settings: StateSettings) -> StateStore:
     """
     target = parse_state_url(settings.url.get_secret_value())
     if isinstance(target, PostgresTarget):
-        return await _postgres_store(target)
+        return await _postgres_store(
+            target,
+            clock,
+            owner_id=owner_id,
+            lease_seconds=settings.lease_seconds,
+        )
     return _sqlite_store(target)

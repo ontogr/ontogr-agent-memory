@@ -9,3 +9,7 @@ class IdempotencyConflictError(StoreError):
 
 class UnknownJobOpError(AgentMemoryError, ValueError):
     """A job names an operation that has no handler."""
+
+
+class LeaseLostError(StoreError):
+    """A write was refused because this process no longer owns the lease."""

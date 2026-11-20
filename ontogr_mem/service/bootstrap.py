@@ -4,12 +4,14 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ontogr_mem.combined_extraction.settings import ExtractionSettings
 from ontogr_mem.data_models.clock import Clock, SystemClock
+from ontogr_mem.errors import StoreInUseError
 from ontogr_mem.graphstore.protocol import GraphStore
 from ontogr_mem.llm import RoleModels, build_models
 from ontogr_mem.observability import NoOpTracer, Tracer
@@ -36,6 +38,7 @@ from ontogr_mem.relational_store.sqlite.audit import SqliteAuditLog
 from ontogr_mem.resolution.config import ResolverSettings
 from ontogr_mem.resolution.policy import ResolutionPolicy
 from ontogr_mem.retrieval.settings import RetrievalSettings
+from ontogr_mem.server.lock import ServerLock
 from ontogr_mem.service.access.audit_sink import AuditSink, ChainedAuditSink
 from ontogr_mem.service.access.authz import Authorizer
 from ontogr_mem.service.dependencies import ServiceDeps
@@ -56,7 +59,8 @@ from ontogr_mem.store_urls import (
 )
 from ontogr_mem.temporal.settings import ClosureSettings
 from ontogr_mem.tenant_stores import TenantStores
-from ontogr_mem.vectorstore import Embedder
+from ontogr_mem.vectorstore.errors import EmbedderUnavailableError
+from ontogr_mem.vectorstore.source import EmbedderSource
 
 
 @dataclass(slots=True)
@@ -100,7 +104,7 @@ async def build_service(
     operations: OperationStore,
     clock: Clock,
     models: RoleModels,
-    embedder: Embedder,
+    embedder: EmbedderSource,
     policy: ResolutionPolicy,
     resolver_settings: ResolverSettings,
     retrieval_settings: RetrievalSettings,
@@ -108,6 +112,7 @@ async def build_service(
     closure_settings: ClosureSettings | None = None,
     limiter: CallerRateLimiter,
     max_attempts: int = 3,
+    heartbeat_seconds: float | None = None,
     tracer: Tracer | None = None,
     ontology: OntologyDeclaration | None = None,
     ontology_tenant: str | None = None,
@@ -139,6 +144,7 @@ async def build_service(
         ontology: Declaration applied when a tenant opens.
         ontology_tenant: Limit the declaration to this tenant when supplied.
         max_attempts: Maximum attempts for each queued job.
+        heartbeat_seconds: Optional interval for renewing shared-state leases.
         tracer: Optional tracer for service and embedding spans. PydanticAI model
             spans use caller-owned instrumentation.
         audit_log: Optional audit chain for service operations.
@@ -161,7 +167,6 @@ async def build_service(
         return build_tenant_runtime(
             stores,
             models=models,
-            embedder=embedder,
             clock=clock,
             policy=policy,
             resolver_settings=resolver_settings,
@@ -194,6 +199,7 @@ async def build_service(
             backend=parse_graph_url(settings.graph_url.get_secret_value()).backend,
             limiter=limiter,
             max_attempts=max_attempts,
+            heartbeat_seconds=heartbeat_seconds,
             tracer=selected_tracer,
             audit_log=audit_log or MemoryAuditLog(clock),
             confirm_tokens=confirm_tokens or ConfirmTokens(None, clock),
@@ -211,7 +217,7 @@ async def open_service(
     drop_graph: Callable[[str], Awaitable[None]] | None = None,
     clock: Clock | None = None,
     models: RoleModels | None = None,
-    embedder: Embedder,
+    embedder: EmbedderSource,
     policy: ResolutionPolicy | None = None,
     resolver_settings: ResolverSettings | None = None,
     retrieval_settings: RetrievalSettings | None = None,
@@ -222,6 +228,7 @@ async def open_service(
     tracer: Tracer | None = None,
     ontology: OntologyDeclaration | None = None,
     ontology_tenant: str | None = None,
+    start_jobs: bool = True,
 ) -> AsyncGenerator[ServiceRuntime, None]:
     """Open, start, and own the service resources for one process lifetime.
 
@@ -246,6 +253,7 @@ async def open_service(
         ontology: Declaration applied when a tenant opens.
         ontology_tenant: Limit the declaration to this tenant when supplied.
         max_attempts: Maximum attempts for queued jobs.
+        start_jobs: Recover pending work and start the job runner when true.
         tracer: Optional tracer for service and embedding spans. PydanticAI model
             spans use caller-owned instrumentation.
 
@@ -259,13 +267,16 @@ async def open_service(
     service_settings = settings or ServiceSettings()
     selected_state = state_settings or StateSettings()
     selected_clock = clock or SystemClock()
+    owner_id = uuid4().hex
 
     async with AsyncExitStack() as resources:
         selected_models = models if models is not None else build_models()
         if models is None:
             resources.push_async_callback(selected_models.aclose)
 
-        state = await open_state_store(selected_state)
+        state = await open_state_store(
+            selected_state, owner_id=owner_id, clock=selected_clock
+        )
         resources.push_async_callback(state.close)
 
         selected_stores_factory = stores_factory
@@ -283,7 +294,10 @@ async def open_service(
             )
         else:
             operations, audit_log, audit_sink = await _postgres_audit(
-                state_target, selected_clock
+                state_target,
+                selected_clock,
+                owner_id=owner_id,
+                lease_seconds=selected_state.lease_seconds,
             )
 
         authorizer = Authorizer(audit_sink, selected_clock, tracer=tracer)
@@ -303,6 +317,11 @@ async def open_service(
             closure_settings=closure_settings or ClosureSettings(),
             limiter=limiter or CallerRateLimiter(),
             max_attempts=max_attempts,
+            heartbeat_seconds=(
+                selected_state.heartbeat_seconds
+                if isinstance(state_target, PostgresTarget)
+                else None
+            ),
             tracer=tracer,
             ontology=ontology,
             ontology_tenant=ontology_tenant,
@@ -312,8 +331,55 @@ async def open_service(
         )
         # Registered after the model clients so jobs stop before they close.
         resources.push_async_callback(service.stop)
-        await service.start()
+        if start_jobs:
+            await service.start()
         yield ServiceRuntime(service=service)
+
+
+@asynccontextmanager
+async def clear_session(tenant: str) -> AsyncGenerator[MemoryService, None]:
+    """Open state for a tenant clear while excluding the local server."""
+    state_settings = StateSettings()
+    state_target = parse_state_url(state_settings.url.get_secret_value())
+    lock: ServerLock | None = None
+    if isinstance(state_target, SqliteTarget):
+        lock = ServerLock(Path(f"{state_target.path}.lock"))
+        try:
+            lock.acquire()
+        except OSError as error:
+            message = "Stop the server first: ontogr-mem server stop."
+            raise StoreInUseError(message) from error
+
+    async def unavailable_embedder():
+        raise EmbedderUnavailableError(
+            "Embedding is unavailable during tenant clear",
+            hint="Tenant clear does not require embeddings.",
+        )
+
+    try:
+        async with open_service(
+            state_settings=state_settings,
+            embedder=EmbedderSource(unavailable_embedder),
+            start_jobs=False,
+        ) as runtime:
+            yield runtime.service
+    finally:
+        if lock is not None:
+            lock.release()
+
+
+@asynccontextmanager
+async def open_graph_store(
+    settings: ServiceSettings | None = None,
+) -> AsyncGenerator[GraphStore, None]:
+    """Open only the configured graph store, without touching service state."""
+    service_settings = settings or ServiceSettings()
+    target = parse_graph_url(service_settings.graph_url.get_secret_value())
+    graph_store, _ = _graph_stores(target)
+    try:
+        yield graph_store
+    finally:
+        await graph_store.close()
 
 
 def _graph_stores_factory(
@@ -326,7 +392,7 @@ def _graph_stores_factory(
 
     async def create_stores(
         tenant_id: str,
-        embedder: Embedder,
+        embedder: EmbedderSource,
         *,
         tracer: Tracer | None = None,
     ) -> TenantStores:
@@ -383,11 +449,16 @@ async def _sqlite_audit(
 async def _postgres_audit(
     target: PostgresTarget,
     clock: Clock,
+    *,
+    owner_id: str,
+    lease_seconds: float,
 ) -> tuple[OperationStore, AuditLog, AuditSink]:
     """Share one process-wide pool for operation and chained audit rows."""
     pool = await pg_pool(target.dsn.get_secret_value())
     await ensure_postgres_schema(pool)
-    operations = PostgresOperationStore(pool, clock)
+    operations = PostgresOperationStore(
+        pool, clock, owner_id=owner_id, lease_seconds=lease_seconds
+    )
     await operations.mark_interrupted_runs()
     audit_log = PostgresAuditLog(pool, clock)
     return operations, audit_log, ChainedAuditSink(audit_log)

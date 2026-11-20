@@ -20,7 +20,7 @@ from ontogr_mem.store_urls import sqlite_url
 from ontogr_mem.tenant_stores import TenantStores
 from ontogr_mem.vectorstore import Embedder
 from tests.support.clock import FixedClock
-from tests.support.embedder import MockEmbedder
+from tests.support.embedder import MockEmbedder, embedder_source
 from tests.support.falkordb import falkordb_test_url
 from tests.support.graph_backend import GraphBackend
 from tests.support.neo4j import neo4j_test_url
@@ -72,7 +72,7 @@ class TestOpenService:
             settings,
             state_settings=state_settings,
             clock=clock,
-            embedder=embedder,
+            embedder=embedder_source(embedder),
             limiter=CallerRateLimiter(clock=lambda: 0.0),
         ) as runtime:
             status = await runtime.service.get_status(
@@ -112,7 +112,7 @@ class TestOpenService:
             stores_factory=stores_factory,
             drop_graph=drop_graph,
             clock=FixedClock(),
-            embedder=MockEmbedder(),
+            embedder=embedder_source(MockEmbedder()),
             limiter=CallerRateLimiter(clock=lambda: 0.0),
         ) as runtime:
             admin = Principal(
@@ -152,7 +152,7 @@ class TestOpenService:
                 state_settings=state_settings,
                 stores_factory=stores_factory,
                 clock=FixedClock(),
-                embedder=MockEmbedder(),
+                embedder=embedder_source(MockEmbedder()),
                 limiter=CallerRateLimiter(clock=lambda: 0.0),
             ):
                 pytest.fail("the service must not open")
@@ -178,7 +178,7 @@ class TestOpenService:
                 ),
                 models=models,
                 clock=FixedClock(),
-                embedder=MockEmbedder(),
+                embedder=embedder_source(MockEmbedder()),
                 limiter=CallerRateLimiter(clock=lambda: 0.0),
             ) as runtime:
                 status = await runtime.service.get_status(reader)
@@ -206,7 +206,7 @@ class TestOpenService:
                 url=sqlite_url(tmp_path / "state.sqlite3"), _env_file=None
             ),
             clock=FixedClock(),
-            embedder=MockEmbedder(),
+            embedder=embedder_source(MockEmbedder()),
             limiter=CallerRateLimiter(clock=lambda: 0.0),
         ) as runtime:
             status = await runtime.service.get_status(reader)
@@ -248,7 +248,7 @@ class TestOpenService:
                 ),
                 stores_factory=stores_factory,
                 clock=FixedClock(),
-                embedder=MockEmbedder(),
+                embedder=embedder_source(MockEmbedder()),
                 limiter=CallerRateLimiter(clock=lambda: 0.0),
             ):
                 pytest.fail("the service must not open")
@@ -272,7 +272,7 @@ class TestOpenService:
                 url=sqlite_url(tmp_path / "state.sqlite3"), _env_file=None
             ),
             clock=FixedClock(),
-            embedder=MockEmbedder(),
+            embedder=embedder_source(MockEmbedder()),
             limiter=CallerRateLimiter(clock=lambda: 0.0),
         ) as runtime:
             status = await runtime.service.get_status(reader)
@@ -298,7 +298,7 @@ class TestOpenService:
             stores_factory=graph_backend.stores_for,
             drop_graph=graph_backend.store.erase_tenant,
             clock=clock,
-            embedder=MockEmbedder(),
+            embedder=embedder_source(MockEmbedder()),
             ontology=OntologyDeclaration(entities=[EntityDeclaration(label="Gadget")]),
             ontology_tenant=selected,
         ) as runtime:

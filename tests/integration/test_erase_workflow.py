@@ -13,10 +13,10 @@ from ontogr_mem.service.forget.scan import scan_residue
 from ontogr_mem.service.forget.selector import ForgetSelector
 from ontogr_mem.service.forget.workflow import EraseWorkflow
 from ontogr_mem.service.runtime import TenantRuntime
-from ontogr_mem.vectorstore import EmbeddingGateway, VectorStore
+from ontogr_mem.vectorstore import VectorStore
 from ontogr_mem.vectorstore.memory import InMemoryBackend
 from ontogr_mem.vectorstore.models import VectorKind
-from tests.support.embedder import MockEmbedder
+from tests.support.embedder import MockEmbedder, embedder_source
 from tests.support.erase_workflow import EraseWorld, make_erase_world
 from tests.support.graph_backend import GraphBackend
 
@@ -134,7 +134,7 @@ class TestEraseWorkflow:
         self, graph_backend: GraphBackend, monkeypatch
     ):
         """Retained episode vectors fail residue checks after graph cleanup."""
-        vector_store = VectorStore(InMemoryBackend(), EmbeddingGateway(MockEmbedder()))
+        vector_store = VectorStore(InMemoryBackend(), embedder_source(MockEmbedder()))
         world = await make_erase_world(graph_backend, vector_store=vector_store)
         vectors = world.runtime.stores.vectors
         delete_vectors = vectors.delete
@@ -209,7 +209,10 @@ class TestEraseWorkflow:
             world.runtime.clock,
         )
 
-        results = await resumed.recover("erase-test")
+        records = await world.journal.claim_recoverable(
+            "erase-test", world.runtime.clock.now()
+        )
+        results = await resumed.recover(records)
 
         assert len(results) == 1
         assert results[0].status == ErasureStatus.COMPLETED.value
@@ -226,7 +229,10 @@ class TestEraseWorkflow:
         assert person.canonical_name == "Bob"
         assert person.summary == ""
         assert await world.journal.running("erase-test") == []
-        assert await resumed.recover("erase-test") == []
+        records = await world.journal.claim_recoverable(
+            "erase-test", world.runtime.clock.now()
+        )
+        assert await resumed.recover(records) == []
 
 
 async def _runtime(world: EraseWorld) -> TenantRuntime:

@@ -1,10 +1,12 @@
 """`VectorStore`: embeds once per text, stores through a backend, searches by cosine."""
 
+import asyncio
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import replace
 from typing import TypeVar
 
+from ontogr_mem.observability import Tracer
 from ontogr_mem.observability.metrics import Metrics
 from ontogr_mem.vectorstore.embedder import EmbeddingGateway
 from ontogr_mem.vectorstore.errors import (
@@ -32,6 +34,7 @@ from ontogr_mem.vectorstore.models import (
 )
 from ontogr_mem.vectorstore.protocol import Backend, GraphView, RawHit
 from ontogr_mem.vectorstore.settings import VectorStoreSettings
+from ontogr_mem.vectorstore.source import EmbedderSource
 from ontogr_mem.vectorstore.spaces import SpaceRegistry
 from ontogr_mem.vectorstore.text import TEMPLATES, text_hash
 from ontogr_mem.vectorstore.vecmath import to_unit
@@ -80,30 +83,26 @@ class VectorStore:
     def __init__(
         self,
         backend: Backend,
-        gateway: EmbeddingGateway,
+        source: EmbedderSource,
+        tracer: Tracer | None = None,
         settings: VectorStoreSettings | None = None,
         kinds: Sequence[VectorKind] = tuple(VectorKind),
         *,
         graph: GraphView | None = None,
         rechecker: Rechecker | None = None,
     ) -> None:
-        """Bind a backend and an embedder; call `ensure_ready` before use."""
+        """Bind a backend and defer embedder loading until embedding is needed."""
         self.backend = backend
-        self.gateway = gateway
+        self.source = source
+        self.tracer = tracer
         self.graph = graph
         self.rechecker = rechecker
-        self.settings = settings or gateway.settings
+        self.settings = settings or VectorStoreSettings()
         self.metrics = Metrics()
-        self.specs = {
-            kind: SpaceSpec(
-                kind,
-                gateway.model_id,
-                gateway.dim,
-                TEMPLATES[kind].id,
-                TEMPLATES[kind].version,
-            )
-            for kind in kinds
-        }
+        self.kinds = tuple(kinds)
+        self.specs: dict[VectorKind, SpaceSpec] = {}
+        self.gateway: EmbeddingGateway | None = None
+        self._init_lock = asyncio.Lock()
         self._ready = False
 
     @property
@@ -111,22 +110,62 @@ class VectorStore:
         """Return what the backend can do."""
         return self.backend.capabilities
 
+    async def _initialize_locked(self) -> None:
+        """Load the embedder and create the spaces while holding `_init_lock`."""
+        if self._ready:
+            return
+        embedder = await self.source()
+        gateway = EmbeddingGateway(embedder, settings=self.settings, tracer=self.tracer)
+        specs = {
+            kind: SpaceSpec(
+                kind,
+                gateway.model_id,
+                gateway.dim,
+                TEMPLATES[kind].id,
+                TEMPLATES[kind].version,
+            )
+            for kind in self.kinds
+        }
+        await self.backend.ensure_ready(list(specs.values()))
+        await SpaceRegistry(self.backend, gateway).ensure(specs)
+        self.gateway, self.specs, self._ready = gateway, specs, True
+
+    async def _ensure_initialized(self) -> None:
+        """Initialize on first use without probing an already ready backend."""
+        async with self._init_lock:
+            await self._initialize_locked()
+
     async def ensure_ready(self) -> None:
         """Verify the backend and the embedding spaces.
 
-        The store refuses reads and writes until this succeeds.
+        The store refuses reads and writes until this succeeds. Later calls
+        check the backend again and recreate an index that was dropped.
 
         Raises:
             SpaceMismatchError: If the embedder, the stored space or an index
                 disagree with the configuration.
             IndexDriftError: If an index is missing or unusable.
         """
-        self._ready = False
-        await self.backend.ensure_ready(list(self.specs.values()))
-        await SpaceRegistry(self.backend, self.gateway).ensure(self.specs)
-        self._ready = True
+        async with self._init_lock:
+            if self._ready:
+                # A failed recheck must block use so the next operation
+                # reinitializes the spaces before touching the backend again.
+                self._ready = False
+                await self.backend.ensure_ready(list(self.specs.values()))
+                self._ready = True
+                return
+            await self._initialize_locked()
+
+    async def embedding_gateway(self) -> EmbeddingGateway:
+        """Return the initialized gateway, loading the embedder when needed."""
+        await self._ensure_initialized()
+        if self.gateway is None:
+            msg = "embedding gateway is unavailable after initialization"
+            raise StoreNotReadyError(msg)
+        return self.gateway
 
     def _spec(self, kind: VectorKind) -> SpaceSpec:
+        self._check_kind(kind)
         if not self._ready:
             msg = "call ensure_ready() first"
             raise StoreNotReadyError(msg)
@@ -135,6 +174,11 @@ class VectorStore:
         except KeyError:
             msg = f"kind {kind.value} is not configured"
             raise ValueError(msg) from None
+
+    def _check_kind(self, kind: VectorKind) -> None:
+        if kind not in self.kinds:
+            msg = f"kind {kind.value} is not configured"
+            raise ValueError(msg)
 
     async def upsert(self, kind: VectorKind, items: Sequence[EmbedItem]) -> WriteResult:
         """Embed and store vectors; a vector changes only if its text changed.
@@ -146,6 +190,7 @@ class VectorStore:
         Raises:
             ValueError: If an item's extras do not fit `kind`.
         """
+        await self._ensure_initialized()
         self._spec(kind)
         template = TEMPLATES[kind]
         latest: dict[str, EmbedItem] = {}
@@ -163,7 +208,8 @@ class VectorStore:
 
         stored = await self._stored_hashes(kind, [t[0].id for t in todo])
         pending = [t for t in todo if stored.get(t[0].id) != t[2]]
-        outcomes = await self.gateway.embed([t[1] for t in pending], purpose="document")
+        gateway = await self.embedding_gateway()
+        outcomes = await gateway.embed([t[1] for t in pending], purpose="document")
         rows: list[Row] = []
         for (item, _, digest), outcome in zip(pending, outcomes, strict=True):
             if outcome.vector is None:
@@ -212,7 +258,7 @@ class VectorStore:
         self, kind: VectorKind, items: Sequence[EmbedItem]
     ) -> list[EmbedItem]:
         """Return the items with no vector or a vector made from other text."""
-        self._spec(kind)
+        self._check_kind(kind)
         template = TEMPLATES[kind]
         stored = await self._stored_hashes(kind, [item.id for item in items])
         out: list[EmbedItem] = []
@@ -230,7 +276,7 @@ class VectorStore:
         Raises:
             CapabilityError: If the backend has no validity mirror.
         """
-        self._spec(VectorKind.EDGE)
+        self._check_kind(VectorKind.EDGE)
         if not self.capabilities.validity_mirror:
             msg = "this backend does not store the validity of a fact"
             raise CapabilityError(msg)
@@ -239,7 +285,7 @@ class VectorStore:
 
     async def delete(self, kind: VectorKind, ids: Sequence[str]) -> int:
         """Remove the vectors of `ids`; ids without a vector are ignored."""
-        self._spec(kind)
+        self._check_kind(kind)
         removed = 0
         for part in _chunks(as_ids(ids), self.settings.id_batch):
             removed += await self.backend.delete(kind, part)
@@ -276,6 +322,7 @@ class VectorStore:
             IndexDriftError: If the index is missing or unusable.
             QueryTimeoutError: If the query exceeded its time limit.
         """
+        await self._ensure_initialized()
         spec = self._spec(kind)
         if k <= 0:
             return []
@@ -374,7 +421,7 @@ class VectorStore:
 
     async def exists(self, kind: VectorKind, ids: Sequence[str]) -> set[str]:
         """Return the ids that have a vector."""
-        self._spec(kind)
+        self._check_kind(kind)
         found: set[str] = set()
         for part in _chunks(as_ids(ids), self.settings.id_batch):
             found |= await self.backend.exists(kind, part)
@@ -393,7 +440,7 @@ class VectorStore:
         Raises:
             ValueError: If `limit` is not positive.
         """
-        self._spec(kind)
+        self._check_kind(kind)
         if limit < 1:
             msg = "limit must be positive"
             raise ValueError(msg)
@@ -403,7 +450,7 @@ class VectorStore:
         self, kind: VectorKind, ids: Sequence[str]
     ) -> dict[str, tuple[float, ...]]:
         """Return the stored unit vectors of `ids`, for dedupe and reranking."""
-        self._spec(kind)
+        self._check_kind(kind)
         out: dict[str, tuple[float, ...]] = {}
         for part in _chunks(as_ids(ids), self.settings.id_batch):
             out.update(await self.backend.fetch_vectors(kind, part))

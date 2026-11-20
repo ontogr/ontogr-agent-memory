@@ -17,7 +17,7 @@ from ontogr_mem.vectorstore import (
 from ontogr_mem.vectorstore.errors import QueryTimeoutError
 from ontogr_mem.vectorstore.memory import InMemoryBackend
 from ontogr_mem.vectorstore.models import BackendWrite, Row
-from tests.support.embedder import MockEmbedder, RecordingEmbedder, gateway
+from tests.support.embedder import MockEmbedder, RecordingEmbedder, embedder_source
 
 
 def edge(fact_id: str, text: str = "Ana uses Postgres") -> EmbedItem:
@@ -50,7 +50,7 @@ async def ready_store(
     embedder: MockEmbedder, backend: InMemoryBackend | None = None
 ) -> VectorStore:
     """Return a store that is ready to write."""
-    store = VectorStore(backend or InMemoryBackend(), gateway(embedder))
+    store = VectorStore(backend or InMemoryBackend(), embedder_source(embedder))
     await store.ensure_ready()
     return store
 

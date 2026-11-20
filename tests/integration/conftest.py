@@ -7,7 +7,6 @@ import pytest
 from ontogr_mem.graphstore.falkordb import FalkorDBGraphStore
 from ontogr_mem.graphstore.neo4j import Neo4jGraphStore
 from ontogr_mem.store_urls import parse_graph_url
-from ontogr_mem.vectorstore.pgvector import PgVectorSettings, Pool, create_pool
 from tests.support.falkordb import falkordb_test_settings, falkordb_test_url
 from tests.support.graph_backend import GraphBackend
 from tests.support.neo4j import neo4j_test_settings, neo4j_test_url
@@ -49,23 +48,3 @@ async def graph_backend(
     backend = GraphBackend(store, request.param)
     yield backend
     await backend.erase()
-
-
-@pytest.fixture
-async def pg_pool() -> AsyncGenerator[Pool]:
-    """A pool on the compose pgvector; the test fails if the server is down."""
-    settings = PgVectorSettings()
-    try:
-        pool = await create_pool(settings)
-    except Exception as error:
-        service_unreachable("pgvector", settings.dsn)
-        raise error
-    try:
-        async with pool.acquire() as conn:
-            await conn.fetchval("SELECT 1")
-    except Exception as error:
-        await pool.close()
-        service_unreachable("pgvector", settings.dsn)
-        raise error
-    yield pool
-    await pool.close()

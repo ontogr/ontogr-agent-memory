@@ -79,6 +79,14 @@ class FalkorClientPool:
 
         return await self.runner.execute(call, idempotent=True, tag="ping")
 
+    async def list_graphs(self) -> list[str]:
+        """Return graph names on the server."""
+
+        async def call() -> list[str]:
+            return list(await (await self._ensure_db()).list_graphs())
+
+        return await self.runner.execute(call, idempotent=True, tag="list_graphs")
+
     async def delete_graph(self, name: str) -> bool:
         """Delete graph `name`; a missing graph counts as deleted.
 

@@ -1,5 +1,6 @@
 """PostgreSQL operation rows over a shared connection pool."""
 
+from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
@@ -37,22 +38,57 @@ class PostgresOperationStore:
         pool: Process-wide connection pool; the caller runs
             ``ensure_postgres_schema`` before constructing the store.
         clock: Source of timestamps for new and finished operations.
+        owner_id: Identity recorded on rows leased by this process.
+        lease_seconds: Duration of each lease.
     """
 
-    def __init__(self, pool: "asyncpg.Pool", clock: Clock) -> None:
+    def __init__(
+        self,
+        pool: "asyncpg.Pool",
+        clock: Clock,
+        *,
+        owner_id: str,
+        lease_seconds: float,
+    ) -> None:
         """Bind the store to its pool without taking a connection."""
         self._pool = pool
         self._clock = clock
+        self._owner_id = owner_id
+        self._lease_micros = int(lease_seconds * 1_000_000)
 
     async def mark_interrupted_runs(self) -> None:
-        """Mark operations left running by a previous process as failed."""
+        """Fail running operations whose lease is missing or expired."""
         async with pg_connection(self._pool) as connection:
             await connection.execute(
                 "UPDATE operation_rows SET ended_at = $1, outcome = 'failed', "
                 "error_class = 'Interrupted', "
-                "error = 'operation was still running when the store opened' "
-                "WHERE outcome = 'running'",
+                "error = 'operation was still running when the store opened', "
+                "owner_id = NULL, lease_expires_at = NULL "
+                "WHERE outcome = 'running' AND "
+                "(lease_expires_at IS NULL OR lease_expires_at <= $2)",
                 to_micros(self._clock.now()),
+                to_micros(self._clock.now()),
+            )
+
+    async def renew_leases(self, now: datetime) -> None:
+        """Renew this owner's running operation leases."""
+        async with pg_connection(self._pool) as connection:
+            await connection.execute(
+                "UPDATE operation_rows SET lease_expires_at = $1, heartbeat_at = $2 "
+                "WHERE outcome = 'running' AND owner_id = $3 "
+                "AND lease_expires_at > $2",
+                to_micros(now) + self._lease_micros,
+                to_micros(now),
+                self._owner_id,
+            )
+
+    async def release_leases(self) -> None:
+        """Release every running operation lease held by this owner."""
+        async with pg_connection(self._pool) as connection:
+            await connection.execute(
+                "UPDATE operation_rows SET owner_id = NULL, lease_expires_at = NULL "
+                "WHERE outcome = 'running' AND owner_id = $1",
+                self._owner_id,
             )
 
     async def start(
@@ -75,8 +111,10 @@ class PostgresOperationStore:
             await connection.execute(
                 "INSERT INTO operation_rows (id, parent_id, kind, principal_id, "
                 "tenant, session_id, trace_id, started_at, ended_at, outcome, "
-                "tokens_in, tokens_out, cost_usd) "
-                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'running', 0, 0, 0.0)",
+                "tokens_in, tokens_out, cost_usd, owner_id, lease_expires_at, "
+                "heartbeat_at) "
+                "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'running', 0, 0, "
+                "0.0, $10, $11, $12)",
                 operation_id,
                 parent_id,
                 kind.value,
@@ -86,6 +124,9 @@ class PostgresOperationStore:
                 trace_id,
                 to_micros(self._clock.now()),
                 OPEN_MICROS,
+                self._owner_id,
+                to_micros(self._clock.now()) + self._lease_micros,
+                to_micros(self._clock.now()),
             )
         return operation_id
 
@@ -110,6 +151,7 @@ class PostgresOperationStore:
                 "UPDATE operation_rows SET ended_at = $1, outcome = $2, "
                 "error_class = $3, error = $4, tokens_in = $5, tokens_out = $6, "
                 "cost_usd = $7 WHERE id = $8 AND outcome = 'running' "
+                "AND owner_id = $9 AND lease_expires_at > $10 "
                 "RETURNING id",
                 to_micros(self._clock.now()),
                 outcome.value,
@@ -119,6 +161,8 @@ class PostgresOperationStore:
                 usage.tokens_out,
                 usage.cost_usd,
                 operation_id,
+                self._owner_id,
+                to_micros(self._clock.now()),
             )
             if row is None:
                 raise OperationStateError(f"operation {operation_id!r} is not running")

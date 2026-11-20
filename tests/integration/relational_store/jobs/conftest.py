@@ -1,6 +1,6 @@
 """Run job runner behavior against transient and durable state stores."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from pathlib import Path
 
 import pytest
@@ -13,7 +13,7 @@ from ontogr_mem.relational_store.sqlite.jobs import SqliteJobStore
 @pytest.fixture(params=["memory", "sqlite"])
 async def job_store(
     request: pytest.FixtureRequest, tmp_path: Path
-) -> AsyncIterator[StateStore]:
+) -> AsyncGenerator[StateStore, None]:
     """Yield an isolated store and close it after the runner test."""
     store = (
         MemoryJobStore()

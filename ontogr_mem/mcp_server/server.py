@@ -1,18 +1,21 @@
-"""Build the MCP server that exposes one Memory client as tools and skills."""
+"""Build the MCP server that exposes memory tools for request-selected tenants."""
 
+from collections.abc import Callable
+from functools import wraps
 from pathlib import Path
+from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.server.providers.skills import SkillsDirectoryProvider
 from fastmcp.skills.extension import SkillsExtension
 
 from ontogr_mem.client import Memory
-from ontogr_mem.llm.roles import ModelRole
 from ontogr_mem.mcp_server.auth import ApiKeyVerifier
 from ontogr_mem.mcp_server.instructions import INSTRUCTIONS
 from ontogr_mem.mcp_server.settings import McpSettings
 from ontogr_mem.mcp_server.skills import SKILLS_ROOT, get_skill
 from ontogr_mem.mcp_server.tools import guard_errors
+from ontogr_mem.requirements import TEXT_WRITE_ROLES
 
 
 WORDING_ROOT = Path(__file__).with_name("wording")
@@ -22,16 +25,12 @@ def _tool_description(name: str) -> str:
     return (WORDING_ROOT / f"tool_{name}.txt").read_text(encoding="utf-8").strip()
 
 
-def build_server(memory: Memory, *, settings: McpSettings | None = None) -> FastMCP:
-    """Build a configured MCP door over an already-open memory client.
-
-    Args:
-        memory: Client whose caller and tenant are fixed for this process.
-        settings: MCP settings, or settings loaded from the environment.
-
-    Returns:
-        An unstarted server. The caller owns the client's lifetime.
-    """
+def build_server(
+    memory_for_request: Callable[[str | None], Memory],
+    *,
+    settings: McpSettings | None = None,
+) -> FastMCP:
+    """Build an MCP server whose tools resolve a Memory view per request."""
     server_settings = settings if settings is not None else McpSettings()
     auth = (
         ApiKeyVerifier(server_settings.api_key.get_secret_value())
@@ -39,73 +38,47 @@ def build_server(memory: Memory, *, settings: McpSettings | None = None) -> Fast
         else None
     )
     server = FastMCP(
-        "ontogr-memory",
-        instructions=INSTRUCTIONS,
-        mask_error_details=True,
-        auth=auth,
+        "ontogr-memory", instructions=INSTRUCTIONS, mask_error_details=True, auth=auth
     )
     enabled = set(server_settings.tools)
-    if not (
-        memory.models.configured(ModelRole.ENTITY_EXTRACTION)
-        and memory.models.configured(ModelRole.FACT_EXTRACTION)
-    ):
-        enabled.discard("add_memory")
-    if "search_memory" in enabled:
-        server.tool(
-            guard_errors(memory.search),
-            name="search_memory",
-            tags={"read"},
-            description=_tool_description("search_memory"),
-        )
-    if "get_entity" in enabled:
-        server.tool(
-            guard_errors(memory.get_entity),
-            name="get_entity",
-            tags={"read"},
-            description=_tool_description("get_entity"),
-        )
-    if "list_entities" in enabled:
-        server.tool(
-            guard_errors(memory.list_entities),
-            name="list_entities",
-            tags={"read"},
-            description=_tool_description("list_entities"),
-        )
-    if "get_ontology" in enabled:
-        server.tool(
-            guard_errors(memory.get_ontology),
-            name="get_ontology",
-            tags={"read"},
-            description=_tool_description("get_ontology"),
-        )
-    if "get_job" in enabled:
-        server.tool(
-            guard_errors(memory.get_job),
-            name="get_job",
-            tags={"read"},
-            description=_tool_description("get_job"),
-        )
+    def register(name: str, method: str, tags: set[str]) -> None:
+        memory = memory_for_request(None)
+
+        async def call(**kwargs: Any) -> Any:
+            from fastmcp.server.dependencies import get_http_headers  # noqa: PLC0415
+
+            headers = get_http_headers()
+            tenant = headers.get("x-memory-tenant")
+            memory = memory_for_request(tenant)
+            return await getattr(memory, method)(**kwargs)
+
+        memory_method = getattr(memory, method)
+        tool_call = wraps(memory_method)(call)
+        options: dict[str, Any] = {"name": name, "tags": tags}
+        description_path = WORDING_ROOT / f"tool_{name}.txt"
+        if description_path.is_file():
+            options["description"] = _tool_description(name)
+        server.tool(guard_errors(tool_call), **options)
+
     if "add_memory" in enabled:
-        server.tool(
-            guard_errors(memory.write_text),
-            name="add_memory",
-            tags={"write"},
-            description=_tool_description("add_memory"),
-        )
-    if "write_facts" in enabled:
-        server.tool(
-            guard_errors(memory.write_facts),
-            name="write_facts",
-            tags={"write"},
-            description=_tool_description("write_facts"),
-        )
-    if "forget_memory" in enabled:
-        server.tool(
-            guard_errors(memory.invalidate),
-            name="forget_memory",
-            tags={"forget"},
-            description=_tool_description("forget_memory"),
-        )
+        enabled.discard("add_memory")
+        memory = memory_for_request(None)
+        if all(memory.models.configured(role) for role in TEXT_WRITE_ROLES):
+            enabled.add("add_memory")
+    methods = {
+        "search_memory": ("search", {"read"}),
+        "get_entity": ("get_entity", {"read"}),
+        "list_entities": ("list_entities", {"read"}),
+        "get_ontology": ("get_ontology", {"read"}),
+        "stale_episodes": ("stale_episodes", {"read"}),
+        "get_job": ("get_job", {"read"}),
+        "add_memory": ("write_text", {"write"}),
+        "write_facts": ("write_facts", {"write"}),
+        "forget_memory": ("invalidate", {"forget"}),
+    }
+    for name, (method, tags) in methods.items():
+        if name in enabled:
+            register(name, method, tags)
     if "get_skill" in enabled:
         server.tool(
             guard_errors(get_skill),

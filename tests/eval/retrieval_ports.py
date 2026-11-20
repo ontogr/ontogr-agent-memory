@@ -11,9 +11,17 @@ class SilentVectors(VectorStore):
 
     def __init__(self, inner: VectorStore, *, kinds: frozenset[VectorKind]) -> None:
         """Keep the original gateway and select suppressed search kinds."""
-        super().__init__(inner.backend, inner.gateway, inner.settings)
+        super().__init__(
+            inner.backend,
+            inner.source,
+            inner.tracer,
+            inner.settings,
+            inner.kinds,
+            graph=inner.graph,
+            rechecker=inner.rechecker,
+        )
         self.inner = inner
-        self.kinds = kinds
+        self.silenced_kinds = kinds
 
     async def search(
         self,
@@ -25,7 +33,7 @@ class SilentVectors(VectorStore):
         min_score: float | None = None,
     ) -> list[Hit]:
         """Return no hits for silenced kinds and delegate other searches."""
-        if kind in self.kinds:
+        if kind in self.silenced_kinds:
             return []
         return await self.inner.search(
             kind, vector, k=k, filters=filters, min_score=min_score

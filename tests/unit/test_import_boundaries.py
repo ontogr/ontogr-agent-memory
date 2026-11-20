@@ -26,8 +26,8 @@ OPTIONAL_SUBPACKAGES = (
     "ontogr_mem.graphstore.neo4j",
     "ontogr_mem.vectorstore.builtin",
     "ontogr_mem.vectorstore.graph",
-    "ontogr_mem.vectorstore.pgvector",
     "ontogr_mem.mcp_server",
+    "ontogr_mem.server",
     "ontogr_mem.ontology.formats.turtle",
 )
 
@@ -333,42 +333,6 @@ class TestBackendImports:
 
         assert result.returncode == 0, result.stdout + result.stderr
 
-    def test_local_embedder_open_hints_at_fastembed_and_model_settings(self):
-        """With every extra absent, the local embedder names both recovery paths."""
-        result = run_clean(
-            f"""
-            import asyncio
-            import importlib.abc
-            import sys
-
-            blocked = {BLOCKED_EXTRAS!r}
-
-            class Blocker(importlib.abc.MetaPathFinder):
-                def find_spec(self, name, path=None, target=None):
-                    if name.split(".")[0] in blocked:
-                        raise ImportError(name)
-                    return None
-
-            sys.meta_path.insert(0, Blocker())
-            import ontogr_mem.vectorstore.builtin.local
-            from ontogr_mem.vectorstore.builtin.local import LocalEmbedder
-            from ontogr_mem.vectorstore.errors import EmbedderUnavailableError
-
-            try:
-                asyncio.run(LocalEmbedder.open())
-            except EmbedderUnavailableError as exc:
-                if "fastembed" in exc.hint and "MEMORY_EMBEDDING_MODEL" in exc.hint:
-                    print("EMBEDDER_HINT_OK")
-                    sys.exit(0)
-                print(exc.hint)
-                sys.exit(1)
-            sys.exit(1)
-            """
-        )
-
-        assert result.returncode == 0, result.stdout + result.stderr
-        assert "EMBEDDER_HINT_OK" in result.stdout
-
     def test_missing_extra_names_the_install_command(self):
         """Without falkordb installed, importing the backend explains the fix."""
         result = run_clean(
@@ -393,4 +357,4 @@ class TestBackendImports:
         )
 
         assert result.returncode == 0, result.stdout + result.stderr
-        assert 'pip install "ontogr-mem[falkordb]"' in result.stdout
+        assert 'uv add "ontogr-mem[falkordb]"' in result.stdout

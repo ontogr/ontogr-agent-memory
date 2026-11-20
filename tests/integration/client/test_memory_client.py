@@ -69,7 +69,9 @@ async def falkordb_environment(
 
 @asynccontextmanager
 async def open_memory(
-    tenant: str, models: RoleModels | None = None
+    tenant: str,
+    models: RoleModels | None = None,
+    state_settings: StateSettings | None = None,
 ) -> AsyncGenerator[Memory]:
     """Open a Memory client on FalkorDB with durable SQLite state.
 
@@ -77,11 +79,12 @@ async def open_memory(
         tenant: Tenant the client writes to and reads from.
         models: Model pool for the client. Defaults to scripted models that
             answer no calls, which is enough for structured writes.
+        state_settings: State database settings. Defaults to the test database.
     """
     async with Memory.open(
         tenant=tenant,
         service_settings=ServiceSettings(graph_url=falkordb_test_url(), _env_file=None),
-        state_settings=StateSettings(_env_file=None),
+        state_settings=state_settings or StateSettings(_env_file=None),
         models=scripted_role_models() if models is None else models,
         embedder=MockEmbedder(),
     ) as memory:
@@ -726,9 +729,20 @@ class TestMemoryClient:
         first_tenant = new_tenant()
         second_tenant = new_tenant()
         try:
+            state_root = Path(".pytest_cache") / "tenant-isolation"
             async with (
-                open_memory(first_tenant) as first,
-                open_memory(second_tenant) as second,
+                open_memory(
+                    first_tenant,
+                    state_settings=StateSettings(
+                        url=f"sqlite:///{state_root / first_tenant}.db", _env_file=None
+                    ),
+                ) as first,
+                open_memory(
+                    second_tenant,
+                    state_settings=StateSettings(
+                        url=f"sqlite:///{state_root / second_tenant}.db", _env_file=None
+                    ),
+                ) as second,
             ):
                 receipt = await first.write_fact(
                     "Ana",

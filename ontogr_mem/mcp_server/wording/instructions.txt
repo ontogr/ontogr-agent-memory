@@ -10,7 +10,7 @@ When to save memory:
 - If add_memory is listed, pass the text as plain content.
 - If add_memory is not listed, extract the facts yourself and call write_facts with the exact source text and the facts. Use names and quotes that appear in that source.
 - If get_job is listed, check the job until it finishes before you tell the user the facts were saved.
-- If get_skill is listed and the memory-write or memory-recall skill is not already loaded in this session, call get_skill with that name before your first save or first search. The skills give the full rules.
+- If get_skill is listed and the memory-write or memory-recall skill is not already loaded in this session, call get_skill('memory-write') before your first save or get_skill('memory-recall') before your first search. The skills give the full rules.
 
 What not to save:
 - Secrets, passwords, keys, tokens or personal identifiers that the user did not ask you to keep.

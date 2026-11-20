@@ -145,7 +145,7 @@ class TestSchemaMigrationCompat:
             applied = connection.execute(
                 "SELECT revision, checksum FROM schema_migrations"
             ).fetchall()
-            assert [revision for revision, _ in applied] == [1]
+            assert [revision for revision, _ in applied] == [1, 2]
             tables = {
                 row[0]
                 for row in connection.execute(

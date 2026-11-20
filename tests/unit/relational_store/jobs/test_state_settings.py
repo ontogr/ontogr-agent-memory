@@ -1,5 +1,9 @@
 """State configuration reads its dedicated environment prefix."""
 
+import math
+
+import pytest
+
 from ontogr_mem.paths import data_directory
 from ontogr_mem.relational_store.config import StateSettings
 
@@ -25,3 +29,12 @@ class TestStateSettings:
         assert settings.url.get_secret_value() == (
             f"sqlite:///{data_directory() / 'agent_memory_state.sqlite3'}"
         )
+
+    @pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
+    def test_rejects_non_finite_lease_settings(self, value):
+        """Lease durations must be finite positive values."""
+        with pytest.raises(ValueError):
+            StateSettings(lease_seconds=value, _env_file=None)
+
+        with pytest.raises(ValueError):
+            StateSettings(heartbeat_seconds=value, _env_file=None)

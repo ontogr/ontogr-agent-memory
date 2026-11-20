@@ -30,3 +30,4 @@ class ServiceDeps:
     confirm_tokens: ConfirmTokens
     workflow: EraseWorkflow
     max_attempts: int = 3
+    heartbeat_seconds: float | None = None

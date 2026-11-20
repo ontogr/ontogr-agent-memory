@@ -161,6 +161,10 @@ class FalkorDBGraphStore:
         """Delete the tenant's graph; erasing a missing graph does nothing."""
         await self._tenants.erase(tenant)
 
+    async def list_tenants(self) -> list[str]:
+        """Return tenants with an existing graph."""
+        return await self._tenants.list_tenants()
+
     async def close(self) -> None:
         """Release the connection pool."""
         await self._pool.close()

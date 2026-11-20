@@ -23,7 +23,7 @@ from tests.contracts.vector_store import (
     node_item,
     seed_edges,
 )
-from tests.support.embedder import MockEmbedder, gateway
+from tests.support.embedder import MockEmbedder, embedder_source
 from tests.support.tenants import new_tenant
 from tests.support.vector_graph import seed_graph
 from tests.support.vectors import (
@@ -51,7 +51,7 @@ class TestNeo4jVectorStore(GraphVectorStoreContract):
 
             def store_for(other: MockEmbedder) -> VectorStore:
                 backend = Neo4jVectorBackend(neo4j_store, handle)
-                return VectorStore(backend, gateway(other))
+                return VectorStore(backend, embedder_source(other))
 
             async def seed(kind: VectorKind, ids: list[str], **props: object) -> None:
                 await seed_graph(neo4j_store, handle, kind, ids, **props)
@@ -95,7 +95,8 @@ class TestNeo4jVectorStore(GraphVectorStoreContract):
         try:
             await seed_graph(neo4j_store, handle, VectorKind.NODE, ["n1"])
             store = VectorStore(
-                Neo4jVectorBackend(neo4j_store, handle), gateway(fixed_embedder())
+                Neo4jVectorBackend(neo4j_store, handle),
+                embedder_source(fixed_embedder()),
             )
             await store.ensure_ready()
             await store.upsert(VectorKind.NODE, [node_item("n1", "a")])
@@ -156,7 +157,7 @@ class TestNeo4jVectorStore(GraphVectorStoreContract):
         ]
         await h.seed(VectorKind.NODE, [item.id for item in items])
         await h.store.upsert(VectorKind.NODE, items)
-        twin = VectorStore(InMemoryBackend(), gateway(fixed_embedder()))
+        twin = VectorStore(InMemoryBackend(), embedder_source(fixed_embedder()))
         await twin.ensure_ready()
         await twin.upsert(VectorKind.NODE, items)
 

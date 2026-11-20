@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import Sequence
 
+from ontogr_mem.data_models import InvalidTenantError, validate_tenant_id
 from ontogr_mem.graphstore.falkordb.client import FalkorClientPool
 from ontogr_mem.graphstore.falkordb.schema import SchemaManager
 from ontogr_mem.graphstore.ident import tenant_id
@@ -11,9 +12,12 @@ from ontogr_mem.graphstore.schemas import ALL, KERNEL
 from ontogr_mem.graphstore.types import GraphHandle
 
 
+GRAPH_PREFIX = "m_"
+
+
 def graph_name(tenant: str) -> str:
     """Return the name of the graph that holds `tenant`'s data."""
-    return f"m_{tenant_id(tenant)}"
+    return f"{GRAPH_PREFIX}{tenant_id(tenant)}"
 
 
 class TenantGraphs:
@@ -59,3 +63,17 @@ class TenantGraphs:
         name = graph_name(tenant)
         await self._pool.delete_graph(name)
         self._provisioned.pop(name, None)
+
+    async def list_tenants(self) -> list[str]:
+        """Return sorted tenant ids for existing tenant graphs."""
+        tenants = set()
+        for name in await self._pool.list_graphs():
+            if not name.startswith(GRAPH_PREFIX):
+                continue
+            candidate = name.removeprefix(GRAPH_PREFIX)
+            try:
+                validate_tenant_id(candidate)
+            except (InvalidTenantError, TypeError):
+                continue
+            tenants.add(candidate)
+        return sorted(tenants)

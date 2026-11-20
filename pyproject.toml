@@ -50,7 +50,6 @@ ontogr-mem = "ontogr_mem.cli:main"
 [project.optional-dependencies]
 falkordb = ["falkordb>=1.2", "redis>=5.0.1"]
 neo4j = ["neo4j>=6"]
-pgvector = ["asyncpg>=0.30"]
 postgres = ["asyncpg>=0.30"]
 gliner = ["gliner>=0.2", "torch"]
 spacy = ["spacy>=3.7"]
@@ -58,6 +57,7 @@ otel = ["opentelemetry-api>=1.30"]
 fastembed = ["fastembed>=0.9.1"]
 fastembed-gpu = ["fastembed-gpu>=0.9.1"]
 mcp = ["fastmcp>=4.1.8"]
+local = ["ontogr-mem[falkordb,fastembed,mcp]"]
 
 [project.urls]
 Homepage = "https://github.com/ontogr/ontogr-agent-memory"
@@ -72,7 +72,7 @@ module-name = "ontogr_mem"
 [tool.uv]
 default-groups = ["dev"]
 required-version = "==0.12.23"
-conflicts = [[{ extra = "fastembed" }, { extra = "fastembed-gpu" }]]
+conflicts = [[{ extra = "fastembed" }, { extra = "fastembed-gpu" }], [{ extra = "local" }, { extra = "fastembed-gpu" }]]
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }]
@@ -144,7 +144,6 @@ ignore = [
 "tests/**/*.py" = ["N802", "N999", "TID251"]
 "ontogr_mem/graphstore/**" = ["TID251"]
 "ontogr_mem/vectorstore/graph/**" = ["TID251"]
-"ontogr_mem/vectorstore/pgvector/**" = ["TID251"]
 "ontogr_mem/relational_store/**" = ["TID251", "PLC0415"]
 # Composes the graph adapters on purpose and loads each driver only when selected.
 "ontogr_mem/service/bootstrap.py" = ["TID251", "PLC0415"]
@@ -155,7 +154,7 @@ ignore = [
 "falkordb".msg = "Import falkordb only inside ontogr_mem/graphstore/falkordb."
 "redis".msg = "Import redis only inside ontogr_mem/graphstore/falkordb."
 "neo4j".msg = "Import neo4j only inside ontogr_mem/graphstore/neo4j."
-"asyncpg".msg = "Import asyncpg only inside ontogr_mem/vectorstore/pgvector or ontogr_mem/relational_store."
+"asyncpg".msg = "Import asyncpg only inside ontogr_mem/relational_store."
 "ontogr_mem.graphstore".msg = "Components reach graph storage only through their own port."
 
 [tool.ruff.lint.pep8-naming]
