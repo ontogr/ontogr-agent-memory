@@ -20,8 +20,8 @@ from fastmcp import Client
 from fastmcp.client.transports import StreamableHttpTransport
 from pydantic import SecretStr
 
-from ontogr_mem.mcp_server.settings import McpSettings
 from ontogr_mem.client.remote import RemoteService
+from ontogr_mem.mcp_server.settings import McpSettings
 from ontogr_mem.paths import data_directory
 from ontogr_mem.server.app import serve
 from ontogr_mem.server.entry import ensure_server
