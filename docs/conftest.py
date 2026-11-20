@@ -51,6 +51,7 @@ def docs_page_store(
     """Give a page its own data directory and stop its server after the page."""
     path = getattr(request.node, "path", None)
     if path is None or path.suffix not in {".md", ".mdx"}:
+        yield None
         return
     page = str(path)
     data_directory = DATA_ROOT / f"{path.parent.name}-{path.stem}"
