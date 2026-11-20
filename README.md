@@ -467,7 +467,7 @@ You need Python 3.11 or newer, Docker with Compose, and a model endpoint with an
 
 `ontogr-mem mcp` serves memory over the Model Context Protocol (MCP). A host is the application that connects to the server on behalf of a model, such as a coding agent. The MCP tenant comes from `MEMORY_MCP_TENANT` or the per-user `server.env` file, and every call uses a fixed local caller. No tool accepts a tenant or a caller argument.
 
-`ontogr-mem mcp` serves tools on stdio, and a host normally starts that process itself. To serve Streamable HTTP, start the per-user server with `ontogr-mem server run`; its MCP endpoint is `/mcp` on the server port. The `mcp` command has no flags. Transport, tenant, and ontology come from the environment or `server.env`, while `server run` also accepts `--tenant` and `--ontology`.
+`ontogr-mem mcp` serves tools on stdio, and a host normally starts that process itself. To serve Streamable HTTP, start the per-user server with `ontogr-mem server run`; its MCP endpoint is `/mcp` on the server port. The `mcp` command has no flags. Tenant and ontology come from the environment or `server.env`, while `server run` also accepts `--tenant` and `--ontology`.
 
 Install the package and start the graph, then run the server:
 
