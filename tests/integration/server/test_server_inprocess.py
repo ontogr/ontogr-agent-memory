@@ -193,7 +193,7 @@ class TestInProcessServer:
                     url=server_url, token=TEST_KEY, tenant="default"
                 )
                 try:
-                    principal = Principal(tenant="default")
+                    principal = Principal(id="test", default_tenant="default")
                     ontology = await service.get_ontology(
                         principal, GetOntology(tenant="default")
                     )
