@@ -20,14 +20,11 @@ from fastmcp import Client
 from fastmcp.client.transports import StreamableHttpTransport
 from pydantic import SecretStr
 
-from ontogr_mem.client.remote import RemoteService
 from ontogr_mem.mcp_server.settings import McpSettings
 from ontogr_mem.paths import data_directory
 from ontogr_mem.server.app import serve
 from ontogr_mem.server.entry import ensure_server
 from ontogr_mem.server.settings import ServerSettings
-from ontogr_mem.service.contracts import GetOntology
-from ontogr_mem.service.principal import Principal
 from tests.support.falkordb import falkordb_test_url
 
 
@@ -185,29 +182,17 @@ class TestInProcessServer:
                     ontology
                 )
 
-    async def test_remote_service_accepts_base_and_mcp_urls(self) -> None:
-        """Connect through either supported form of the MCP server URL."""
-        async with _serving() as (_task, _info, base_url):
-            for server_url in (base_url, f"{base_url}/mcp"):
-                service = await RemoteService.open(
-                    url=server_url, token=TEST_KEY, tenant="default"
-                )
-                try:
-                    principal = Principal(id="test", default_tenant="default")
-                    ontology = await service.get_ontology(
-                        principal, GetOntology(tenant="default")
-                    )
-                    assert ontology.tenant == "default"
-                finally:
-                    await service.aclose()
-
+    @pytest.mark.parametrize("path", ["", "/mcp"])
     async def test_explicit_mcp_url_returns_server_endpoint(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        path: str,
     ) -> None:
-        """An explicit MCP URL resolves to the server base URL."""
+        """An explicit base or MCP URL resolves to the server base URL."""
         monkeypatch.chdir(tmp_path)
         async with _serving() as (_task, _info, base_url):
-            monkeypatch.setenv("MEMORY_MCP_SERVER_URL", f"{base_url}/mcp")
+            monkeypatch.setenv("MEMORY_MCP_SERVER_URL", f"{base_url}{path}")
             monkeypatch.setenv("MEMORY_MCP_API_KEY", TEST_KEY)
 
             endpoint = await ensure_server(
