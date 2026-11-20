@@ -346,9 +346,8 @@ class TestServerJourney:
             assert job["status"] == "done", job
             fact_id = job["result"]["fact_ids"][0]
 
-        second_environment = {**environment, "MEMORY_MCP_TENANT": ""}
         second_transport = StdioTransport(
-            command=str(installed_cli), args=["mcp"], env=second_environment
+            command=str(installed_cli), args=["mcp"], env=environment
         )
         async with Client(second_transport) as client:
             search = await client.call_tool(
