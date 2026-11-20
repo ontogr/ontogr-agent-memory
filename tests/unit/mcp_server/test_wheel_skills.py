@@ -11,6 +11,20 @@ from ontogr_mem.mcp_server.skills import SKILLS_ROOT
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 DIST_ROOT = REPOSITORY_ROOT / "dist"
 SKILL_NAMES = ["memory-write", "memory-recall"]
+WORDING_NAMES = [
+    "instructions.txt",
+    "nudge_session_start.txt",
+    "nudge_user_prompt.txt",
+    "nudge_stop.txt",
+    "tool_add_memory.txt",
+    "tool_forget_memory.txt",
+    "tool_get_entity.txt",
+    "tool_get_job.txt",
+    "tool_get_skill.txt",
+    "tool_search_memory.txt",
+    "tool_write_facts.txt",
+]
+WORDING_ROOT = REPOSITORY_ROOT / "ontogr_mem/mcp_server/wording"
 
 
 @pytest.fixture
@@ -41,3 +55,15 @@ class TestWheelSkills:
         """The skills folder ships as data, so the wheel has no __init__.py."""
         with zipfile.ZipFile(built_wheel) as wheel:
             assert "ontogr_mem/mcp_server/skills/__init__.py" not in wheel.namelist()
+
+    @pytest.mark.parametrize("name", WORDING_NAMES)
+    def test_ships_wording_files_with_source_bytes(self, built_wheel, name):
+        """Each wording file in the wheel matches the source tree."""
+        member = f"ontogr_mem/mcp_server/wording/{name}"
+        source_bytes = (WORDING_ROOT / name).read_bytes()
+
+        with zipfile.ZipFile(built_wheel) as wheel:
+            assert member in wheel.namelist()
+            shipped_bytes = wheel.read(member)
+
+        assert shipped_bytes == source_bytes

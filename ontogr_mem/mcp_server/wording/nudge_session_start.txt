@@ -1,0 +1,1 @@
+Memory is available. At the start of a task, search it with search_memory when earlier work, decisions or preferences could matter. If search_memory is not listed, skip this step.

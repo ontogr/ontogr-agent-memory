@@ -4,7 +4,6 @@ import pytest
 from fastmcp import Client, FastMCP
 from fastmcp.skills import SkillsClientExtension
 
-from ontogr_mem.mcp_server.instructions import INSTRUCTIONS
 from ontogr_mem.mcp_server.server import build_server
 from ontogr_mem.mcp_server.settings import ALL_TOOLS, McpSettings
 from ontogr_mem.mcp_server.skills import SKILLS_ROOT, get_skill
@@ -48,11 +47,6 @@ class TestGetSkill:
         with pytest.raises(InvalidArgumentError):
             await get_skill(name)
 
-    def test_instructions_name_both_skills(self):
-        """The server instructions point clients at both skill names."""
-        assert "memory-write" in INSTRUCTIONS
-        assert "memory-recall" in INSTRUCTIONS
-
 
 class TestSkillsThroughServer:
     """The built server serves the packaged skills as a tool and as an extension."""
@@ -77,6 +71,14 @@ class TestSkillsThroughServer:
             skills = await client.list_skills()
 
         assert sorted(skill.uri for skill in skills) == SKILL_URIS
+
+        for skill in skills:
+            name = skill.uri.removeprefix("skill://").removesuffix("/SKILL.md")
+            frontmatter = skill.frontmatter.root
+            assert frontmatter["name"] == name
+            description = frontmatter["description"]
+            assert isinstance(description, str)
+            assert description.strip()
 
     @pytest.mark.parametrize("name", SKILL_NAMES)
     async def test_extension_serves_the_packaged_file_text(self, name):

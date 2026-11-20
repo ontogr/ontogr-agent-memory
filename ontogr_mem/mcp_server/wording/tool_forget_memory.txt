@@ -1,0 +1,1 @@
+Close a fact's validity and keep its history.

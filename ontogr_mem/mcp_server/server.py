@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 from functools import wraps
+from pathlib import Path
 from typing import Any
 
 from fastmcp import FastMCP
@@ -15,6 +16,13 @@ from ontogr_mem.mcp_server.settings import McpSettings
 from ontogr_mem.mcp_server.skills import SKILLS_ROOT, get_skill
 from ontogr_mem.mcp_server.tools import guard_errors
 from ontogr_mem.requirements import TEXT_WRITE_ROLES
+
+
+WORDING_ROOT = Path(__file__).with_name("wording")
+
+
+def _tool_description(name: str) -> str:
+    return (WORDING_ROOT / f"tool_{name}.txt").read_text(encoding="utf-8").strip()
 
 
 def build_server(
@@ -47,12 +55,14 @@ def build_server(
 
         memory_method = getattr(memory, method)
         tool_call = wraps(memory_method)(call)
-        server.tool(guard_errors(tool_call), name=name, tags=tags)
+        options: dict[str, Any] = {"name": name, "tags": tags}
+        description_path = WORDING_ROOT / f"tool_{name}.txt"
+        if description_path.is_file():
+            options["description"] = _tool_description(name)
+        server.tool(guard_errors(tool_call), **options)
 
     if "add_memory" in enabled:
         enabled.discard("add_memory")
-        # This server accepts extraction only when the fixed process model pool
-        # supports every required role; request-specific Memory views share it.
         memory = memory_for_request(None)
         if all(memory.models.configured(role) for role in TEXT_WRITE_ROLES):
             enabled.add("add_memory")
@@ -71,7 +81,12 @@ def build_server(
         if name in enabled:
             register(name, method, tags)
     if "get_skill" in enabled:
-        server.tool(guard_errors(get_skill), name="get_skill", tags={"skills"})
+        server.tool(
+            guard_errors(get_skill),
+            name="get_skill",
+            tags={"skills"},
+            description=_tool_description("get_skill"),
+        )
     if server_settings.skills_extension:
         provider = SkillsDirectoryProvider(SKILLS_ROOT, experimental_skills=True)
         server.add_provider(provider)

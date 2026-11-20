@@ -1,0 +1,1 @@
+Read the entity and relation types available in this memory.

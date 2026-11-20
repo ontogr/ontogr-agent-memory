@@ -1,0 +1,1 @@
+List entities stored in memory.
