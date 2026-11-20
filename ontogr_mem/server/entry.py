@@ -134,12 +134,15 @@ async def ensure_server(  # noqa: PLR0912, PLR0915
         settings.api_key.get_secret_value() if settings.api_key is not None else None
     ) or read_server_token(directory / "server.token")
     if explicit_url:
-        health = await asyncio.to_thread(_health, explicit_url.rstrip("/"), token)
+        server_url = explicit_url.rstrip("/")
+        if server_url.endswith("/mcp"):
+            server_url = server_url[:-4]
+        health = await asyncio.to_thread(_health, server_url, token)
         if health is None:
             raise ServerUnavailableError(
                 f"Memory server at {explicit_url} is unavailable"
             )
-        return _endpoint(explicit_url.rstrip("/"), health, token)
+        return _endpoint(server_url, health, token)
 
     expected_store = _store_identity(graph_url, state_url)
     info = read_server_info(directory / "server.json")
