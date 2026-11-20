@@ -10,9 +10,10 @@ SKILLS_ROOT = Path(__file__).with_name("skills").resolve()
 
 
 async def get_skill(name: Literal["memory-write", "memory-recall"]) -> str:
-    """Read memory-write before saving facts, or memory-recall before recall.
+    """Return the full packaged text for a memory skill.
 
-    Returns the complete packaged skill text. It does not search or write memory.
+    Use memory-write for saving and memory-recall for searching. The result is
+    instructions for the host. This call does not search or write memory.
     """
     if name not in {"memory-write", "memory-recall"}:
         msg = "unknown skill name"

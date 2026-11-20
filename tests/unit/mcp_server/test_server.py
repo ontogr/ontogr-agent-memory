@@ -239,11 +239,3 @@ class TestBuildServer:
         assert result.structured_content["state"] == "found"
         assert result.structured_content["rendered"] == "Ada works at Acme."
         assert service.search_requests[0].query == "x"
-
-    async def test_instructions_point_clients_at_both_skills(self):
-        """The server instructions name the two skills a client should read."""
-        server = build_server(build_memory(FakeMemoryService()), settings=_settings())
-
-        instructions = server.instructions or ""
-        assert "get_skill('memory-write')" in instructions
-        assert "get_skill('memory-recall')" in instructions

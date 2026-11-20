@@ -1,0 +1,1 @@
+Check the status and result of a memory job.

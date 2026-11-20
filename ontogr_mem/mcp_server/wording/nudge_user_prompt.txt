@@ -1,0 +1,1 @@
+Before you answer a question about earlier work, decisions or preferences, search memory with search_memory when it is listed. Answer from the results, and say so when they are empty.

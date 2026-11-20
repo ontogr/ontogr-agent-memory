@@ -1,5 +1,7 @@
 """Build the MCP server that exposes one Memory client as tools and skills."""
 
+from pathlib import Path
+
 from fastmcp import FastMCP
 from fastmcp.server.providers.skills import SkillsDirectoryProvider
 from fastmcp.skills.extension import SkillsExtension
@@ -11,6 +13,13 @@ from ontogr_mem.mcp_server.instructions import INSTRUCTIONS
 from ontogr_mem.mcp_server.settings import McpSettings
 from ontogr_mem.mcp_server.skills import SKILLS_ROOT, get_skill
 from ontogr_mem.mcp_server.tools import guard_errors
+
+
+WORDING_ROOT = Path(__file__).with_name("wording")
+
+
+def _tool_description(name: str) -> str:
+    return (WORDING_ROOT / f"tool_{name}.txt").read_text(encoding="utf-8").strip()
 
 
 def build_server(memory: Memory, *, settings: McpSettings | None = None) -> FastMCP:
@@ -42,31 +51,68 @@ def build_server(memory: Memory, *, settings: McpSettings | None = None) -> Fast
     ):
         enabled.discard("add_memory")
     if "search_memory" in enabled:
-        server.tool(guard_errors(memory.search), name="search_memory", tags={"read"})
+        server.tool(
+            guard_errors(memory.search),
+            name="search_memory",
+            tags={"read"},
+            description=_tool_description("search_memory"),
+        )
     if "get_entity" in enabled:
-        server.tool(guard_errors(memory.get_entity), name="get_entity", tags={"read"})
+        server.tool(
+            guard_errors(memory.get_entity),
+            name="get_entity",
+            tags={"read"},
+            description=_tool_description("get_entity"),
+        )
     if "list_entities" in enabled:
         server.tool(
-            guard_errors(memory.list_entities), name="list_entities", tags={"read"}
+            guard_errors(memory.list_entities),
+            name="list_entities",
+            tags={"read"},
+            description=_tool_description("list_entities"),
         )
     if "get_ontology" in enabled:
         server.tool(
-            guard_errors(memory.get_ontology), name="get_ontology", tags={"read"}
+            guard_errors(memory.get_ontology),
+            name="get_ontology",
+            tags={"read"},
+            description=_tool_description("get_ontology"),
         )
     if "get_job" in enabled:
-        server.tool(guard_errors(memory.get_job), name="get_job", tags={"read"})
+        server.tool(
+            guard_errors(memory.get_job),
+            name="get_job",
+            tags={"read"},
+            description=_tool_description("get_job"),
+        )
     if "add_memory" in enabled:
-        server.tool(guard_errors(memory.write_text), name="add_memory", tags={"write"})
+        server.tool(
+            guard_errors(memory.write_text),
+            name="add_memory",
+            tags={"write"},
+            description=_tool_description("add_memory"),
+        )
     if "write_facts" in enabled:
         server.tool(
-            guard_errors(memory.write_facts), name="write_facts", tags={"write"}
+            guard_errors(memory.write_facts),
+            name="write_facts",
+            tags={"write"},
+            description=_tool_description("write_facts"),
         )
     if "forget_memory" in enabled:
         server.tool(
-            guard_errors(memory.invalidate), name="forget_memory", tags={"forget"}
+            guard_errors(memory.invalidate),
+            name="forget_memory",
+            tags={"forget"},
+            description=_tool_description("forget_memory"),
         )
     if "get_skill" in enabled:
-        server.tool(guard_errors(get_skill), name="get_skill", tags={"skills"})
+        server.tool(
+            guard_errors(get_skill),
+            name="get_skill",
+            tags={"skills"},
+            description=_tool_description("get_skill"),
+        )
     if server_settings.skills_extension:
         provider = SkillsDirectoryProvider(SKILLS_ROOT, experimental_skills=True)
         server.add_provider(provider)
