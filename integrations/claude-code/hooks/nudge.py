@@ -62,9 +62,7 @@ def main() -> None:  # noqa: PLR0911
         threshold = DEFAULTS[counter]
     if not 1 <= threshold <= 50 or count % threshold:
         return
-    filename = (
-        f"nudge_{counter}_prompt.txt" if counter == "prompt" else "nudge_stop.txt"
-    )
+    filename = "nudge_user_prompt.txt" if counter == "prompt" else "nudge_stop.txt"
     emit(event, (root / filename).read_text())
 
 

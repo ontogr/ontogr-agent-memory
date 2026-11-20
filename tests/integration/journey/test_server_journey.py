@@ -9,6 +9,7 @@ import secrets
 import select
 import subprocess
 import time
+import urllib.request
 from collections.abc import Generator
 from pathlib import Path
 
@@ -355,9 +356,9 @@ class TestServerJourney:
             )
             assert fact_id in str(search.structured_content)
 
-        import urllib.request
-
-        with urllib.request.urlopen("http://127.0.0.1:18000/health", timeout=5) as response:
+        with urllib.request.urlopen(
+            "http://127.0.0.1:18000/health", timeout=5
+        ) as response:
             assert response.status == 200
 
     def test_server_recovers_after_crash(

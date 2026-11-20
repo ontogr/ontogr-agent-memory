@@ -103,34 +103,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915
     opencode = re.sub(r"(?m)^\s*//.*$", "", opencode)
     json.loads(opencode)
 
-    marketplace = {
-        "name": "ontogr",
-        "owner": {"name": "OntoGr"},
-        "description": "OntoGr memory plugins for Claude Code.",
-        "plugins": [
-            {
-                "name": plugin["name"],
-                "source": {
-                    "source": "git-subdir",
-                    "url": "https://github.com/ontogr/ontogr-agent-memory.git",
-                    "path": "integrations/claude-code",
-                    "ref": f"v{version}",
-                },
-                "description": (
-                    "Long-term memory for Claude Code through the OntoGr MCP server."
-                ),
-            }
-        ],
-    }
-    entry = marketplace["plugins"][0]
-    if entry["name"] != plugin["name"] or entry["source"]["ref"] != f"v{version}":
-        _fail("candidate marketplace does not match the plugin")
-    if (
-        not (ROOT / entry["source"]["path"]).is_dir()
-        or not marketplace["owner"]["name"]
-    ):
-        _fail("candidate marketplace metadata is incomplete")
-
 
 if __name__ == "__main__":
     main()
