@@ -1,0 +1,59 @@
+---
+title: Chat with persistent memory
+description: Store a fact in a terminal chat and recall it in a fresh session.
+---
+
+`ontogr-mem chat` runs a terminal conversation whose agent stores completed
+turns as memory. A later session has no conversation history; it retrieves the
+stored facts.
+
+## Prerequisites
+
+- Python 3.11 or newer and [uv](https://docs.astral.sh/uv/).
+- A FalkorDB graph on loopback. Start it with `docker compose up -d --wait
+  falkordb` from a clone of the repository or a copy of `compose.yaml`.
+- A model endpoint with an API key. Set `MEMORY_LLM_MODEL`,
+  `MEMORY_LLM_BASE_URL`, and `MEMORY_LLM_API_KEY` in the environment or in a
+  `.env` file in the working directory. A name without a protocol prefix uses
+  OpenAI-compatible chat.
+
+## Start the graph and install the command
+
+```bash
+docker compose up -d --wait falkordb
+uv tool install "ontogr-mem[local,neo4j,postgres]"
+```
+
+Inside a uv project, use `uv add "ontogr-mem[local,neo4j,postgres]"` and prefix
+the command with `uv run` instead.
+
+## Write a fact
+
+Run the chat for a tenant:
+
+```bash
+ontogr-mem chat --tenant default
+```
+
+Say a fact about an invented person, then exit with `/exit` or Ctrl-D. The chat
+waits up to 30 seconds for queued work and prints `saving memory` when it
+finishes. A second Ctrl-C stops waiting. Unfinished jobs resume when the same
+state store opens again.
+
+## Recall the fact
+
+Start the chat again with the same tenant and ask about the fact. The agent
+calls `search_memory` and reads the stored fact; no earlier messages are sent to
+the model. A search can report `indexing` while a write job is still running.
+
+The `chat --ontology` flag has been removed. To use a custom ontology with a
+chat-like host, set it in the server settings file or connect through
+`server run --ontology`.
+
+## Uninstall
+
+- Remove the tool with `uv tool uninstall ontogr-mem` when you installed it as a tool, or `uv remove ontogr-mem` inside a uv project.
+- Remove the state file and its lock, the server files, the model cache, and the graph.
+
+See [Remove stored data](../reference/data-removal.mdx) for the paths and the
+commands.

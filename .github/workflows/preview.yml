@@ -1,0 +1,76 @@
+name: Docs Preview
+
+on:
+  pull_request:
+    paths:
+      - "docs/**"
+      - "integrations/hosts/**"
+      - "ontogr_mem/**"
+      - "CHANGELOG.md"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "Makefile"
+      - ".python-version"
+      - ".pre-commit-config.yaml"
+      - ".github/scripts/docs_api_links.py"
+      - ".github/scripts/docs_config_table.py"
+      - ".github/scripts/update_precommit_docs_pins.py"
+      - ".github/workflows/docs.yml"
+      - ".github/workflows/preview.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Deploy docs preview to Netlify
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      UV_PYTHON: "3.12"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - run: make sync
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+      - run: make docs-install
+      - name: Build docs site
+        run: make docs-build
+        env:
+          BASE_URL: /
+      - name: Deploy preview
+        uses: nwtgck/actions-netlify@d22a32a27c918fe470bbc562e984f80ec48c2668 # v4.0.0
+        with:
+          publish-dir: docs/build
+          production-deploy: false
+          enable-github-deployment: false
+          alias: deploy-preview-${{ github.event.pull_request.number }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          deploy-message: "docs preview for PR #${{ github.event.pull_request.number }}"
+          enable-pull-request-comment: true
+          enable-commit-comment: false
+          overwrites-pull-request-comment: true
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        timeout-minutes: 5

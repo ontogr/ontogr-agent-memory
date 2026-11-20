@@ -1,0 +1,51 @@
+---
+title: MCP tools
+description: Tool names, arguments, and results exposed by the memory server.
+---
+
+The server registers the tools below. The tenant comes from the
+`X-Memory-Tenant` request header, never from a tool argument. `MEMORY_MCP_TOOLS`
+can remove tools but cannot add an administrative operation or `add_memory`.
+
+| Tool | Arguments | Result |
+| --- | --- | --- |
+| `search_memory` | `query`, plus search filters | Facts, entities, and a `rendered` context block with a `state` of `found`, `none`, `indexing`, or `degraded`. |
+| `get_entity` | `name`, `include_history` | One entity with its current or historical facts. |
+| `list_entities` | `entity_type`, `cursor`, `limit` | A page of active entities; the type includes descendants. |
+| `get_ontology` | `include_deprecated` | The tenant's entity and relation type catalog. |
+| `stale_episodes` | `cursor`, `limit` | Episodes extracted under an older ontology version. |
+| `get_job` | `job_id` | Status, attempts, result, error, and trace metadata for one job. |
+| `write_facts` | `source_text`, `facts`, `role`, `idempotency_key`, `wait_seconds` | A receipt with a job id; the job result has `fact_ids`, `unplaced`, and `dropped`. |
+| `add_memory` | `content`, `role`, `speaker`, `session_id`, `thread`, `reference_time`, `idempotency_key`, `wait_seconds` | A receipt for a text or message extraction job. Listed only in model mode. |
+| `forget_memory` | `fact_id`, `reason` | A receipt for closing one fact and keeping its history. |
+| `get_skill` | `name` | The text of the `memory-write` or `memory-recall` skill. |
+
+## Write results
+
+Writes are queued. Use `get_job` with the receipt's job id until its status is
+terminal. A finished `write_facts` result lists the stored fact ids, the count
+of `unplaced` facts, and each dropped input with an `index`, `reason`, and
+`detail`. The index is the zero-based position in the submitted facts. Drop
+reasons include `missing_field`, `ungrounded`, `ambiguous_entity_ref`,
+`wrong_direction`, `self_relation`, time reasons, and `duplicate_merged`. The
+source episode is kept even when every fact is dropped.
+
+A `write_facts` request carries at most 1000 facts, each text field at most
+4096 characters, and at most 10 identity values per endpoint. Quotes, names,
+and identity values must occur in the source text. The ontology decides where a
+fact is placed: an unknown relation or a pattern violation becomes unplaced,
+and an unknown entity type is kept with the Unknown type.
+
+## Limits and errors
+
+| Setting | Behavior |
+| --- | --- |
+| `MEMORY_MCP_API_KEY` | Bearer key for HTTP requests. Blank means unset. It does not protect stdio. |
+| `MEMORY_MCP_TOOLS` | Comma list of tool names. An unknown name fails settings validation. |
+| `MEMORY_MCP_SKILLS_EXTENSION` | Advertises the skills extension. Default `true`. |
+
+Tool errors are returned as JSON with a stable `code`, a `message`, and an
+optional `hint`. Internal error details are masked. See
+[Errors](errors.mdx) for the codes and
+[Keyless and model mode](../concepts/keyless-and-model-mode.mdx) for when
+`add_memory` is listed.

@@ -1,0 +1,81 @@
+---
+title: Run a shared server or the Docker image
+description: Serve all tenants of one store from a per-user server or a container.
+---
+
+One memory server serves every tenant of a store from a single process. A host
+that uses `Memory.connect` or the MCP tools attaches to that server instead of
+opening the SQLite state file itself.
+
+## Prerequisites
+
+- Python 3.11 or newer and [uv](https://docs.astral.sh/uv/), or Docker with Compose.
+- A graph and a state store. The repository's `compose.yaml` starts FalkorDB and
+  the MCP service with named volumes for the graph, state, and model cache.
+
+## Run a per-user server
+
+Start the server in the foreground:
+
+```bash
+uvx --from "ontogr-mem[local,neo4j,postgres]==0.0.1" ontogr-mem server run
+```
+
+Check it and stop it from another terminal:
+
+```bash
+uvx --from "ontogr-mem[local,neo4j,postgres]==0.0.1" ontogr-mem server status
+uvx --from "ontogr-mem[local,neo4j,postgres]==0.0.1" ontogr-mem server stop
+```
+
+`server run` holds `server.lock` in the data directory for its whole life and
+writes `server.json`, `server.token`, and `server.log` beside it. The token in
+`server.token` authenticates the local HTTP endpoints. A second `server run`
+exits with status 75 while the lock is held. The server exits after
+`MEMORY_SERVER_IDLE_MINUTES` with no clients; the default is 30, and `0`
+disables the idle exit.
+
+## Connect over HTTP
+
+Set `MEMORY_MCP_API_KEY` before starting the server, then use the bearer key in
+your host's HTTP header configuration. The MCP endpoint is `/mcp` on the
+server's port. A bind outside loopback without a key logs a warning and still
+starts, so keep the port on loopback unless you set a key.
+
+The old `mcp --transport`, `--host`, `--port`, `--tenant`, and `--ontology`
+flags are gone. Set transport and tenant through the environment or the server
+settings file; `server run` still accepts `--tenant` and `--ontology`.
+
+## Run the container
+
+Pull the published image and start it with the Compose file:
+
+```bash
+docker compose up -d --wait
+```
+
+The image is `ghcr.io/ontogr/ontogr-agent-memory:0.0.1`. Compose publishes port
+8000 on host loopback and sets `MEMORY_MCP_TENANT` to `local` unless the shell
+overrides it. The graph host is not loopback inside the container, so a hosted
+graph always needs a tenant other than `default`. A plugin with an empty
+`tenant` sends no header and reaches the Compose tenant.
+
+Three named volumes hold the state: `ontogr-mem-falkordb-data`,
+`ontogr-mem-state`, and `ontogr-mem-models`. Keep them to retain memory, the
+state file, and the cached embedding model across container replacement.
+
+To build from a checkout instead of pulling the image, use the build override:
+
+```bash
+docker compose -f compose.yaml -f compose.build.yaml up -d --build mcp
+```
+
+## Uninstall
+
+- Run `ontogr-mem server stop` on each machine that runs the server.
+- Run `docker compose down` for the Compose stack.
+- Remove the volumes with `docker volume rm ontogr-mem-falkordb-data ontogr-mem-state ontogr-mem-models`.
+- Remove the data directory, the state file and its lock, and the model cache.
+
+See [Remove stored data](../reference/data-removal.mdx) for the paths and the
+commands.

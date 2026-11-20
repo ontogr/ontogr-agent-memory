@@ -74,7 +74,15 @@ Code that you write from an idea in another project needs no notice. Name the pr
 | `make security` | Run Bandit and uv audit |
 | `make changelog` | Rebuild `CHANGELOG.md` from the git history with git-cliff. It needs the full history and the release tags, and stops if they are missing |
 | `make wheel-test` | Build the wheel and import it from a clean environment |
+| `make docs-generate` | Regenerate the Python API pages and the configuration table |
+| `make docs-build` | Build the documentation site |
+| `make docs-test` | Run the Python blocks in the documentation pages against a local FalkorDB |
 | `make help` | List all targets |
+
+The documentation site lives in `docs/`. `make docs-install` installs its Node
+dependencies and needs the pinned Node LTS. Python work and the pre-commit
+hooks do not need Node. `make docs-dev` serves the site locally. Start FalkorDB
+with `docker compose up -d --wait falkordb` before `make docs-test`.
 
 Run `uv run pre-commit install` once to enable the commit hooks.
 

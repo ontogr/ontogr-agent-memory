@@ -1,0 +1,32 @@
+---
+title: OntoGr Agent Memory
+description: Durable, traceable memory for AI agents.
+---
+
+OntoGr Agent Memory stores what an agent learned, where it learned it, and when
+it was true. An agent writes source text and facts, then searches the tenant and
+retrieves a budgeted context block with the evidence behind each fact.
+
+- Facts keep the verbatim quote and the episode they came from. A hash-chained ledger records every temporal write.
+- Each fact has a validity window and a record of when the system learned it, so a read can ask what was true on a date or what the system believed on that date.
+- Rules, one optional model call per new fact with candidates, and a person's decision settle contradictions. A failed call leaves both facts live.
+- The graph runs on FalkorDB or Neo4j, vectors live on the graph, and jobs and audit rows live in SQLite or Postgres. Each tenant is a separate partition.
+
+Install the package with all backends:
+
+```bash
+uv add "ontogr-mem[local,neo4j,postgres]"
+```
+
+Pick a path for your first write and recall:
+
+| Path | What you set up |
+| --- | --- |
+| [Claude Code](get-started/claude-code.mdx) | The memory plugin in Claude Code, with a first write and recall. |
+| [Other hosts](get-started/other-hosts.mdx) | Codex, Cursor, or OpenCode connected to the memory server. |
+| [Python app](get-started/python-app.mdx) | The async client in your own application. |
+| [Shared server and Docker](get-started/shared-server-and-docker.mdx) | One server for a machine or a container for a team. |
+| [Terminal chat](get-started/chat.mdx) | A chat session that stores and retrieves memory. |
+
+Read [What is stored and how it flows](concepts/how-data-flows.mdx) when you
+need the model behind these paths.

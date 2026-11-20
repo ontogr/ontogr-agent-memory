@@ -1,0 +1,40 @@
+---
+title: Use Postgres for state
+description: Move jobs, operation rows, and the audit log to PostgreSQL.
+---
+
+`MEMORY_STATE_URL` selects the state backend by scheme. SQLite is the default
+for a single machine; Postgres serves a deployment that shares state between
+processes. Both `postgres://` and `postgresql://` are accepted, and an in-memory
+state is not supported.
+
+```bash
+export MEMORY_STATE_URL=postgresql://user:password@postgres.example.com:5432/memory
+```
+
+Percent-encode special characters in credentials. The port defaults to 5432.
+The relation store holds only jobs, operation rows, audit rows, and the erase
+journal; it never holds memory text.
+
+## When to use it
+
+Use Postgres when more than one machine writes to the same graph or when a
+server and a clearing process must see the same job state. A remote graph with
+SQLite state is reported as a warning by `ontogr-mem doctor`, because the state
+file is local to each machine.
+
+Stop every server on the store before you run `clear`. A server lock sees only
+the machine it runs on, so each other machine must stop its own server first.
+
+## Verify the connection
+
+Install the driver extra with `uv add "ontogr-mem[postgres]"` and run:
+
+```bash
+ontogr-mem doctor
+```
+
+The state line in the output shows whether the URL parses and is writable.
+Lease and heartbeat settings use the `MEMORY_STATE_LEASE_SECONDS` and
+`MEMORY_STATE_HEARTBEAT_SECONDS` variables. See
+[Configuration](../reference/configuration.mdx).

@@ -1,0 +1,222 @@
+---
+title: Configuration
+description: Every environment variable that a settings field reads, with its default.
+---
+
+Settings classes use `pydantic-settings`. Each class reads the `.env` file in the
+current directory and uses an environment prefix for its area. A server reads
+its model and embedding settings from its
+[server settings file](../guides/server-settings-file.mdx) instead of the
+starter's environment. A role-specific setting replaces the global value for
+that field, and an unset role field inherits the global value.
+
+The table below is generated from the settings classes. Do not edit it by hand;
+run `make docs-config` after changing a settings module.
+
+{/* BEGIN GENERATED CONFIG */}
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `MEMORY_CLOSURE_ENABLED` | `True` |  |
+| `MEMORY_CLOSURE_MAX_CANDIDATES` | `20` |  |
+| `MEMORY_CLOSURE_PROMPT_VERSION` | `closure-1` |  |
+| `MEMORY_CONSOLIDATION_COMMUNITY` | `unset` |  |
+| `MEMORY_CONSOLIDATION_COMMUNITY__MAX_BUCKET_SIZE` | `20` |  |
+| `MEMORY_CONSOLIDATION_COMMUNITY__MAX_ITERATIONS` | `20` |  |
+| `MEMORY_CONSOLIDATION_COMMUNITY__MIN_SIZE` | `2` |  |
+| `MEMORY_CONSOLIDATION_COMMUNITY__SUMMARY_MAX_CHARS` | `600` |  |
+| `MEMORY_CONSOLIDATION_DESCRIPTION` | `unset` |  |
+| `MEMORY_CONSOLIDATION_DESCRIPTION__MAX_BATCH` | `50` |  |
+| `MEMORY_CONSOLIDATION_DESCRIPTION__MAX_NEIGHBOURS` | `20` |  |
+| `MEMORY_CONSOLIDATION_FEEDBACK` | `unset` |  |
+| `MEMORY_CONSOLIDATION_FEEDBACK__ALPHA` | `0.1` |  |
+| `MEMORY_CONSOLIDATION_FEEDBACK__DECAY_BETA` | `0.02` |  |
+| `MEMORY_CONSOLIDATION_FEEDBACK__IMPLICIT_FACTOR` | `0.5` |  |
+| `MEMORY_CONSOLIDATION_FEEDBACK__MAX_ATTEMPTS` | `3` |  |
+| `MEMORY_CONSOLIDATION_FEEDBACK__NEUTRAL_EPSILON` | `0.01` |  |
+| `MEMORY_CONSOLIDATION_PRUNE` | `unset` |  |
+| `MEMORY_CONSOLIDATION_PRUNE__ARCHIVE_BELOW` | `0.15` |  |
+| `MEMORY_CONSOLIDATION_PRUNE__DELETE_AFTER_RETENTION` | `False` |  |
+| `MEMORY_CONSOLIDATION_PRUNE__DRY_RUN` | `True` |  |
+| `MEMORY_CONSOLIDATION_PRUNE__MIN_AGE_DAYS` | `30.0` |  |
+| `MEMORY_CONSOLIDATION_PRUNE__RETENTION_DAYS` | `180.0` |  |
+| `MEMORY_CONSOLIDATION_REFLECTION` | `unset` |  |
+| `MEMORY_CONSOLIDATION_REFLECTION__AUTO_ACCEPT` | `False` |  |
+| `MEMORY_CONSOLIDATION_REFLECTION__BATCH_SIZE` | `6` |  |
+| `MEMORY_CONSOLIDATION_REFLECTION__MIN_CONFIDENCE` | `0.75` |  |
+| `MEMORY_CONSOLIDATION_REFLECTION__MIN_HELPFULNESS` | `0` |  |
+| `MEMORY_CONSOLIDATION_RUNNER` | `unset` |  |
+| `MEMORY_CONSOLIDATION_RUNNER__LEASE_TTL_S` | `600.0` |  |
+| `MEMORY_CONSOLIDATION_RUNNER__MAX_RERUNS` | `3` |  |
+| `MEMORY_CONSOLIDATION_SCORING` | `unset` |  |
+| `MEMORY_CONSOLIDATION_SCORING__DEGREE_CAP` | `10` |  |
+| `MEMORY_CONSOLIDATION_SCORING__FREQUENCY_CAP` | `20` |  |
+| `MEMORY_CONSOLIDATION_SCORING__HALF_LIFE_DAYS` | `30.0` |  |
+| `MEMORY_CONSOLIDATION_SCORING__W_FREQUENCY` | `0.3` |  |
+| `MEMORY_CONSOLIDATION_SCORING__W_RECENCY` | `0.4` |  |
+| `MEMORY_CONSOLIDATION_SCORING__W_SALIENCE` | `0.3` |  |
+| `MEMORY_EMBEDDING_API_KEY` | `None` |  |
+| `MEMORY_EMBEDDING_BASE_URL` | `None` |  |
+| `MEMORY_EMBEDDING_BATCH_SIZE` | `32` |  |
+| `MEMORY_EMBEDDING_DIMENSIONS` | `None` |  |
+| `MEMORY_EMBEDDING_FASTEMBED_KWARGS` | `unset` |  |
+| `MEMORY_EMBEDDING_MAX_INPUT_TOKENS` | `8192` |  |
+| `MEMORY_EMBEDDING_MODEL` | `None` |  |
+| `MEMORY_EMBEDDING_PROVIDER` | `auto` |  |
+| `MEMORY_ENTITY_EXTRACTION_CONCURRENCY` | `8` |  |
+| `MEMORY_ENTITY_EXTRACTION_DEFAULT_CONFIDENCE` | `0.5` |  |
+| `MEMORY_ENTITY_EXTRACTION_MAX_PREVIOUS` | `3` |  |
+| `MEMORY_ENTITY_EXTRACTION_THRESHOLD` | `0.75` |  |
+| `MEMORY_EXTRACTION_MODE` | `two_pass` |  |
+| `MEMORY_FACT_EXTRACTION_CONCURRENCY` | `8` |  |
+| `MEMORY_FACT_EXTRACTION_DEFAULT_CONFIDENCE` | `0.5` |  |
+| `MEMORY_FACT_EXTRACTION_INSTRUCTIONS` | `empty` |  |
+| `MEMORY_FACT_EXTRACTION_LANGUAGES` | `None` |  |
+| `MEMORY_FACT_EXTRACTION_MAX_PREVIOUS` | `3` |  |
+| `MEMORY_FACT_EXTRACTION_MIN_ENTITIES` | `1` |  |
+| `MEMORY_FACT_EXTRACTION_VERSION` | `fact-1` |  |
+| `MEMORY_FALKORDB_HEALTH_CHECK_INTERVAL` | `30` |  |
+| `MEMORY_FALKORDB_MAX_CONNECTIONS` | `16` |  |
+| `MEMORY_FALKORDB_POOL_TIMEOUT` | `30.0` |  |
+| `MEMORY_FALKORDB_RESILIENCE` | `unset` |  |
+| `MEMORY_FALKORDB_RESILIENCE__BATCH_SIZE` | `500` |  |
+| `MEMORY_FALKORDB_RESILIENCE__BREAKER_FAILURE_THRESHOLD` | `5` |  |
+| `MEMORY_FALKORDB_RESILIENCE__BREAKER_RECOVERY_S` | `30.0` |  |
+| `MEMORY_FALKORDB_RESILIENCE__MAX_ATTEMPTS` | `3` |  |
+| `MEMORY_FALKORDB_RESILIENCE__QUERY_TIMEOUT_MS` | `10000` |  |
+| `MEMORY_FALKORDB_RESILIENCE__RETRY_DELAY` | `1.0` |  |
+| `MEMORY_FALKORDB_RESILIENCE__SLOW_QUERY_MS` | `1000` |  |
+| `MEMORY_FALKORDB_SOCKET_CONNECT_TIMEOUT` | `5.0` |  |
+| `MEMORY_FALKORDB_SOCKET_TIMEOUT` | `30.0` |  |
+| `MEMORY_FORGET_CONFIRM_SECRET` | `None` |  |
+| `MEMORY_GRANTS` | `read,write,forget` |  |
+| `MEMORY_GRAPH_URL` | `unset` |  |
+| `MEMORY_KEYWORD_MAX_TERMS` | `32` |  |
+| `MEMORY_KEYWORD_TENANT_OVERFETCH` | `4` |  |
+| `MEMORY_KEYWORD_TIMEOUT_MS` | `None` |  |
+| `MEMORY_LLM_API_KEY` | `None` |  |
+| `MEMORY_LLM_BASE_URL` | `None` |  |
+| `MEMORY_LLM_EXTRA_BODY` | `None` |  |
+| `MEMORY_LLM_MAX_CONCURRENCY` | `4` |  |
+| `MEMORY_LLM_MAX_OUTPUT_TOKENS` | `None` |  |
+| `MEMORY_LLM_MODEL` | `None` |  |
+| `MEMORY_LLM_OUTPUT_MODE` | `tool` |  |
+| `MEMORY_LLM_REASONING_EFFORT` | `None` |  |
+| `MEMORY_LLM_ROLES` | `unset` |  |
+| `MEMORY_LLM_TIMEOUT_S` | `300.0` |  |
+| `MEMORY_MCP_API_KEY` | `None` |  |
+| `MEMORY_MCP_HOST` | `127.0.0.1` |  |
+| `MEMORY_MCP_ONTOLOGY` | `None` |  |
+| `MEMORY_MCP_PORT` | `None` |  |
+| `MEMORY_MCP_SERVER_URL` | `None` |  |
+| `MEMORY_MCP_SKILLS_EXTENSION` | `True` |  |
+| `MEMORY_MCP_TENANT` | `None` |  |
+| `MEMORY_MCP_TOOLS` | `('search_memory', 'get_entity', 'list_entities', 'get_ontology', 'stale_episodes', 'get_job', 'add_memory', 'write_facts', 'forget_memory', 'get_skill')` |  |
+| `MEMORY_NEO4J_CONNECT_TIMEOUT` | `5.0` |  |
+| `MEMORY_NEO4J_MAX_CONNECTIONS` | `16` |  |
+| `MEMORY_NEO4J_POOL_TIMEOUT` | `30.0` |  |
+| `MEMORY_NEO4J_RESILIENCE` | `unset` |  |
+| `MEMORY_NEO4J_RESILIENCE__BATCH_SIZE` | `500` |  |
+| `MEMORY_NEO4J_RESILIENCE__BREAKER_FAILURE_THRESHOLD` | `5` |  |
+| `MEMORY_NEO4J_RESILIENCE__BREAKER_RECOVERY_S` | `30.0` |  |
+| `MEMORY_NEO4J_RESILIENCE__MAX_ATTEMPTS` | `3` |  |
+| `MEMORY_NEO4J_RESILIENCE__QUERY_TIMEOUT_MS` | `10000` |  |
+| `MEMORY_NEO4J_RESILIENCE__RETRY_DELAY` | `1.0` |  |
+| `MEMORY_NEO4J_RESILIENCE__SLOW_QUERY_MS` | `1000` |  |
+| `MEMORY_NEO4J_TRANSACTION_RETRY_S` | `5.0` |  |
+| `MEMORY_PRINCIPAL` | `local` |  |
+| `MEMORY_RESOLUTION_ANN_FLOOR` | `0.8` |  |
+| `MEMORY_RESOLUTION_ANN_TOP_K` | `20` |  |
+| `MEMORY_RESOLUTION_CLUSTER_CAP` | `8` |  |
+| `MEMORY_RESOLUTION_FUZZY_JACCARD` | `0.9` |  |
+| `MEMORY_RESOLUTION_INLINE_VERIFICATION` | `False` |  |
+| `MEMORY_RESOLUTION_JACCARD_FLOOR` | `0.6` |  |
+| `MEMORY_RESOLUTION_JACCARD_SINGLE_VOTE_MIN` | `0.92` |  |
+| `MEMORY_RESOLUTION_PAIRS_PER_CALL` | `5` |  |
+| `MEMORY_RESOLUTION_PAIR_TOKEN_BUDGET` | `4000` |  |
+| `MEMORY_RESOLUTION_RESOLVER_VERSION` | `1` |  |
+| `MEMORY_RESOLUTION_SINGLE_VOTE_MIN` | `0.96` |  |
+| `MEMORY_RESOLUTION_SUMMARY_STALE_AFTER` | `8` |  |
+| `MEMORY_RESOLUTION_VERIFICATION_VOTES` | `2` |  |
+| `MEMORY_RETRIEVAL_CANDIDATE_FACTOR` | `2` |  |
+| `MEMORY_RETRIEVAL_DISPUTED_PENALTY` | `0.8` |  |
+| `MEMORY_RETRIEVAL_ENTITIES_SHARE` | `0.2` |  |
+| `MEMORY_RETRIEVAL_ENTITY_CANDIDATES` | `10` |  |
+| `MEMORY_RETRIEVAL_EPISODES_SHARE` | `0.3` |  |
+| `MEMORY_RETRIEVAL_FACTS_SHARE` | `0.5` |  |
+| `MEMORY_RETRIEVAL_FILTER_RECHECKS` | `3` |  |
+| `MEMORY_RETRIEVAL_FRONTIER_CAP` | `200` |  |
+| `MEMORY_RETRIEVAL_FUSION_K_BASE` | `20` |  |
+| `MEMORY_RETRIEVAL_FUSION_K_MAX` | `60` |  |
+| `MEMORY_RETRIEVAL_FUSION_K_MIN` | `30` |  |
+| `MEMORY_RETRIEVAL_FUSION_K_PER_LIMIT` | `2` |  |
+| `MEMORY_RETRIEVAL_MAX_CARDS` | `10` |  |
+| `MEMORY_RETRIEVAL_OVERRIDDEN_PENALTY` | `0.7` |  |
+| `MEMORY_RETRIEVAL_PASSAGE_CHARS` | `400` |  |
+| `MEMORY_RETRIEVAL_RERANK_WEIGHT` | `0.5` |  |
+| `MEMORY_RETRIEVAL_SEED_CAP` | `12` |  |
+| `MEMORY_RETRIEVAL_SEED_FACT_COUNT` | `5` |  |
+| `MEMORY_RETRIEVAL_SHORTLIST_FACTOR` | `2` |  |
+| `MEMORY_SERVER_IDLE_MINUTES` | `30` |  |
+| `MEMORY_STATE_HEARTBEAT_SECONDS` | `15.0` |  |
+| `MEMORY_STATE_LEASE_SECONDS` | `60.0` |  |
+| `MEMORY_STATE_URL` | `unset` |  |
+| `MEMORY_TEMPORAL_BATCH_SIZE` | `100` |  |
+| `MEMORY_TEMPORAL_EPISODE_TTL_S` | `3600` |  |
+| `MEMORY_TEMPORAL_MAX_RETRIES` | `1` |  |
+| `MEMORY_TENANT` | `default` |  |
+| `MEMORY_VECTORSTORE_ATTEMPT_TIMEOUT_S` | `60.0` |  |
+| `MEMORY_VECTORSTORE_BACKOFF_BASE_S` | `0.5` |  |
+| `MEMORY_VECTORSTORE_BACKOFF_MAX_S` | `8.0` |  |
+| `MEMORY_VECTORSTORE_BATCH_SIZE` | `36` |  |
+| `MEMORY_VECTORSTORE_BREAKER_RECOVERY_S` | `30.0` |  |
+| `MEMORY_VECTORSTORE_BREAKER_THRESHOLD` | `None` |  |
+| `MEMORY_VECTORSTORE_CHARS_PER_TOKEN` | `4` |  |
+| `MEMORY_VECTORSTORE_CONCURRENCY` | `4` |  |
+| `MEMORY_VECTORSTORE_DEADLINE_S` | `300.0` |  |
+| `MEMORY_VECTORSTORE_EF_RUNTIME` | `200` |  |
+| `MEMORY_VECTORSTORE_ID_BATCH` | `1000` |  |
+| `MEMORY_VECTORSTORE_MAX_ATTEMPTS` | `3` |  |
+| `MEMORY_VECTORSTORE_MAX_RECHECKS` | `3` |  |
+| `MEMORY_VECTORSTORE_OVERFETCH` | `2.0` |  |
+| `MEMORY_VECTORSTORE_REQUESTS_PER_MINUTE` | `None` |  |
+| `MEMORY_VECTORSTORE_TOKEN_CAP` | `4096` |  |
+| `MEMORY_VECTORSTORE_WRITE_BATCH` | `500` |  |
+
+{/* END GENERATED CONFIG */}
+
+## Nested settings
+
+Nested settings join their names with `__`. For example, the maximum attempt
+count of the FalkorDB resilience settings is
+`MEMORY_FALKORDB_RESILIENCE__MAX_ATTEMPTS`. Set the whole object as a JSON value
+for fields that accept a mapping, such as
+`MEMORY_EMBEDDING_FASTEMBED_KWARGS='{"model_name":"...","threads":2}'`.
+
+A blank value counts as unset for variables that declare it, including
+`MEMORY_LLM_*` role overrides, `MEMORY_MCP_API_KEY`, and
+`MEMORY_MCP_ONTOLOGY`. A blank role variable does not replace the global value.
+
+## Variables outside settings
+
+These names are read by plain code or by a caller and are not settings fields.
+
+| Variable | Meaning |
+| --- | --- |
+| `MEMORY_DATA_DIR` | Directory for data, state, and server files. Overrides the platform default. |
+| `FASTEMBED_CACHE_PATH` | Directory for local embedding model files. Overrides the cache subdirectory. |
+
+## Store URLs and tenant rules
+
+`MEMORY_GRAPH_URL` selects FalkorDB with `redis://` or `rediss://`, or Neo4j
+with a Bolt or Neo4j scheme. `MEMORY_STATE_URL` selects SQLite with
+`sqlite:///<absolute path>` or Postgres with `postgres://` or `postgresql://`.
+Both schemes are accepted for Postgres. An in-memory state is not supported.
+Credentials are secret values and are never printed by `ontogr-mem doctor`.
+
+A non-loopback graph requires an explicit tenant other than `default`. Set
+`MEMORY_MCP_TENANT`; a plugin with an empty `tenant` sends no header and reaches
+the server's configured tenant. Percent-encode special characters in URL
+credentials. See [Use FalkorDB](../guides/use-falkordb.mdx),
+[Use Neo4j](../guides/use-neo4j.mdx), and
+[Use Postgres for state](../guides/use-postgres-state.mdx).

@@ -1,7 +1,7 @@
 <h1 align="center"><a href="https://github.com/ontogr/ontogr-agent-memory">OntoGr Agent Memory</a></h1>
 
 <h3 align="center">Durable, traceable memory for AI agents.</h3>
-<h4 align="center"><a href="https://github.com/ontogr/ontogr-agent-memory#features">Features</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#quickstart">Quickstart</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#core-concepts">Concepts</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#how-data-flows">Data flow</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#service-api">Service API</a> · <a href="https://github.com/ontogr/ontogr-agent-memory#configuration">Configuration</a> · <a href="https://github.com/ontogr/ontogr-agent-memory/blob/main/CHANGELOG.md">Changelog</a></h4>
+<h4 align="center"><a href="https://ontogr.github.io/ontogr-agent-memory/">Docs</a> | <a href="#features">Features</a> | <a href="#quickstart">Quickstart</a> | <a href="#core-concepts">Concepts</a> | <a href="#how-data-flows">Data flow</a> | <a href="#service-api">Service API</a> | <a href="#configuration">Configuration</a> | <a href="#development">Development</a> | <a href="https://github.com/ontogr/ontogr-agent-memory/blob/main/CHANGELOG.md">Changelog</a></h4>
 
 <div align="center">
 
@@ -30,6 +30,19 @@ OntoGr Agent Memory is an open source Python library that stores what an agent l
 <p align="center">
   <img src="https://raw.githubusercontent.com/ontogr/ontogr-agent-memory/main/img/hero.svg" alt="Source items enter the extraction layer as episodes. Extracted facts go to the temporal and consistency engine, which writes fact versions to the storage layer. Retrieval reads the storage layer and returns a budgeted context block." width="860">
 </p>
+
+## Pick your path
+
+| Path | What you set up |
+| --- | --- |
+| [Claude Code](https://ontogr.github.io/ontogr-agent-memory/latest/get-started/claude-code/) | Add the memory plugin, then write and recall a fact. |
+| [Other hosts](https://ontogr.github.io/ontogr-agent-memory/latest/get-started/other-hosts/) | Connect Codex, Cursor, or OpenCode to the memory server. |
+| [Python app](https://ontogr.github.io/ontogr-agent-memory/latest/get-started/python-app/) | Write and search memory from an async application. |
+| [Shared server and Docker](https://ontogr.github.io/ontogr-agent-memory/latest/get-started/shared-server-and-docker/) | Run one server for a machine or a container for a team. |
+| [Terminal chat](https://ontogr.github.io/ontogr-agent-memory/latest/get-started/chat/) | Try memory in a terminal before connecting a host. |
+
+Concepts, how-to guides, and the generated Python API reference are in the
+[full documentation](https://ontogr.github.io/ontogr-agent-memory/).
 
 ## Features
 
@@ -142,7 +155,9 @@ relations:
 - A type keeps its id when the label stays the same. Use `renamed_from` to rename a type, `merged_into` to redirect a type and `deprecated: true` to retire it. Omitted types are deprecated. Existing aliases are kept.
 - `single` keeps one value per subject, and `many` allows multiple values. `judged` currently follows the same write policy as `many`.
 - With no declaration, existing tenants keep their ontology and new tenants get the default.
-- Both `ontogr-mem chat` and `ontogr-mem mcp` accept `--ontology ontology.yaml`. MCP also reads `MEMORY_MCP_ONTOLOGY`.
+- Pass `--ontology ontology.yaml` to `ontogr-mem server run`, or set
+  `MEMORY_MCP_ONTOLOGY` in the environment or the per-user `server.env` file for
+  the MCP server. The `chat` and `mcp` commands do not accept `--ontology`.
 
 #### Entity resolution
 
@@ -412,7 +427,8 @@ Forget has four modes:
 
 - **Dry run first:** A hard forget and a tenant clear require a preview. The preview returns a short-lived HMAC token bound to the caller, tenant, target, and mode, and the confirmed call must present it. A preview also reports collateral facts in touched slots and facts that may reopen.
 - **Erase reports residue:** Erase fails when it finds residue it cannot clean and lists what it could not remove.
-- **Tenant clear keeps grants:** It removes memory, vectors, and jobs, but keeps the tenant's grants.
+- **Tenant clear keeps grants:** It removes memory, vectors, and jobs, but keeps the tenant's grants, audit rows, operation rows, and erasure rows.
+- **Stop servers before clear:** Stop every server that can reach the store before running `ontogr-mem clear`, including servers on other machines for a hosted store. The command needs an interactive terminal and has no `--yes` flag.
 - **Export is deterministic:** Export returns one JSONL document with a metadata row, entities, fact versions, and episodes, plus a schema version and row counts. Export is audited.
 
 ## Quickstart
@@ -449,9 +465,9 @@ You need Python 3.11 or newer, Docker with Compose, and a model endpoint with an
 
 ### 2. Use memory over MCP
 
-`ontogr-mem mcp` serves memory over the Model Context Protocol (MCP). A host is the application that connects to the server on behalf of a model, such as a coding agent. One server process serves one tenant. The tenant comes from `MEMORY_MCP_TENANT` or `--tenant`, and every call uses a fixed local caller. No tool accepts a tenant or a caller argument.
+`ontogr-mem mcp` serves memory over the Model Context Protocol (MCP). A host is the application that connects to the server on behalf of a model, such as a coding agent. The MCP tenant comes from `MEMORY_MCP_TENANT` or the per-user `server.env` file, and every call uses a fixed local caller. No tool accepts a tenant or a caller argument.
 
-The server uses stdio by default. Pass `--transport http` to serve Streamable HTTP at `/mcp`. Run the server directly only to test it, because a host normally starts the stdio process itself.
+`ontogr-mem mcp` serves tools on stdio, and a host normally starts that process itself. To serve Streamable HTTP, start the per-user server with `ontogr-mem server run`; its MCP endpoint is `/mcp` on the server port. The `mcp` command has no flags. Tenant and ontology come from the environment or `server.env`, while `server run` also accepts `--tenant` and `--ontology`.
 
 Install the package and start the graph, then run the server:
 
@@ -459,13 +475,13 @@ Install the package and start the graph, then run the server:
 uv add "ontogr-mem[local]"
 docker compose up -d --wait falkordb
 uv run ontogr-mem mcp
-# Or, in a separate terminal:
-uv run ontogr-mem mcp --transport http --host 127.0.0.1 --port 8000
+# Serve HTTP instead, in a separate terminal:
+uv run ontogr-mem server run
 # Container alternative, with state and model-cache volumes:
 docker compose -f compose.yaml -f compose.build.yaml up -d --build mcp
 ```
 
-`docker compose up -d --wait falkordb` runs from a clone or a copy of `compose.yaml`, as the earlier sections explain. The container serves HTTP at `http://127.0.0.1:8000/mcp`, and Compose publishes that port on host loopback only. The image sets `MEMORY_MCP_TRANSPORT`, `MEMORY_MCP_HOST` and `MEMORY_MCP_PORT` to `http`, `0.0.0.0` and `8000`, and environment variables or Compose can override them. The image binds all container interfaces and the server only warns when no key is set, so set `MEMORY_MCP_API_KEY` before publishing the port beyond host loopback or sharing the container network.
+`docker compose up -d --wait falkordb` runs from a clone or a copy of `compose.yaml`, as the earlier sections explain. The MCP container serves HTTP at `http://127.0.0.1:8000/mcp`, and Compose publishes that port on host loopback only. The image runs `ontogr-mem server run` and sets `MEMORY_MCP_HOST` to `0.0.0.0` and `MEMORY_MCP_PORT` to `8000`; environment variables or Compose can override them. A hosted graph has no loopback inside the container, so it needs a tenant other than `default`. Compose sets `MEMORY_MCP_TENANT=local` unless the shell overrides it. The image binds all container interfaces and the server only warns when no key is set, so set `MEMORY_MCP_API_KEY` before publishing the port beyond host loopback or sharing the container network.
 
 Connect a host with one of these snippets. They assume `ontogr-mem` is on the host's PATH, for example after `uv tool install "ontogr-mem[local]"`. Inside a uv project, prefix the command with `uv run`.
 
@@ -506,7 +522,7 @@ OpenCode HTTP, instead of the local entry:
 The four snippets do not change between server modes. The server has two modes.
 
 - **Keyless mode** needs no language model on the server. Run the server where no global or role-specific model is configured. Removing only `MEMORY_LLM_API_KEY` does not disable a configured model.
-- **Model mode** lets the server extract facts from text. Set `MEMORY_LLM_MODEL`, `MEMORY_LLM_BASE_URL` and the key in the environment, or in the server working directory's `.env`, before the process starts. Use a model key for these settings. Never copy a host subscription token into them.
+- **Model mode** lets the server extract facts from text. Set `MEMORY_LLM_MODEL`, `MEMORY_LLM_BASE_URL` and a model key in the per-user `server.env` file before the server starts. A host that auto-starts the server does not pass model keys in its environment, so the file is where those settings belong. Never copy a host subscription token into them or into the host's environment.
 
 Keyless mode works as follows. The host's model extracts the facts and calls `write_facts` with the source text and the facts. A `write_facts` request carries at most 1000 facts, and each text field of a fact holds at most 4096 characters. A fact may carry `subject_attributes` and `object_attributes`, each at most 10 identity names and values of at most 4096 characters. Each identity value must appear in the source text, and a name the endpoint's type does not declare is ignored. The service stores the exact source text as one Episode, checks every quote, name and identity value against that text, applies the ontology rules, and stores the valid facts. The server's model settings are independent of the host's subscription.
 
@@ -514,7 +530,7 @@ Keyless mode works as follows. The host's model extracts the facts and calls `wr
 
 The bearer key `MEMORY_MCP_API_KEY` authenticates HTTP requests. It is not a model key, and it does not protect stdio. Stdio access means access to the launched process, so it is not a tenant authorization mechanism. Set the key through the host's documented bearer header mechanism. The snippets above do not include it.
 
-The local embedder loads its model while the server process starts, before the server answers any request. On a fresh install it first downloads the model, about 190 MB, into `FASTEMBED_CACHE_PATH`, so startup can take half a minute or more. A host that launches the stdio server may need a longer startup timeout, or you can start the server once beforehand so the model is already cached.
+The local embedder loads its model while the server process starts, before the server answers any request. On a fresh install it first downloads the model, about 190 MB, into `FASTEMBED_CACHE_PATH`, so startup can take half a minute or more. Run `ontogr-mem warm` before adding the server to a host so the model is cached and the host's startup timeout stays short. A host that launches the stdio server may still need a longer startup timeout.
 
 The server registers these tools:
 
@@ -538,14 +554,14 @@ The package ships two skills, `memory-write` and `memory-recall`. Call `get_skil
 
 The default HTTP setup is safe for a single machine only. A bind outside loopback without a key logs a warning and still starts. Compose publishes the port on host loopback, and the network is not authentication.
 
-Set the server with these `MEMORY_MCP_*` variables. The CLI flags `--transport`, `--host`, `--port`, `--tenant` and `--ontology` override the environment. No flag sets the key.
+Set the server with these `MEMORY_MCP_*` variables in the environment or the per-user `server.env` file. The `mcp` command has no flags. `server run` accepts `--tenant` and `--ontology`, which override the environment. No flag sets the key.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `MEMORY_MCP_TRANSPORT` | `stdio` | Transport, `stdio` or `http`. |
 | `MEMORY_MCP_HOST` | `127.0.0.1` | Interface the HTTP transport binds to. |
-| `MEMORY_MCP_PORT` | `8000` | Port the HTTP transport binds to. |
-| `MEMORY_MCP_TENANT` | `default` | Tenant the server reads and writes. |
+| `MEMORY_MCP_PORT` | Unset | Port the HTTP transport binds to. Unset selects a free port; the Docker image uses `8000`. |
+| `MEMORY_MCP_SERVER_URL` | Unset | URL of a running memory server used when `mcp` connects over HTTP. |
+| `MEMORY_MCP_TENANT` | Unset | Tenant the server reads and writes. The Docker image sets `local`. |
 | `MEMORY_MCP_ONTOLOGY` | Unset | Path to an ontology file. When unset, the tenant uses its stored or default ontology. |
 | `MEMORY_MCP_API_KEY` | Unset | Bearer key for HTTP clients. A blank value counts as unset. |
 | `MEMORY_MCP_TOOLS` | All tools | Comma list of tools to register. An empty value removes every tool. An unknown name is an error. |

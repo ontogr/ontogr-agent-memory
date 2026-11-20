@@ -1,0 +1,140 @@
+.root {
+  position: relative;
+  flex: none;
+}
+
+.split {
+  display: inline-flex;
+  border: 1px solid var(--agrag-border);
+  border-radius: 12px;
+  background: var(--ifm-background-color);
+}
+
+.copy,
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--ifm-font-color-base);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.copy {
+  padding: 0 0.75rem 0 0.7rem;
+  border-radius: 11px 0 0 11px;
+}
+
+.toggle {
+  justify-content: center;
+  width: 32px;
+  padding: 0;
+  border-left: 1px solid var(--agrag-border);
+  border-radius: 0 11px 11px 0;
+}
+
+.copy:hover,
+.toggle:hover,
+.copy:focus-visible,
+.toggle:focus-visible,
+.item:focus-visible {
+  background: var(--ifm-color-emphasis-100);
+}
+
+.toggle .icon {
+  transition: transform 0.2s;
+}
+
+.toggleOpen .icon {
+  transform: rotate(180deg);
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 10;
+  width: 316px;
+  max-width: calc(100vw - 2rem);
+  padding: 4px;
+  border: 1px solid var(--agrag-border);
+  border-radius: 16px;
+  background: var(--ifm-background-color);
+  box-shadow:
+    0 20px 25px -5px rgba(0, 0, 0, 0.08),
+    0 8px 10px -6px rgba(0, 0, 0, 0.06);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 6px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ifm-font-color-base);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.item:hover {
+  background: var(--ifm-color-emphasis-100);
+  color: var(--ifm-font-color-base);
+  text-decoration: none;
+}
+
+.tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border: 1px solid var(--agrag-border);
+  border-radius: 8px;
+  background: var(--ifm-background-color);
+  color: var(--ifm-color-content-secondary);
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.hint {
+  color: var(--ifm-color-content-secondary);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+.arrow {
+  width: 12px;
+  height: 12px;
+  color: var(--ifm-color-content-secondary);
+}

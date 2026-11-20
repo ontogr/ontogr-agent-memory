@@ -1,0 +1,684 @@
+/**
+ * Custom brand palette, type, radius, and shadows.
+ * Overrides Infima, the CSS framework the classic theme bundles.
+ *
+ * The palette is warm neutrals with an ink primary. Blue is for links. Four tones carry
+ * meaning and match the diagrams: blue for knowledge, green for conversation history,
+ * amber for decisions, and violet for agents. Each tone has a text colour and a tint.
+ */
+
+:root {
+  --ontogr-ink: #1f2937;
+  --ontogr-on-ink: #ffffff;
+  --ontogr-blue: #1d4ed8;
+  --ontogr-blue-bg: #eaf0fe;
+  --ontogr-green: #047857;
+  --ontogr-green-bg: #e6f5ee;
+  --ontogr-amber: #b45309;
+  --ontogr-amber-bg: #fcf1dd;
+  --ontogr-violet: #6d28d9;
+  --ontogr-violet-bg: #f0ebfa;
+  --ontogr-stone: #57534e;
+  --ontogr-stone-bg: #f3f0e9;
+
+  --ifm-color-primary: #1f2937;
+  --ifm-color-primary-dark: #111827;
+  --ifm-color-primary-darker: #0b1220;
+  --ifm-color-primary-darkest: #060a12;
+  --ifm-color-primary-light: #374151;
+  --ifm-color-primary-lighter: #4b5563;
+  --ifm-color-primary-lightest: #6b7280;
+  --ifm-link-color: var(--ontogr-blue);
+  --ifm-link-hover-color: #1e40af;
+
+  --ifm-background-color: #ffffff;
+  --ifm-background-surface-color: #ffffff;
+  --ifm-font-color-base: rgba(0, 0, 0, 0.87);
+  --ifm-heading-color: rgba(0, 0, 0, 0.87);
+  --ifm-color-content-secondary: rgba(0, 0, 0, 0.55);
+  --ifm-toc-border-color: #e7e3da;
+  --ifm-table-border-color: #e7e3da;
+  --ifm-hr-border-color: #e7e3da;
+  --ifm-navbar-shadow: 0 1px 2px rgba(28, 25, 23, 0.04);
+
+  --ifm-font-family-base: "Inter", -apple-system, BlinkMacSystemFont, Helvetica, Arial,
+    sans-serif;
+  --ifm-font-family-monospace: "JetBrains Mono", SFMono-Regular, Consolas, Menlo, monospace;
+  --ifm-heading-font-family: var(--ifm-font-family-base);
+  --ifm-heading-font-weight: 700;
+  --ifm-code-font-size: 95%;
+  --ifm-global-radius: 7px;
+  --ifm-global-shadow-lw: 0 1px 2px rgba(28, 25, 23, 0.04), 0 8px 24px rgba(28, 25, 23, 0.06);
+  --ifm-global-shadow-md: 0 2px 4px rgba(28, 25, 23, 0.05), 0 24px 60px rgba(28, 25, 23, 0.12);
+  --ifm-global-shadow-tl: var(--ifm-global-shadow-md);
+  --docusaurus-highlighted-code-line-bg: rgba(87, 83, 78, 0.1);
+}
+
+/* Inter reads best with slightly tight tracking, as in the Docling docs. */
+body {
+  letter-spacing: -0.01em;
+}
+
+h1,
+h2 {
+  letter-spacing: -0.025em;
+}
+
+/* Top bar. The look follows the Docling site: a 48 px translucent bar with a hairline
+   border, quiet grey links, and a 2 px accent bar under the active link. */
+:root {
+  --ifm-navbar-height: 48px;
+  --ifm-navbar-padding-vertical: 0;
+  --ifm-navbar-padding-horizontal: 1.5rem;
+  --ifm-navbar-shadow: none;
+  --ifm-navbar-background-color: rgba(255, 255, 255, 0.92);
+  --ontogr-border: #e4e0d6;
+  --ontogr-border-strong: #cbc6b9;
+  --ifm-menu-color-active: var(--ifm-font-color-base);
+  --ifm-menu-color-background-active: var(--ontogr-stone-bg);
+}
+
+.navbar {
+  border-bottom: 1px solid var(--ontogr-border);
+  background: transparent;
+}
+
+/* The blur sits on a pseudo-element. A backdrop-filter on the bar itself would clip the
+   fixed mobile menu to the height of the bar. */
+.navbar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--ifm-navbar-background-color);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.navbar__inner,
+.navbar__items {
+  align-self: stretch;
+}
+
+.navbar__items > * {
+  align-self: center;
+}
+
+.navbar__brand {
+  margin-right: 1.5rem;
+}
+
+.navbar__logo {
+  height: 22px;
+  margin-right: 0.5rem;
+}
+
+.navbar__title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Menu links fill the bar height, so the accent bar sits on the bar's bottom border. */
+.navbar__items > .navbar__link {
+  align-self: stretch;
+}
+
+@media (min-width: 997px) {
+  .navbar__link {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+.navbar__link {
+  padding: 0 0.85rem;
+  border-bottom: 2px solid transparent;
+  color: var(--ifm-color-content-secondary);
+  font-size: 0.85rem;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
+}
+
+/* A hidden bold copy of the label keeps the link as wide as its bold state, so the
+   neighbours do not move when a link becomes active. */
+.navbar__link::after {
+  content: attr(data-text);
+  height: 0;
+  overflow: hidden;
+  font-weight: 700;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.navbar__link:hover {
+  border-bottom-color: var(--ontogr-border-strong);
+  color: var(--ifm-font-color-base);
+  text-decoration: none;
+}
+
+.navbar__link--active,
+.navbar__link--active:hover {
+  border-bottom-color: var(--ifm-color-primary);
+  color: var(--ifm-font-color-base);
+  font-weight: 700;
+}
+
+/* GitHub and PyPI show only their icon in the bar. The mobile menu shows the label. */
+.navbar__items--right > .navbar-icon {
+  align-self: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-bottom: 0;
+  border-radius: 6px;
+  color: var(--ifm-font-color-base);
+}
+
+.navbar__items--right > .navbar-icon:hover {
+  background: var(--ifm-color-emphasis-200);
+  border-bottom: 0;
+}
+
+.navbar-icon__svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+
+.navbar__items--right > .navbar-icon .navbar-icon__label,
+.navbar-sidebar .navbar-icon__svg {
+  display: none;
+}
+
+/* The PyPI mark keeps the blue of its logo. */
+.navbar__items--right > .navbar-icon.navbar-icon--pypi {
+  color: #3775a9;
+}
+
+[data-theme="dark"] .navbar__items--right > .navbar-icon.navbar-icon--pypi {
+  color: #6aa9d9;
+}
+
+/* The version selector is a pill with a chevron. The bold-copy trick above would hide
+   the chevron that Infima draws on dropdown links, so the chevron is redrawn here. */
+.navbar__item.dropdown > .navbar__link {
+  flex-direction: row;
+  gap: 0.4rem;
+  margin: 0 0.25rem;
+  padding: 0.3rem 0.6rem;
+  border-bottom: 0;
+  border-radius: 6px;
+}
+
+.navbar__item.dropdown > .navbar__link::after {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-top: -0.2rem;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  opacity: 0.55;
+  overflow: visible;
+  transform: rotate(45deg);
+  visibility: visible;
+}
+
+.navbar__item.dropdown:hover > .navbar__link,
+.navbar__item.dropdown > .navbar__link[aria-expanded="true"] {
+  background: var(--ifm-color-emphasis-200);
+  border-bottom: 0;
+  color: var(--ifm-font-color-base);
+}
+
+/* The page title and the selector already say which version a page belongs to. */
+.theme-doc-version-badge {
+  display: none;
+}
+
+[data-theme="dark"] {
+  --ontogr-ink: #e5e7eb;
+  --ontogr-on-ink: #111827;
+  --ontogr-blue: #7aa7ff;
+  --ontogr-blue-bg: rgba(59, 130, 246, 0.14);
+  --ontogr-green: #34d399;
+  --ontogr-green-bg: rgba(16, 185, 129, 0.13);
+  --ontogr-amber: #fbbf24;
+  --ontogr-amber-bg: rgba(245, 158, 11, 0.13);
+  --ontogr-violet: #b79cff;
+  --ontogr-violet-bg: rgba(139, 92, 246, 0.15);
+  --ontogr-stone: #d6d3d1;
+  --ontogr-stone-bg: rgba(255, 255, 255, 0.07);
+
+  --ifm-color-primary: #e5e7eb;
+  --ifm-color-primary-dark: #d1d5db;
+  --ifm-color-primary-darker: #c4c8cf;
+  --ifm-color-primary-darkest: #9ca3af;
+  --ifm-color-primary-light: #f3f4f6;
+  --ifm-color-primary-lighter: #f9fafb;
+  --ifm-color-primary-lightest: #ffffff;
+  --ifm-link-color: var(--ontogr-blue);
+  --ifm-link-hover-color: #a7c4ff;
+
+  --ifm-navbar-background-color: rgba(15, 17, 21, 0.85);
+  --ontogr-border: #2a2e36;
+  --ontogr-border-strong: #3a404b;
+  --ifm-menu-color-background-active: var(--ontogr-stone-bg);
+
+  --ifm-background-color: #0f1115;
+  --ifm-background-surface-color: #171a20;
+  --ifm-font-color-base: #eceef2;
+  --ifm-heading-color: #eceef2;
+  --ifm-color-content-secondary: #a1a8b5;
+  --ifm-toc-border-color: #2a2e36;
+  --ifm-table-border-color: #2a2e36;
+  --ifm-hr-border-color: #2a2e36;
+
+  --docusaurus-highlighted-code-line-bg: rgba(255, 255, 255, 0.08);
+}
+
+/* Mermaid: the built-in neutral and dark themes set text and line contrast in each
+   colour mode. These rules tint only the node shapes with the stone surface. */
+:root {
+  --ontogr-diagram-node-fill: var(--ontogr-stone-bg);
+  --ontogr-diagram-node-stroke: #78716c;
+}
+
+[data-theme="dark"] {
+  --ontogr-diagram-node-fill: #171a20;
+  --ontogr-diagram-node-stroke: #8b93a1;
+}
+
+.docusaurus-mermaid-container svg .node rect,
+.docusaurus-mermaid-container svg .node polygon,
+.docusaurus-mermaid-container svg .node circle,
+.docusaurus-mermaid-container svg .node ellipse,
+.docusaurus-mermaid-container svg .node path,
+.docusaurus-mermaid-container svg rect.actor,
+.docusaurus-mermaid-container svg .statediagram-state rect {
+  fill: var(--ontogr-diagram-node-fill) !important;
+  stroke: var(--ontogr-diagram-node-stroke) !important;
+}
+
+.docusaurus-mermaid-container svg .cluster rect {
+  fill: var(--ontogr-stone-bg) !important;
+  stroke: var(--ontogr-border-strong) !important;
+}
+
+/* Edge labels sit on the page background in both colour modes. */
+.docusaurus-mermaid-container svg .edgeLabel,
+.docusaurus-mermaid-container svg .edgeLabel p,
+.docusaurus-mermaid-container svg .edgeLabel rect,
+.docusaurus-mermaid-container svg .labelBkg {
+  background-color: var(--ifm-background-color) !important;
+  fill: var(--ifm-background-color) !important;
+}
+
+/* Collapsible sections. Docusaurus renders <details> as an "alert" block. The look
+   follows the Docling docs: a stone box with no border, a bold summary with an
+   icon on the left, and a chevron on the right that turns when the box opens. */
+details.alert {
+  --ifm-alert-background-color: var(--ontogr-stone-bg);
+  --ifm-alert-border-color: transparent;
+  --ifm-alert-foreground-color: var(--ifm-font-color-base);
+  --ontogr-details-accent: var(--ontogr-stone);
+  --ontogr-details-icon: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551'/%3E%3C/svg%3E");
+  --ontogr-details-chevron: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' stroke='currentColor' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E");
+  display: flow-root;
+  margin: 1.5625em 0;
+  padding: 0 1rem;
+  border: 0;
+  border-radius: 8px;
+  box-shadow: none;
+  font-size: 0.853em;
+}
+
+details.alert > summary {
+  position: relative;
+  min-height: 20px;
+  margin: 0.75rem 0 1em;
+  padding: 0 32px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* The theme draws a CSS triangle in ::before. Replace it with the icon. */
+details.alert > summary::before,
+details.alert > summary::after {
+  content: "";
+  position: absolute;
+  top: 0.125em;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  background-color: var(--ontogr-details-accent);
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+}
+
+details.alert > summary::before {
+  left: 0;
+  transform: none;
+  -webkit-mask-image: var(--ontogr-details-icon);
+  mask-image: var(--ontogr-details-icon);
+}
+
+details.alert > summary::after {
+  right: 0;
+  transition: transform 0.25s;
+  -webkit-mask-image: var(--ontogr-details-chevron);
+  mask-image: var(--ontogr-details-chevron);
+}
+
+details.alert[data-collapsed="false"] > summary::after,
+details.alert[open]:not([data-collapsed]) > summary::after {
+  transform: rotate(90deg);
+}
+
+details.alert > div,
+details.alert > div > div {
+  padding: 0;
+}
+
+/* The theme draws its own divider above the content. The spacing below the summary replaces it. */
+details.alert [class*="collapsibleContent"] {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+details.alert [class*="collapsibleContent"] > :last-child {
+  margin-bottom: 0.75rem;
+}
+
+/* Infima tints inline code in an alert through this variable. Keep a plain grey chip,
+   as the Docling docs do. */
+details.alert {
+  --ifm-code-background: rgba(28, 25, 23, 0.07);
+}
+
+[data-theme="dark"] details.alert {
+  --ifm-code-background: rgba(255, 255, 255, 0.1);
+}
+
+/* Admonitions take the tones of the palette: note is stone, info is blue, tip is green,
+   warning and the unreleased-version banner are amber. Danger keeps Infima's red. */
+.alert--secondary,
+.alert--info,
+.alert--success,
+.alert--warning {
+  --ifm-alert-foreground-color: var(--ifm-font-color-base);
+}
+
+.alert--secondary {
+  --ifm-alert-background-color: var(--ontogr-stone-bg);
+  --ifm-alert-border-color: var(--ontogr-stone);
+}
+
+.alert--info {
+  --ifm-alert-background-color: var(--ontogr-blue-bg);
+  --ifm-alert-border-color: var(--ontogr-blue);
+}
+
+.alert--success {
+  --ifm-alert-background-color: var(--ontogr-green-bg);
+  --ifm-alert-border-color: var(--ontogr-green);
+}
+
+.alert--warning {
+  --ifm-alert-background-color: var(--ontogr-amber-bg);
+  --ifm-alert-border-color: var(--ontogr-amber);
+}
+
+/* A category's own landing page opens from the category link, so it is not listed twice. */
+.menu__list-item.ontogr-hidden {
+  display: none;
+}
+
+/* Docs pages: the active sidebar link is a tinted pill, and the table of contents
+   carries a heading, as in the Docling docs. */
+.menu__link {
+  border-radius: 8px;
+}
+
+.menu__link--active:not(.menu__link--sublist) {
+  font-weight: 500;
+}
+
+/* Sidebar sections are bold titles that stay open, as in the Graphiti docs. */
+.theme-doc-sidebar-item-category-level-1 > .menu__list-item-collapsible > .menu__link:not([href]) {
+  color: var(--ifm-font-color-base);
+  font-weight: 700;
+  cursor: default;
+}
+
+.theme-doc-sidebar-item-category-level-1 > .menu__list-item-collapsible > .menu__link:not([href]):hover {
+  background: transparent;
+}
+
+.theme-doc-sidebar-item-category-level-1:not(:first-child) {
+  margin-top: 1rem;
+}
+
+.theme-doc-toc-desktop::before {
+  content: "On this page";
+  display: block;
+  padding: 0 var(--ifm-toc-padding-horizontal) 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+/* The changelog has no sidebar. Keep its reading column and table of contents together
+   in the middle of the page instead of against the left edge. */
+.docs-doc-id-changelog .container {
+  max-width: 1080px;
+}
+
+/* Changelog. Each release is a row with a sticky column (version, date, and jump links
+   to its sections) beside the sections themselves. The remark plugin in
+   plugins/remarkChangelog.mjs builds the markup. */
+.changelog-release {
+  display: grid;
+  grid-template-columns: 11rem minmax(0, 1fr);
+  gap: 0 3rem;
+  padding: 2.25rem 0;
+  border-top: 1px solid var(--ontogr-border);
+}
+
+.changelog-release[hidden],
+.changelog-section[hidden] {
+  display: none;
+}
+
+.changelog-meta {
+  position: sticky;
+  top: calc(var(--ifm-navbar-height) + 1.5rem);
+  align-self: start;
+}
+
+.changelog-meta h2 {
+  display: inline-block;
+  margin: 0;
+  padding: 0.15rem 0.65rem;
+  border-radius: 8px;
+  background: var(--ifm-menu-color-background-active);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 1.6;
+}
+
+.changelog-meta h2 a {
+  color: var(--ifm-color-primary);
+  text-decoration: none;
+}
+
+.changelog-meta .hash-link {
+  display: none;
+}
+
+.changelog-unreleased .changelog-meta h2 {
+  border: 1px dashed var(--ifm-color-primary);
+  background: transparent;
+}
+
+.changelog-date {
+  margin: 0.6rem 0 0.9rem;
+  color: var(--ifm-color-content-secondary);
+  font-size: 0.8rem;
+}
+
+.changelog-jump {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.changelog-jump-link {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.changelog-jump-link a {
+  color: var(--ifm-color-content-secondary);
+  text-decoration: none;
+}
+
+.changelog-jump-link a:hover {
+  color: var(--ifm-font-color-base);
+}
+
+.changelog-empty {
+  margin: 0;
+  color: var(--ifm-color-content-secondary);
+}
+
+.changelog-section + .changelog-section {
+  margin-top: 1.75rem;
+}
+
+.changelog-section h3 {
+  margin-top: 0;
+  font-size: 1.1rem;
+}
+
+.changelog-section ul {
+  margin-bottom: 0;
+}
+
+@media (max-width: 996px) {
+  .changelog-release {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem 0;
+  }
+
+  .changelog-meta {
+    position: static;
+  }
+
+  .changelog-jump {
+    display: none;
+  }
+}
+
+/* Footer: link columns on a quiet surface, with a hairline above. */
+.footer {
+  --ifm-footer-background-color: var(--ifm-background-color);
+  --ifm-footer-title-color: var(--ifm-heading-color);
+  --ifm-footer-link-color: var(--ifm-color-content-secondary);
+  --ifm-footer-color: var(--ifm-color-content-secondary);
+  border-top: 1px solid var(--ifm-toc-border-color);
+  padding: 3rem 0 2rem;
+}
+
+.footer__logo {
+  margin-top: 0;
+}
+
+.footer__title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  margin-bottom: 0.75rem;
+}
+
+.footer__link-item {
+  font-size: 0.875rem;
+  line-height: 2;
+}
+
+.footer__link-item:hover {
+  color: var(--ifm-color-primary);
+  text-decoration: none;
+}
+
+.footer__bottom {
+  align-items: center;
+  border-top: 1px solid var(--ifm-toc-border-color);
+  display: flex;
+  font-size: 0.8125rem;
+  gap: 1rem;
+  justify-content: flex-start;
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  text-align: left;
+}
+
+.footer__copyright {
+  color: var(--ifm-color-content-secondary);
+}
+
+.footer__link-item svg {
+  display: none;
+}
+
+
+.footer__bottom .margin-bottom--sm {
+  margin-bottom: 0;
+}
+
+/* Images in doc pages never run wider than the column. Diagrams and screenshots scale down
+   on a phone instead of forcing the page to scroll sideways. */
+.theme-doc-markdown img,
+article img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* On a phone, code blocks wrap long lines and fit the screen, so no block scrolls sideways.
+   Indentation stays, since pre-wrap keeps spaces. */
+@media (max-width: 640px) {
+  div[class*="codeBlockContainer"],
+  .theme-doc-markdown pre,
+  article pre {
+    max-width: 100%;
+  }
+
+  .theme-doc-markdown pre,
+  article pre {
+    overflow-x: hidden;
+  }
+
+  pre code,
+  pre code span {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+
+  /* Inline code in prose can break too, so a long name does not push the page wide. */
+  .theme-doc-markdown :not(pre) > code,
+  article :not(pre) > code {
+    overflow-wrap: anywhere;
+  }
+}

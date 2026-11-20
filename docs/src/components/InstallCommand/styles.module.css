@@ -1,0 +1,60 @@
+.command {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: flex-start;
+  gap: 0.6rem;
+  min-height: 3rem;
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
+  border-radius: 10px;
+  background: var(--agrag-stone-bg);
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.95rem;
+}
+
+.command code {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ifm-font-color-base);
+  font-size: inherit;
+  min-width: 0;
+  min-width: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.prompt {
+  padding-top: 0.25rem;
+  color: var(--ifm-color-content-secondary);
+  user-select: none;
+}
+
+.copy {
+  margin-left: 0.5rem;
+  margin-top: -0.1rem;
+  padding: 0.3rem 0.65rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ifm-color-content-secondary);
+  font-family: var(--ifm-font-family-base);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.copy:hover {
+  background: var(--ifm-color-emphasis-200);
+  color: var(--ifm-font-color-base);
+}
+
+@media (max-width: 480px) {
+  .command {
+    font-size: 0.82rem;
+  }
+}
+
+.flag {
+  white-space: nowrap;
+}

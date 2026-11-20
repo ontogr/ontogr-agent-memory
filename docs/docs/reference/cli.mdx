@@ -1,0 +1,81 @@
+---
+title: CLI reference
+description: Commands, options, and exit behavior of ontogr-mem.
+---
+
+`ontogr-mem` is installed with the package. The command has no global options
+other than `--help`.
+
+```text
+usage: ontogr-mem [-h] {chat,mcp,doctor,warm,tenants,clear,server} ...
+```
+
+## chat
+
+```text
+usage: ontogr-mem chat [-h] [--tenant TENANT]
+```
+
+Runs a terminal conversation with persistent memory. It needs the `ANSWER`
+model role and a reachable graph. `--tenant` validates the tenant id.
+
+## mcp
+
+```text
+usage: ontogr-mem mcp [-h]
+```
+
+Runs the MCP server on stdio. The server finds or starts the per-user server and
+serves the tools in [MCP tools](mcp-tools.mdx). Transport, tenant, and ontology
+come from the environment or the server settings file; the old `--transport`,
+`--host`, `--port`, `--tenant`, and `--ontology` flags are gone.
+
+## doctor
+
+```text
+usage: ontogr-mem doctor [-h]
+```
+
+Prints read-only checks for store URLs, extras, state, tenant rules, the
+embedding cache, model roles, and the settings file. It prints the path of
+`server.env` and key names only, never values. A failed check sets exit status 1.
+
+## warm
+
+```text
+usage: ontogr-mem warm [-h]
+```
+
+Downloads the local embedding model into the model cache so that a server can
+start quickly.
+
+## tenants
+
+```text
+usage: ontogr-mem tenants [-h]
+```
+
+Lists tenant ids from the graph, one per line, or `No tenants found.`. It takes
+no input.
+
+## clear
+
+```text
+usage: ontogr-mem clear [-h] --tenant TENANT
+```
+
+Previews and removes one tenant's graph, vectors, and jobs. It needs an
+interactive terminal and a typed confirmation. There is no `--yes` flag. Stop
+every server on the store first. See [Manage tenants](../guides/manage-tenants.mdx).
+
+## server
+
+```text
+usage: ontogr-mem server [-h] {run,status,stop} ...
+```
+
+| Subcommand | Options | Behavior |
+| --- | --- | --- |
+| `run` | `--tenant TENANT`, `--ontology ONTOLOGY` | Runs the foreground server. Exit 0 on shutdown, 75 when the lock is held, 76 when the bind fails. |
+| `status` | none | Prints pid, version, port, store, embedder, roles, and embedding model, or `not running`. |
+| `stop` | none | Posts to `/shutdown`, or prints `not running`. |

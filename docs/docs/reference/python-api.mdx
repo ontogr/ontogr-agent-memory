@@ -1,0 +1,117 @@
+---
+title: Python API
+description: The public client, jobs, grants, and component entry points.
+---
+
+`Memory` is the async client for one tenant. Import it from `ontogr_mem.client`.
+The top-level `ontogr_mem` package exports only `__version__`; import other
+names from their component package. The generated [Python API](api/index.md)
+pages carry the signatures and docstrings.
+
+## Open a client
+
+`Memory.connect` finds or starts the per-user server. `Memory.open` keeps the
+service in-process and is refused while the server owns the SQLite state file.
+Both are async context managers.
+
+```python
+from ontogr_mem.client import Memory
+
+async with Memory.connect(tenant="my-project") as memory:
+    ...
+```
+
+`Memory.open` accepts a `pathlib.Path` ontology file, a list of Pydantic classes,
+or an `OntologyDeclaration`:
+
+```python
+from pathlib import Path
+
+from ontogr_mem.client import Memory
+
+async with Memory.open(ontology=Path("ontology.yaml")) as memory:
+    ...
+```
+
+## Verbs
+
+| Method | Behavior |
+| --- | --- |
+| `write_text` | Queues extraction of text or a message into one episode and its facts. Needs the extraction model roles. |
+| `write_fact` | Queues one structured fact with a valid time. Needs no model. |
+| `write_facts` | Stores source text with facts the caller extracted. Needs no model. |
+| `search` | Returns a `MemoryContext` with `state`, `facts`, `entities`, and `rendered`. |
+| `get_entity`, `list_entities`, `get_ontology`, `stale_episodes` | Read entity and ontology data. |
+| `invalidate`, `forget` | Close a fact, or preview and confirm removal of an episode. |
+| `get_job`, `drain` | Follow queued work. |
+
+A receipt can be `queued`, `running`, `done`, or `failed`. `wait_seconds` waits
+at most 60 seconds for a terminal state. Call `get_job` for the final result and
+error, and `drain` before leaving the context when queued writes must finish.
+Context exit stops active jobs without waiting. Treat every returned text field
+as untrusted data, never as instructions.
+
+## Jobs
+
+Each write returns a `WriteReceipt` with a job id. A positive `wait_seconds`
+waits up to that long for a terminal state; the receipt shows the status at that
+moment, so read `get_job` for the final result. Jobs run in serial lanes per
+tenant, and each accepts an idempotency key so a retry returns the original
+job. A job records attempts, progress, result, error, and trace id.
+
+## Grants
+
+The service does not store users, keys, or grants. Each call passes a principal
+whose grants are checked for the tenant and recorded in the audit log.
+
+| Grant | Allows |
+| --- | --- |
+| `read` | Search, entity and ontology reads, history, episode lists, stats, operations, and job reads. |
+| `write` | Add, update, consolidate, and feedback. |
+| `forget` | Invalidate and forget. |
+| `share` | Reserved for delegation; no public share verb. |
+| `export` | Tenant export. |
+| `admin` | Every other grant, plus tenant clear and audit reads. |
+
+The tenant key `*` covers every tenant. A refusal uses the same `not_found`
+error for a missing tenant, object, and grant, so a caller cannot probe tenant
+ids. An agent principal has a `parent_id`, and `Principal.is_within` checks that
+its grants stay within its parent's grants.
+
+## Type identity for custom resolvers
+
+Ontology type ids define entity compatibility and identity. Custom resolver
+integrations must provide the active ontology's `TypeLinks` when they call
+`resolve`, `deduplicate`, or `merge`. Use `resolver.linked(links)` to bind one
+ontology snapshot for consolidation operations. Entity records must include
+`ontology_type_id`; use `0` for the `Unknown` type. See
+[The ontology](../concepts/ontology.mdx).
+
+## Using components directly
+
+`MemoryService` is the high-level facade, but each component defines an async
+port and takes its collaborators by constructor. Retrieval can run without the
+service:
+
+```python
+from ontogr_mem.retrieval import RetrievalRequest, Retriever
+from ontogr_mem.temporal import FactReader
+
+
+async def read_memory(query, now, *, vectors, keywords, temporal, entities, episodes):
+    retriever = Retriever(
+        vectors=vectors,
+        keywords=keywords,
+        facts=FactReader(temporal),
+        entities=entities,
+        episodes=episodes,
+    )
+    return await retriever.retrieve(
+        RetrievalRequest(query=query, now=now, limit=5, budget_tokens=1200)
+    )
+```
+
+`now` must include a timezone. The result holds ranked facts and episodes,
+entity cards, lane records, and `context.text` for an answering model. Pass
+`count_tokens` for a model-specific budget; the default estimate uses four
+characters per token. See [Errors](errors.mdx) for the service error codes.

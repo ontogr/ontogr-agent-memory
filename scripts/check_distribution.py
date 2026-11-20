@@ -89,6 +89,13 @@ def main() -> None:  # noqa: PLR0912, PLR0915
             "ontogr_mem/mcp_server/wording/nudge_stop.txt",
             "integrations/claude-code/hooks/nudge_stop.txt",
         ),
+        (
+            "integrations/hosts/claude-code-cli.txt",
+            "docs/docs/_hosts/claude-code-cli.txt",
+        ),
+        ("integrations/hosts/codex.toml", "docs/docs/_hosts/codex.toml"),
+        ("integrations/hosts/cursor.json", "docs/docs/_hosts/cursor.json"),
+        ("integrations/hosts/opencode.jsonc", "docs/docs/_hosts/opencode.jsonc"),
     )
     for source, copy in pairs:
         if (ROOT / source).read_bytes() != (ROOT / copy).read_bytes():

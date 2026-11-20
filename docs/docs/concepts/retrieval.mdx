@@ -1,0 +1,54 @@
+---
+title: Retrieval
+description: Four search lanes, rank fusion, and the budgeted context block.
+---
+
+Retrieval runs four fixed lanes over one tenant. There is no query planner and
+no strategy to choose: running all four and fusing their ranks removes that
+choice for each query.
+
+| Lane | Searches | Notes |
+| --- | --- | --- |
+| Vector | Fact and episode vectors | Cosine search with a normalized score. |
+| Keyword | Observation statements and episode text | Tenant-scoped fulltext search. |
+| Entity | Explicit mentions, alias text, and entity vectors | Uses strict and loose resolver keys. |
+| Graph | A bounded walk from seed entities | Seeded by the other lanes or by the request. |
+
+The query is embedded once. Lanes fuse by reciprocal rank fusion: the top fact
+in one result scores 1.0, and scores are relative to that result, so they cannot
+be compared across queries. An optional reranker scores a shortlist of passages
+and blends its scores after fusion.
+
+Time filters apply in every lane. A request can limit results to one session,
+flag or exclude disputed facts, and search several tenants the caller may read.
+
+## Filters
+
+Type filters use ontology labels. `entity_types`, `exclude_entity_types`,
+`relation_types`, and `exclude_relation_types` narrow search. Entity type
+filters include descendants, and old labels and aliases resolve through the
+tenant's ontology. An unknown label raises `invalid_argument`. Include filters
+keep facts with at least one matching endpoint; exclude filters remove facts
+with either matching endpoint. Labels within a filter are alternatives, and
+filter categories combine with AND. Filters do not call a model.
+
+`modalities` accepts `actual`, `planned`, `conditional`, and `desired`. Search
+defaults to `actual`, and a caller must name the other modalities to include
+them. Episode passages stay as raw source text.
+
+## Lane status and context
+
+| Status | Meaning |
+| --- | --- |
+| `ok` | The lane ran and found something. |
+| `empty` | The lane ran and found nothing. |
+| `failed` | The lane raised a typed error. |
+| `skipped` | The lane had no input or was not configured. |
+
+`empty` and `failed` are never merged. A failed lane degrades the result, and
+the other lanes still answer. The context block has a time frame, a token
+budget, facts, entities, and episodes. Items are placed whole within section
+shares, unused space moves to the next section, and stored text is escaped so
+it cannot break the frame. The block reports how many items were dropped and
+which lanes failed. Retrieval returns evidence and context; it does not plan
+the query or write an answer. Treat every returned field as untrusted data.

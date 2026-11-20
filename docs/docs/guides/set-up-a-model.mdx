@@ -1,0 +1,73 @@
+---
+title: Set up a model
+description: Configure model roles and the embedding provider without exposing a host token.
+---
+
+Model settings belong to the server, in the per-user `server.env` file or in the
+container environment. A host never sends a model key to the server. **A host
+subscription token is never a model key** and must not be copied into any
+`MEMORY_LLM_*` variable; see [Keyless and model mode](../concepts/keyless-and-model-mode.mdx).
+
+## Prerequisites
+
+- A model endpoint and its API key.
+- An embedding provider: local FastEmbed, or an embedding endpoint with its own key.
+- The `fastembed` extra for local embeddings, installed by the `local` extra.
+
+## Set the model roles
+
+Write the global values to `server.env` in the data directory, or export them
+for a container:
+
+```text
+MEMORY_LLM_MODEL=<model name>
+MEMORY_LLM_BASE_URL=https://api.openai.com/v1
+MEMORY_LLM_API_KEY=<model key>
+```
+
+A name without a prefix uses OpenAI Chat Completions. Use `openai-chat:`,
+`openai-responses:`, or `anthropic:` to select another protocol. A bare
+`openai:` prefix is rejected. Every role with a model needs a base URL; settings
+load fails and names the variable to set when neither the role nor the global
+URL is set.
+
+| Role | Used for |
+| --- | --- |
+| `ENTITY_EXTRACTION` | Finding names in an episode. |
+| `FACT_EXTRACTION` | Finding grounded claims and quotes. |
+| `RESOLUTION` | Verifying ambiguous entity pairs. |
+| `JUDGE` | Checking candidate facts for contradictions. |
+| `CONSOLIDATION` | Entity descriptions, community summaries, and reflection. |
+| `ANSWER` | The default chat agent, not a service pipeline. |
+
+A role-specific field replaces the global value for that field. Use
+`MEMORY_LLM_<ROLE>_MODEL`, `MEMORY_LLM_<ROLE>_BASE_URL`, and so on for the roles
+in the table. A blank role value counts as unset. The default output caps are
+16384 for `FACT_EXTRACTION`, 2048 for the other extraction and consolidation
+roles, and no cap for `ANSWER`.
+
+## Set the embedding provider
+
+`MEMORY_EMBEDDING_PROVIDER` accepts `auto` (the default), `fastembed`, and
+`endpoint`. Setting both `MEMORY_EMBEDDING_MODEL` and
+`MEMORY_EMBEDDING_BASE_URL` selects the endpoint in `auto` mode; setting
+neither selects FastEmbed. Setting only one is an error. The embedding endpoint
+never uses the language-model key; set `MEMORY_EMBEDDING_API_KEY` for it.
+
+Every machine on a store uses the same embedding model. Startup fails on a
+model or dimension mismatch. Neo4j has one embedding space per database. The
+local model downloads on first use; warm it with `ontogr-mem warm` before a host
+starts the server. See [Configuration](../reference/configuration.mdx) for the
+full provider table.
+
+## Verify the setup
+
+```bash
+ontogr-mem doctor
+```
+
+The output reports the mode, which roles are configured, whether `add_memory`
+is listed, and whether the embedding model is cached. A mismatch between the
+server settings and `/health` produces a warning; the server does not restart
+on its own. See [Server settings file](server-settings-file.mdx) for the file's
+path and rules.

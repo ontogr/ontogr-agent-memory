@@ -1,0 +1,187 @@
+name: Docs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "integrations/hosts/**"
+      - "ontogr_mem/**"
+      - "CHANGELOG.md"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "Makefile"
+      - ".python-version"
+      - ".pre-commit-config.yaml"
+      - ".github/scripts/docs_api_links.py"
+      - ".github/scripts/docs_config_table.py"
+      - ".github/scripts/update_precommit_docs_pins.py"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - "integrations/hosts/**"
+      - "ontogr_mem/**"
+      - "CHANGELOG.md"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "Makefile"
+      - ".python-version"
+      - ".pre-commit-config.yaml"
+      - ".github/scripts/docs_api_links.py"
+      - ".github/scripts/docs_config_table.py"
+      - ".github/scripts/update_precommit_docs_pins.py"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generated:
+    name: Check generated files
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      UV_PYTHON: "3.12"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.12.23"
+          enable-cache: true
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - run: make sync
+      - run: make docs-generate
+      - name: Fail when generated docs changed
+        run: |
+          git diff --exit-code -- docs/docs/api docs/docs/reference/configuration.mdx
+          untracked=$(git status --porcelain --untracked-files=all -- docs/docs/api)
+          if [ -n "$untracked" ]; then
+            echo "Untracked generated API pages: $untracked"
+            exit 1
+          fi
+      - name: Check host snippet copies and distribution pins
+        run: make check-distribution
+
+  pins:
+    name: Check docs pre-commit pins
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.12.23"
+          enable-cache: false
+      - run: uv run --no-project python .github/scripts/update_precommit_docs_pins.py --check
+
+  freeze:
+    name: Read docs freeze state
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      frozen: ${{ steps.state.outputs.frozen }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - id: state
+        run: |
+          if [ "$(jq 'length' docs/versions.json)" -gt 0 ]; then
+            echo "frozen=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "frozen=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build docs site
+    needs: freeze
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      UV_PYTHON: "3.12"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.12.23"
+          enable-cache: true
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - run: make sync
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+      - run: make docs-install
+      - run: make docs-build
+      - name: Upload Pages artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.freeze.outputs.frozen == 'true'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs/build
+
+  version-freeze:
+    name: Check the docs version freeze
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      UV_PYTHON: "3.12"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.12.23"
+          enable-cache: false
+      - name: Check whether the package version changed
+        id: version
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if git diff "origin/$BASE_REF" -- pyproject.toml | grep -q '^+version'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Require a frozen docs version
+        if: steps.version.outputs.changed == 'true'
+        run: make docs-check-version DOCS_PYTHON="uv run --no-project python"
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: [generated, build, freeze]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.freeze.outputs.frozen == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+        id: deployment

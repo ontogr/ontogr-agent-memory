@@ -1,0 +1,51 @@
+---
+title: The per-user server
+description: One server process, one store lock, and the files it keeps in the data directory.
+---
+
+`Memory.connect` finds or starts one server for the current user. The server
+serves every tenant of the store from a single process and holds one store
+lock. A later `Memory.open` against the same state file is refused while the
+server runs.
+
+## Lifecycle
+
+The server is started on the first connect or by `ontogr-mem server run`. It
+holds `server.lock` for its whole life, writes its port to `server.json`, its
+bearer token to `server.token`, and its output to `server.log`. It exits after
+`MEMORY_SERVER_IDLE_MINUTES` with no clients; the default is 30, and `0`
+disables the idle exit. `ontogr-mem server status` reads `/health`, and
+`ontogr-mem server stop` posts to `/shutdown`.
+
+A second `server run` exits with status 75 while the lock is held. Bind failure
+exits with 76. A stopped server leaves pending jobs for the next start to
+recover.
+
+## Settings file
+
+The server reads its model, embedding, ontology, key, port, tenant, and idle
+settings from `server.env` in the data directory. The file is owner-only on
+POSIX and refuses to set `MEMORY_GRAPH_URL`, `MEMORY_STATE_URL`, or
+`MEMORY_DATA_DIR`. The auto-started process gets an allowlisted environment, so
+the starter's terminal cannot supply model keys or ontology paths. A server
+started by hand loads `server.env` into its own environment before it builds
+any settings. An absent file means the defaults. See
+[Server settings file](../guides/server-settings-file.mdx).
+
+## Files and directory
+
+The data directory is platform-specific and can be overridden with
+`MEMORY_DATA_DIR`:
+
+| Platform | Data directory |
+| --- | --- |
+| Linux | `$XDG_DATA_HOME/ontogr-mem` or `~/.local/share/ontogr-mem` |
+| macOS | `~/Library/Application Support/ontogr-mem` |
+| Windows | `%LOCALAPPDATA%\ontogr-mem` |
+
+The SQLite state file `agent_memory_state.sqlite3` and its `-wal`, `-shm`, and
+`<sqlite>.lock` files live in this directory beside the server files. The local
+embedding model cache lives in the cache directory unless
+`FASTEMBED_CACHE_PATH` overrides it. See
+[Data locations](../reference/data-locations.mdx) and
+[Remove stored data](../reference/data-removal.mdx).

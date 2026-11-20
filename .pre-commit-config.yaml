@@ -77,6 +77,13 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
+      - id: docs-api
+        name: docs-api (griffe2md)
+        entry: "bash -c 'PYTHONPATH=. DOCS_GRIFFE2MD=griffe2md DOCS_PYTHON=python make docs-api'"
+        language: python
+        additional_dependencies: ["griffe2md==1.5.1"]
+        pass_filenames: false
+        files: '^(ontogr_mem/.*\.py|pyproject\.toml|uv\.lock|Makefile|\.github/scripts/docs_api_links\.py|docs/docs/api/(?!index\.md$).*\.md)$'
 
 ci:
   autofix_prs: true

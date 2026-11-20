@@ -1,0 +1,45 @@
+---
+title: Data locations
+description: Where data, state, server, model cache, and graph files live.
+---
+
+Paths depend on the platform and can be overridden with `MEMORY_DATA_DIR` and
+`FASTEMBED_CACHE_PATH`. The first three helpers only compute a path; they do
+not create it.
+
+| Location | Linux | macOS | Windows |
+| --- | --- | --- | --- |
+| Data directory | `$XDG_DATA_HOME/ontogr-mem` or `~/.local/share/ontogr-mem` | `~/Library/Application Support/ontogr-mem` | `%LOCALAPPDATA%\ontogr-mem` |
+| Cache directory | `$XDG_CACHE_HOME/ontogr-mem` or `~/.cache/ontogr-mem` | `~/Library/Caches/ontogr-mem` | `%LOCALAPPDATA%\ontogr-mem\cache` |
+
+## Files in the data directory
+
+| File | Written by | Purpose |
+| --- | --- | --- |
+| `server.lock` | The server | Held for the server's whole life. |
+| `server.token` | The server | Bearer token for local HTTP requests. |
+| `server.json` | The server | Port and connection information. |
+| `server.log` | The server | Server output. |
+| `server.env` | The user | Per-user model, embedding, and tenant settings. |
+| `agent_memory_state.sqlite3` | The relation store | Jobs, operation rows, audit rows, and the erase journal. |
+| `agent_memory_state.sqlite3-wal`, `-shm` | SQLite | Write-ahead log and shared-memory sidecars. |
+| `agent_memory_state.sqlite3.lock` | The state store | Local store lock. |
+
+Set `MEMORY_STATE_URL` to move the state file or to use Postgres. A Postgres
+state URL stores control data in the database instead of a local file.
+
+## Model cache
+
+Local embedding models are stored at `FASTEMBED_CACHE_PATH` when it is set, or
+in the `fastembed` folder of the cache directory. `ontogr-mem warm` downloads
+the model there. The fastembed folder is separate from the data directory, so
+clearing memory does not remove the cached model.
+
+## Graph data
+
+FalkorDB keeps each tenant's graph as `m_<tenant>` under the graph's data path;
+the Compose volume `ontogr-mem-falkordb-data` mounts
+`/var/lib/falkordb/data`. Neo4j keeps all tenants in one database with a
+`_tenant` property on every object, and the `database` query value of
+`MEMORY_GRAPH_URL` selects it. See
+[Remove stored data](data-removal.mdx) for the removal commands.

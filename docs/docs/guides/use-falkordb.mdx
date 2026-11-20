@@ -1,0 +1,58 @@
+---
+title: Use FalkorDB
+description: Point memory at a local or hosted FalkorDB graph.
+---
+
+`MEMORY_GRAPH_URL` selects the graph backend by scheme. FalkorDB uses
+`redis://` for plaintext and `rediss://` for TLS; the default is
+`redis://localhost:6379`.
+
+## Start a local graph
+
+From a clone of the repository or a copy of `compose.yaml`:
+
+```bash
+docker compose up -d --wait falkordb
+```
+
+With `uvx` and no Compose file:
+
+```bash
+docker run -d -p 127.0.0.1:6379:6379 \
+  -v ontogr-mem-falkordb-data:/var/lib/falkordb/data \
+  falkordb/falkordb:v4.22.2
+```
+
+The graph listens on loopback. All components of a tenant live in one graph
+named `m_<tenant>`.
+
+## Connect to a hosted graph
+
+Set the URL with credentials, then set an explicit tenant. A hosted host is not
+loopback, so a client without a tenant is refused.
+
+```bash
+export MEMORY_GRAPH_URL=rediss://user:password@graph.example.com:6379
+export MEMORY_MCP_TENANT=team-graph
+```
+
+Percent-encode special characters in the user name and password. A user name
+without a password is invalid, and a URL with a path, query, or fragment is
+rejected. Every machine that uses a shared store must use the same embedding
+model; startup fails on a space mismatch.
+
+A hosted graph also needs shared state. SQLite state is local to one machine,
+so use Postgres as described in [Use Postgres for state](use-postgres-state.mdx).
+Stop every server on the store before you run `clear`; a server lock sees only
+the machine it runs on.
+
+## Verify the connection
+
+```bash
+ontogr-mem doctor
+```
+
+The output shows the credential-free identity of the graph, whether it is
+reachable, and whether the tenant rule is satisfied. It prints key names, not
+values. See [Configuration](../reference/configuration.mdx) for the pool and
+resilience settings under `MEMORY_FALKORDB_`.
